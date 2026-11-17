@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, StyleSheet, Platform, ScrollView, KeyboardAvoidingView } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
@@ -30,6 +30,7 @@ import { SyncSettings } from './settings/SyncSettings';
 import { AboutSettings } from './settings/AboutSettings';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 type RootStackParamList = {
@@ -62,6 +63,14 @@ export function SettingsGroupScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { scrollRef, contentRef, reportRow, scrollProps } = useSettingsFocusScroll();
   const scrollTop = useListScrollToTop({ ref: scrollRef });
+  // Lifts the focused field clear of the keyboard. Not a KeyboardAvoidingView:
+  // its padding resizes the viewport under the scroll view, which is what
+  // threw the page to a random offset when a key field took focus.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const setScrollRefs = useCallback((node: ScrollView | null) => {
+    scrollRef.current = node;
+    keyboardScroll.ref.current = node;
+  }, [scrollRef, keyboardScroll.ref]);
 
   // Straight off the route param, not state: a search pushes this screen fresh
   // each time, so there is nothing to reset, and the highlight ends by fading
@@ -78,15 +87,13 @@ export function SettingsGroupScreen() {
     <View style={[styles.root, { paddingTop: insets.top + spacing.md }]}>
       <DetailHeader title={group?.title ?? 'Settings'} onBack={() => navigation.goBack()} />
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <View style={{ flex: 1 }}>
         <ScrollView
-          ref={scrollRef}
+          ref={setScrollRefs}
           {...scrollTop.listProps}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + spacing.xl, scrollTop.clearance) }}
+          {...keyboardScroll.props}
           {...scrollProps}
         >
           <View ref={contentRef} collapsable={false}>
@@ -115,14 +122,14 @@ export function SettingsGroupScreen() {
           {groupId === 'kitchen' && <KitchenSettings />}
           {/* Nor a workoutsEnabled one, for the same reason: `workoutsOnly`. */}
           {groupId === 'workouts' && <WorkoutsSettings />}
-          {groupId === 'privacyAi' && <PrivacyAiSettings scrollRef={scrollRef} />}
+          {groupId === 'privacyAi' && <PrivacyAiSettings />}
           {groupId === 'dataReset' && <SyncSettings />}
           {groupId === 'dataReset' && <DataResetSettings />}
           {groupId === 'about' && <AboutSettings />}
           </SettingsFocusProvider>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
       <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );

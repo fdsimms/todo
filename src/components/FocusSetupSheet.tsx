@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
 import { SortableList } from './SortableList';
+import type { DragScroller } from '../utils/fabDrop';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
@@ -28,7 +29,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { haptics } from '../utils/haptics';
 import { formatClockDuration, formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import { isQuotaTask } from '../utils/visibilityUtils';
+import { isQuotaTask, displayTitleFor } from '../utils/visibilityUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { buildFocusPlan, focusPlanTotals, plannedTaskMinutes, type FocusPlanOptions } from '../utils/focusPlan';
 import {
@@ -242,6 +243,38 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   // SortableList's onDragStateChange doc for why this is required, not just
   // tidy.
   const [reordering, setReordering] = useState(false);
+  // The list's own scroll view, so a drag held near its top or bottom edge can
+  // scroll it (SortableList's `autoscroll`) instead of the floating row being
+  // clipped by the list's bounds. Metrics live in a ref: they are read a frame
+  // at a time while a drag is in flight and must not re-render the sheet.
+  const listRef = useRef<ScrollView>(null);
+  const listMetrics = useRef({ offset: 0, content: 0, viewport: 0 });
+  // The list's window-space top and bottom, re-measured when a drag lifts
+  // because the sheet slides in and its position is not known at layout.
+  const listWindow = useRef({ top: 0, bottom: 0 });
+  const listScroller = useRef<DragScroller | null>(null);
+  if (listScroller.current === null) {
+    listScroller.current = {
+      getOffset: () => listMetrics.current.offset,
+      getMaxOffset: () => Math.max(0, listMetrics.current.content - listMetrics.current.viewport),
+      scrollToOffset: (y: number) => {
+        // Written back now: the scroll event confirming it lands a frame later.
+        listMetrics.current.offset = y;
+        listRef.current?.scrollTo({ y, animated: false });
+      },
+    };
+  }
+  const listAutoscroll = useMemo(() => ({
+    scroller: listScroller,
+    getViewport: () => listWindow.current,
+  }), []);
+  const handleDragStateChange = (dragging: boolean) => {
+    setReordering(dragging);
+    if (!dragging) return;
+    listRef.current?.getNativeScrollRef()?.measureInWindow((_x, y, _w, h) => {
+      listWindow.current = { top: y, bottom: y + h };
+    });
+  };
 
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
@@ -474,6 +507,9 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   // ==== row renderers ====
   const renderRow = (task: Task, drag: () => void, isActive: boolean, stackCaption: string | null = null) => {
     const checked = selectedIds.has(task.id);
+    // Mid-chain the row is the active step, so it reads as that step rather
+    // than the chain's name (`displayTitleFor`, same as every other surface).
+    const title = displayTitleFor(task);
     const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;
     // A daily target is logged a unit at a time rather than ticked off once, so
     // its count leads the line: it's the difference between a stretch that
@@ -498,7 +534,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"
           accessibilityState={{ checked }}
-          accessibilityLabel={`${task.title}${count ? `, ${count} logged` : ''}${reason ? `, ${reason}` : ''}, ${spokenTime}`}
+          accessibilityLabel={`${title}${count ? `, ${count} logged` : ''}${reason ? `, ${reason}` : ''}, ${spokenTime}`}
         >
           <Ionicons
             name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -507,7 +543,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           />
           <View style={styles.rowContent}>
             <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
-              {task.title}
+              {title}
             </Text>
             {/* Separate Texts rather than one joined string: the reason can be
                 as long as a task title ("Goes with Draft the quarterly memo")
@@ -540,7 +576,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           disabled={!canSwap}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
-          accessibilityLabel={`Swap out ${task.title}`}
+          accessibilityLabel={`Swap out ${title}`}
           accessibilityHint="Replaces this suggestion with the next best task"
         >
           <Ionicons name="refresh" size={iconSize.sm} color={canSwap ? colors.textSecondary : colors.bgQuaternary} />
@@ -553,7 +589,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           hitSlop={8}
           style={styles.dragHandle}
           accessibilityRole="button"
-          accessibilityLabel={`Reorder ${task.title}`}
+          accessibilityLabel={`Reorder ${title}`}
         >
           <Ionicons name="reorder-three" size={iconSize.md} color={colors.textTertiary} />
         </TouchableOpacity>
@@ -877,11 +913,21 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
             </Text>
           )}
 
-          <ScrollView style={styles.list} bounces={false} scrollEnabled={!reordering}>
+          <ScrollView
+            ref={listRef}
+            style={styles.list}
+            bounces={false}
+            scrollEnabled={!reordering}
+            scrollEventThrottle={16}
+            onScroll={e => { listMetrics.current.offset = e.nativeEvent.contentOffset.y; }}
+            onContentSizeChange={(_w, h) => { listMetrics.current.content = h; }}
+            onLayout={e => { listMetrics.current.viewport = e.nativeEvent.layout.height; }}
+          >
             <SortableList
               data={slots}
               onReorder={reorderSlots}
-              onDragStateChange={setReordering}
+              onDragStateChange={handleDragStateChange}
+              autoscroll={listAutoscroll}
               renderItem={(task, _i, drag, isActive) => renderSlot(task, drag, isActive)}
             />
           </ScrollView>
