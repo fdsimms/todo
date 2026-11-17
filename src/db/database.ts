@@ -6501,12 +6501,12 @@ export function dbFinishGroceryShopping(
     // here is one that would otherwise still be lying about it a month later.
     // See GroceryList.
     //
-    // A recipe-owned quantity still goes, because the shop it was for happened
-    // — and so does the recipe credit itself, for the same reason (see
+    // The quantity goes, typed or recipe-owned, because the shop it was for
+    // happened — and so does the recipe credit itself, for the same reason (see
     // GroceryItem.sourceRecipeId).
     db.runSync(
       `UPDATE grocery_items
-          SET quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
+          SET quantity = NULL,
               quantity_from_recipe = 0,
               source_recipe_id = NULL,
               source_recipe_title = NULL
@@ -6524,7 +6524,7 @@ export function dbFinishGroceryShopping(
             frozen_at = NULL,
             opened_at = NULL,
             running_low_at = NULL,
-            quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
+            quantity = NULL,
             quantity_from_recipe = 0,
             source_recipe_id = NULL,
             source_recipe_title = NULL

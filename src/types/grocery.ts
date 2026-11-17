@@ -246,13 +246,14 @@ export interface GroceryItem {
   // Free text ("2 lb", "x3", "a bunch"). Nothing does arithmetic on it — the
   // parser exists to get it out of the name so the name stays a clean key.
   quantity: string | null;
-  // Whether `quantity` is the app's own writing (a recipe's cooking amount,
-  // true for one shop) rather than the user's standing preference. The field
-  // has two owners with different lifetimes and can't tell them apart on its
-  // own: `addFromPlan` only writes into an empty or recipe-owned slot, and
-  // finishing the shop or taking the row off the list clears a recipe-owned
-  // quantity outright, since the shop it was for has happened. `setQuantity`
-  // — the user typing an amount by hand — always takes ownership.
+  // Whether `quantity` is the app's own writing (a recipe's cooking amount)
+  // rather than an amount the user typed. The field has two owners and can't
+  // tell them apart on its own: `addFromPlan` only writes into an empty or
+  // recipe-owned slot, and taking the row off the list clears a recipe-owned
+  // quantity outright. Finishing a shop clears either kind, since the shop it
+  // was for has happened (a typed "1 lb" used to come back on every later plain
+  // add). `setQuantity` — the user typing an amount by hand — always takes
+  // ownership.
   quantityFromRecipe: boolean;
   note: string;
   /**
