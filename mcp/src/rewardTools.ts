@@ -9,7 +9,7 @@
  * only when the person did the thing or said so. Nothing here earns or spends
  * unasked, and `get_rewards` says what a claim would leave before it is made.
  */
-import type { CoinEntry, Reward, RewardUnlock } from '../../src/types';
+import type { CoinEntry, Reward, RewardUnlock, Task } from '../../src/types';
 import type { Replica, UnlockInput } from './replica';
 import { serializeTasks, type SerializedTask } from './serialize';
 
@@ -176,7 +176,7 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
   const saved = rewardSavings.savingsBalance(entries, plan);
   const spending = rewardSavings.spendingBalance(balance, saved);
   const today = replica.currentDayStart();
-  const rate = plan ? lib.earnRatePerDay(replica.tasks(), new Date()) : null;
+  const rate = plan ? lib.earnRatePerDay(replica.tasks(), new Date(), listItemCheck(replica)) : null;
   // While saving, a reward other than the goal is paid from spending money.
   if (plan) {
     for (const r of open) {
@@ -250,8 +250,13 @@ function guardOf(replica: Replica, reward: Reward): Pick<SerializedReward, 'guar
  */
 function exchangeRate(replica: Replica): number | null {
   const { rewards: lib } = replica.lib();
-  const rate = lib.earnRatePerDay(replica.tasks(), new Date());
+  const rate = lib.earnRatePerDay(replica.tasks(), new Date(), listItemCheck(replica));
   return lib.coinsPerDollar(rate, replica.settings().rewardWeeklyBudgetMinor);
+}
+
+/** Whether a task is on a list, which earns no coins (`taskEarnsCoins`), from the replica's stacks and projects. */
+function listItemCheck(replica: Replica): (task: Task) => boolean {
+  return replica.lib().listMode.listItemFinder(replica.stacks(), replica.projects());
 }
 
 /** A typed dollar amount to minor units, refusing more than two decimals so nothing is rounded silently. */

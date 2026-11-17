@@ -8881,7 +8881,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (days <= 0) throw new Error('byDate must be after today.');
           by = planInput.byDate;
           if (sharePct === undefined) {
-            const rate = rewards.earnRatePerDay(tasks(), new Date());
+            const rate = rewards.earnRatePerDay(tasks(), new Date(), listItemFinder(useTaskGroupStore.getState().groups, projects()));
             const worked = savingsLib.shareForDate(reward.cost, have, rate, days);
             if (worked === null) throw new Error('There is under a week of history, so no share can be worked out from a date yet. Pass sharePct instead.');
             sharePct = worked;
@@ -9000,10 +9000,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       requireRewardsOn();
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
-      if (!rewards.canPostBounty(task)) {
+      const isListItem = listItemFinder(useTaskGroupStore.getState().groups, projects())(task);
+      if (!rewards.canPostBounty(task, isListItem)) {
         throw new Error(task.bountyPushes != null
           ? 'That task already had a bounty this occurrence, live or withdrawn. A repeating task can have another on its next occurrence.'
-          : 'A bounty needs an open, top-level task that is not a "don\'t do this" habit.');
+          : isListItem
+            ? 'That task is an item on a list, which earns no coins, so a bounty on it could never pay.'
+            : 'A bounty needs an open, top-level task that is not a "don\'t do this" habit.');
       }
       const { bountyLimit } = useSettingsStore.getState();
       if (rewards.liveBountyCount(tasks()) >= bountyLimit) {

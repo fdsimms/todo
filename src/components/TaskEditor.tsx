@@ -609,6 +609,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       parentId: task?.parentId ?? null,
     });
   }, [task, initialDraft, allGroups, projects]);
+  // Where the saved task is now, for the bounty offer: a list item never earns
+  // coins, so a bounty on one could never pay (`taskEarnsCoins`).
+  const taskIsListItem = useMemo(
+    () => !!task && listItemFinder(allGroups, projects)(task),
+    [task, allGroups, projects],
+  );
   const [showAllFields, setShowAllFields] = useState(false);
   // For the "Stocked from" picker only, and read here rather than at the render
   // site so the sheet's other ~40 store bindings all sit together. `addToPantry`
@@ -2300,7 +2306,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // Only the edge is written: posting starts the count at 0, and turning a
       // live bounty off spends it. Anything else leaves the row's count to
       // updateTask, which takes a step off it if this same save pushes the date.
-      ...(task && bounty && !isBountyLive(task) && canPostBounty(task) ? { bountyPushes: 0 } : {}),
+      ...(task && bounty && !isBountyLive(task) && canPostBounty(task, taskIsListItem) ? { bountyPushes: 0 } : {}),
       ...(task && !bounty && isBountyLive(task) ? { bountyPushes: BOUNTY_WITHDRAWN } : {}),
       polarity,
       // Only an avoid-task has slips to allow; null is the original rule.
@@ -7377,7 +7383,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               </>
             ),
           }] : []),
-          ...(rewardsEnabled && task && (isBountyLive(task) || canPostBounty(task)) && polarity !== 'negative' ? [{
+          ...(rewardsEnabled && task && (isBountyLive(task) || canPostBounty(task, taskIsListItem)) && polarity !== 'negative' ? [{
             key: 'bounty', label: 'Bounty', set: bounty,
             keywords: ['reward', 'coins', 'dread', 'procrastinate', 'putting off', 'incentive', 'bonus'],
             node: (
