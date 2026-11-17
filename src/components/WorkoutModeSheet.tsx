@@ -1827,6 +1827,9 @@ function DeletableSet({ label, onDelete, children, styles }: {
       ref={ref}
       friction={2}
       overshootRight={false}
+      // The panel is laid out behind the whole row, so the row has to be
+      // opaque or the red shows through around the inputs as it slides.
+      childrenContainerStyle={styles.setFace}
       renderRightActions={() => (
         <TouchableOpacity
           style={styles.deletePanel}
@@ -2127,6 +2130,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   kindHelp: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.xs },
   // Lines up under the "Previous" column, past the set number's column.
   nextPlates: { paddingLeft: spacing.md + 34 + spacing.sm, paddingRight: spacing.md, paddingBottom: spacing.smd },
+  setFace: { backgroundColor: colors.bgSecondary },
   deletePanel: { width: 88, alignSelf: 'stretch', backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
   deleteText: { color: colors.onFill, fontSize: font.sm, fontWeight: fontWeight.semibold },
   adds: {
