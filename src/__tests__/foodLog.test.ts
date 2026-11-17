@@ -20,6 +20,10 @@ import {
   estimateCount,
   estimateCountQuestion,
   estimateWholeGrams,
+  estimateParts,
+  estimatePartsPatch,
+  currentPartFactors,
+  splitDescriptionParts,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
@@ -1008,6 +1012,8 @@ describe('changing an estimate\'s amount (#2914)', () => {
       expect(estimateWholeGrams(panel('82% of 276 g curry (microwaved), 51 g steamed white rice'))).toBe(277.3);
       expect(estimateWholeGrams(panel('120 g tofu, 51 g rice'))).toBe(171);
       expect(estimateWholeGrams(panel('50% of 200 g soup'))).toBe(100);
+      // "and" before a weight joins parts like a comma does.
+      expect(estimateWholeGrams(panel('113 g steamed basmati rice and 136 g paneer tikka masala'))).toBe(249);
       // A comma inside a part's parentheses doesn't start another part.
       expect(estimateWholeGrams(panel('56 g (15g pepitas, 27g walnuts, 14g almonds)'))).toBe(56);
     });
@@ -1108,6 +1114,84 @@ describe('changing an estimate\'s amount (#2914)', () => {
     // Choosing the original amount again puts the lines back exactly.
     const back = estimateAmountPatch({ ...row, nutrition: patch.nutrition, sourcePanel: patch.sourcePanel }, 1)!;
     expect(back.nutrition.breakdown?.[0].amounts.calorieKcal).toBe(400);
+  });
+
+  describe('by part', () => {
+    const curry = () => entry({
+      label: 'Paneer tikka masala with steamed basmati rice',
+      quantity: '113 g steamed basmati rice and 136 g paneer tikka masala',
+      grams: null,
+      nutrition: {
+        basis: 'perServing',
+        servingGrams: null,
+        servingText: '113 g steamed basmati rice and 136 g paneer tikka masala',
+        amounts: { calorieKcal: 419, proteinG: 14 },
+        source: 'estimated',
+        sourceId: null,
+        portions: [],
+        recordedAt: '2026-04-02T19:00:00.000Z',
+        breakdown: [
+          { label: 'steamed basmati rice', amounts: { calorieKcal: 147, proteinG: 3 } },
+          { label: 'paneer tikka masala', amounts: { calorieKcal: 272, proteinG: 11 } },
+        ],
+      },
+    });
+
+    it('splits a description at commas and at "and" before a number only', () => {
+      expect(splitDescriptionParts('113 g rice and 136 g paneer')).toEqual(['113 g rice', '136 g paneer']);
+      expect(splitDescriptionParts('1 baguette and butter')).toEqual(['1 baguette and butter']);
+      expect(splitDescriptionParts('56 g (15g pepitas, 27g walnuts and 2 g salt)')).toEqual(['56 g (15g pepitas, 27g walnuts and 2 g salt)']);
+    });
+
+    it('reads each part\'s weight, and offers parts only when words and breakdown agree', () => {
+      expect(estimateParts(curry())).toEqual([
+        { label: 'steamed basmati rice', grams: 113, words: 'steamed basmati rice' },
+        { label: 'paneer tikka masala', grams: 136, words: 'paneer tikka masala' },
+      ]);
+      const mismatched = curry();
+      mismatched.nutrition.breakdown = mismatched.nutrition.breakdown!.slice(0, 1);
+      expect(estimateParts(mismatched)).toBeNull();
+      expect(estimateParts(pizza())).toBeNull();
+    });
+
+    it('scales each part on its own and sums the total from the lines', () => {
+      const patch = estimatePartsPatch(curry(), [90 / 113, 1])!;
+      expect(patch.quantity).toBe('90 g steamed basmati rice and 136 g paneer tikka masala');
+      expect(patch.nutrition.breakdown![0].amounts.calorieKcal).toBe(117.1);
+      expect(patch.nutrition.breakdown![1].amounts.calorieKcal).toBe(272);
+      expect(patch.nutrition.amounts.calorieKcal).toBe(389.1);
+      expect(patch.nutrition.source).toBe('estimated');
+      expect(patch.sourcePanel.amounts.calorieKcal).toBe(419);
+    });
+
+    it('puts the entry back exactly when every part is back at its own weight', () => {
+      const changed = { ...curry(), ...estimatePartsPatch(curry(), [0.5, 2])! };
+      const back = estimatePartsPatch(changed, [1, 1])!;
+      expect(back.nutrition.amounts).toEqual({ calorieKcal: 419, proteinG: 14 });
+      expect(back.quantity).toBe('113 g steamed basmati rice and 136 g paneer tikka masala');
+    });
+
+    it('reads the factors an entry already stands at, and none for a whole-meal change', () => {
+      const changed = { ...curry(), ...estimatePartsPatch(curry(), [0.5, 2])! };
+      expect(currentPartFactors(changed)).toEqual([0.5, 2]);
+      expect(currentPartFactors(curry())).toEqual([1, 1]);
+    });
+
+    it('refuses a factor the whole-meal change would', () => {
+      expect(estimatePartsPatch(curry(), [0, 1])).toBeNull();
+      expect(estimatePartsPatch(curry(), [1, 11])).toBeNull();
+      expect(estimatePartsPatch(curry(), [1])).toBeNull();
+    });
+
+    it('says a part with no weight as a percent of it', () => {
+      const row = curry();
+      row.nutrition.servingText = '113 g rice and a side salad';
+      // "and a" has no number after it, so the words are one part against two lines.
+      expect(estimateParts({ ...row })).toBeNull();
+      row.nutrition.servingText = '113 g rice and 2 pieces of naan';
+      const patch = estimatePartsPatch(row, [1, 0.5])!;
+      expect(patch.quantity).toBe('113 g rice and 50% of 2 pieces of naan');
+    });
   });
 
   it('scales it down the same way', () => {

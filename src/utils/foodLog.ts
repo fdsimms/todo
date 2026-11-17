@@ -1616,18 +1616,11 @@ const LEADING_GRAMS = /^\s*(\d+(?:[.,]\d+)?)\s*(?:g|grams?)\b/i;
 const WEIGHED_PART = /^\s*(?:(\d+(?:[.,]\d+)?)\s*%\s*of\s+)?(\d+(?:[.,]\d+)?)\s*(?:g|grams?)\b/i;
 
 /**
- * The weight of a meal described as a list of weighed parts, or null when any
- * part has no weight of its own.
- *
- * "82% of 276 g curry (microwaved), 51 g steamed white rice" is a meal of two
- * parts, 226.3 g and 51 g, so its whole is their sum. **Every part has to
- * state one**: a list with an unweighed part ("1 burger, 100 g fries") has no
- * total to be read from the words, and the sum of the parts that do would
- * claim a weight the meal doesn't have. Commas inside parentheses belong to
- * the part ("56 g (15g pepitas, 27g walnuts)"), so that stays one part and
- * `LEADING_GRAMS` reads it as before.
+ * A described meal's parts: split at commas and at "and" before a number,
+ * outside parentheses ("113 g rice and 136 g paneer" is two parts, "bread and
+ * butter" is one). A comma between digits is a decimal one ("12,5 grams").
  */
-function weighedPartsGrams(words: string): number | null {
+export function splitDescriptionParts(words: string): string[] {
   const parts: string[] = [];
   let depth = 0;
   let start = 0;
@@ -1635,14 +1628,40 @@ function weighedPartsGrams(words: string): number | null {
     const ch = words[i];
     if (ch === '(') depth++;
     else if (ch === ')') depth = Math.max(0, depth - 1);
-    else if (ch === ',' && depth === 0) {
-      // A comma between digits is a decimal one ("12,5 grams").
-      if (/\d/.test(words[i - 1] ?? '') && /\d/.test(words[i + 1] ?? '')) continue;
-      parts.push(words.slice(start, i));
-      start = i + 1;
+    else if (depth === 0) {
+      if (ch === ',') {
+        if (/\d/.test(words[i - 1] ?? '') && /\d/.test(words[i + 1] ?? '')) continue;
+        parts.push(words.slice(start, i));
+        start = i + 1;
+      } else if (/\s/.test(ch)) {
+        const joiner = /^\s+and\s+(?=\d)/i.exec(words.slice(i));
+        if (joiner) {
+          parts.push(words.slice(start, i));
+          start = i + joiner[0].length;
+          i = start - 1;
+        }
+      }
     }
   }
   parts.push(words.slice(start));
+  return parts;
+}
+
+/**
+ * The weight of a meal described as a list of weighed parts, or null when any
+ * part has no weight of its own.
+ *
+ * "82% of 276 g curry (microwaved), 51 g steamed white rice" is a meal of two
+ * parts, 226.3 g and 51 g, so its whole is their sum. **Every part has to
+ * state one**: a list with an unweighed part ("1 burger, 100 g fries") has no
+ * total to be read from the words, and the sum of the parts that do would
+ * claim a weight the meal doesn't have. Parts are split by
+ * `splitDescriptionParts`. Commas inside parentheses belong to
+ * the part ("56 g (15g pepitas, 27g walnuts)"), so that stays one part and
+ * `LEADING_GRAMS` reads it as before.
+ */
+function weighedPartsGrams(words: string): number | null {
+  const parts = splitDescriptionParts(words);
   let total = 0;
   for (const part of parts) {
     const match = WEIGHED_PART.exec(part);
@@ -1768,6 +1787,133 @@ export function estimateAmountPatch(entry: EstimatedHelping, factor: number): Es
     },
     sourcePanel: whole,
   };
+}
+
+/** One part of a described meal that "By part" can change: its weight when the words state one. */
+export interface EstimatePart {
+  /** The split's own label for it ("steamed basmati rice"). */
+  label: string;
+  /** The weight the words state for it, or null (the part is then changed by percent). */
+  grams: number | null;
+  /** The words after the weight, or the whole part when it states none. */
+  words: string;
+}
+
+const PART_WEIGHT = /^\s*(\d+(?:[.,]\d+)?)\s*(?:g|grams?)\b\s*(.*)$/i;
+
+/**
+ * The parts of an estimated meal that can each be changed on their own, or
+ * null when it can't be done honestly.
+ *
+ * **Only a meal whose description splits into exactly as many parts as the
+ * model's breakdown has lines** (`splitDescriptionParts`). Part i of the
+ * words is then line i of the figures. Anything else (a breakdown that split
+ * the meal differently from the words, a description of one thing) has no
+ * mapping to check, and guessing one would scale the wrong figures.
+ */
+export function estimateParts(entry: EstimatedHelping): EstimatePart[] | null {
+  const whole = wholeEstimate(entry);
+  const lines = whole?.breakdown;
+  if (!whole || !lines || lines.length < 2) return null;
+  const words = splitDescriptionParts(whole.servingText?.trim() ?? '').map(w => w.trim());
+  if (words.length !== lines.length) return null;
+  return words.map((part, i) => {
+    const match = PART_WEIGHT.exec(part);
+    return match
+      ? { label: lines[i].label, grams: parseFloat(match[1].replace(',', '.')), words: match[2].trim() }
+      : { label: lines[i].label, grams: null, words: part };
+  });
+}
+
+function scaleAmounts(amounts: FoodNutrition['amounts'], factor: number): FoodNutrition['amounts'] {
+  const out: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const amount = amounts[key];
+    if (amount !== undefined) out[key] = round(amount * factor);
+  }
+  return out;
+}
+
+/**
+ * An estimated meal changed part by part: `factors[i]` times part i of what
+ * the model described, or null when the entry has no parts or a factor isn't
+ * one `estimateAmountPatch` would accept.
+ *
+ * The same exception to "re-measured, never multiplied" as the whole-meal
+ * change, for the same reason: each line is the model's guess at that part of
+ * a stated size, and a part half the size is that guess halved. **The total is
+ * the sum of the changed lines**, not a separate multiple: each nutrient's
+ * total is scaled by how much its lines changed, so a nutrient the lines
+ * don't state (they only have to add up for the ones they do) follows the
+ * calories' share instead of staying put. Every factor 1 returns the whole
+ * as it was estimated.
+ */
+export function estimatePartsPatch(entry: EstimatedHelping, factors: readonly number[]): EstimateAmountPatch | null {
+  const parts = estimateParts(entry);
+  const whole = wholeEstimate(entry);
+  const lines = whole?.breakdown;
+  if (!parts || !whole || !lines || factors.length !== parts.length) return null;
+  if (factors.some(f => !Number.isFinite(f) || f <= 0 || f > MAX_ESTIMATE_MULTIPLE + 1e-9)) return null;
+  const base = whole.servingText?.trim() ?? '';
+  if (factors.every(f => sameFactor(f, 1))) {
+    return { quantity: base, grams: whole.servingGrams, nutrition: whole, sourcePanel: whole };
+  }
+
+  const breakdown = lines.map((line, i) => ({ label: line.label, amounts: scaleAmounts(line.amounts, factors[i]) }));
+  // How much the meal changed overall, by calories (or by a plain mean with none stated).
+  const kcalBefore = lines.reduce((sum, l) => sum + (l.amounts.calorieKcal ?? 0), 0);
+  const kcalAfter = breakdown.reduce((sum, l) => sum + (l.amounts.calorieKcal ?? 0), 0);
+  const overall = kcalBefore > 0 ? kcalAfter / kcalBefore : factors.reduce((a, b) => a + b, 0) / factors.length;
+
+  const amounts: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const total = whole.amounts[key];
+    if (total === undefined) continue;
+    const before = lines.reduce((sum, l) => sum + (l.amounts[key] ?? 0), 0);
+    const after = breakdown.reduce((sum, l) => sum + (l.amounts[key] ?? 0), 0);
+    amounts[key] = round(total * (before > 0 ? after / before : overall));
+  }
+
+  const words = parts.map((part, i) => {
+    const original = splitDescriptionParts(base)[i].trim();
+    if (sameFactor(factors[i], 1)) return original;
+    if (part.grams !== null) {
+      const grams = Math.round(part.grams * factors[i] * 10) / 10;
+      return `${formatQuantityAmount(grams)} g ${part.words}`.trim();
+    }
+    return `${Math.round(factors[i] * 100)}% of ${part.words}`;
+  });
+  const quantity = words.join(' and ');
+  const grams = whole.servingGrams !== null ? Math.round(whole.servingGrams * overall) : null;
+  return {
+    quantity,
+    grams,
+    nutrition: { ...whole, servingText: quantity, servingGrams: grams, amounts, breakdown },
+    sourcePanel: whole,
+  };
+}
+
+/**
+ * The factor each part stands at now, or null when the entry's figures aren't
+ * what `estimatePartsPatch` makes. Worked out from the figures by trying the
+ * factors they divide out to, as `currentEstimateFactor` does, so there is no
+ * second record of the choice to fall out of step with what Health was told.
+ */
+export function currentPartFactors(entry: EstimatedHelping): number[] | null {
+  const whole = wholeEstimate(entry);
+  const lines = whole?.breakdown;
+  const now = entry.nutrition.breakdown;
+  if (!whole || !lines || !now || now.length !== lines.length || !estimateParts(entry)) return null;
+  const raw = lines.map((line, i) => {
+    const key = NUTRIENT_KEYS.find(k => (line.amounts[k] ?? 0) > 0);
+    const after = key ? now[i].amounts[key] : undefined;
+    return key && after !== undefined ? after / line.amounts[key]! : 1;
+  });
+  for (const factors of [raw, raw.map(f => Math.round(f * 1000) / 1000)]) {
+    const patch = estimatePartsPatch(entry, factors);
+    if (patch && sameAmounts(patch.nutrition.amounts, entry.nutrition.amounts)) return factors;
+  }
+  return null;
 }
 
 /** Whether two sets of stated figures are the same figures. */

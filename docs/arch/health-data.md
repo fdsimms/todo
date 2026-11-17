@@ -929,6 +929,18 @@ something nobody measured:
   down, so the cap (`MAX_ESTIMATE_MULTIPLE`, ten times the whole) is there for
   a mistyped count, not for honesty.
 
+  **The same exception, part by part** (`estimatePartsPatch`). When the
+  description splits (`splitDescriptionParts`: commas, and "and" before a
+  number) into exactly as many parts as the model's breakdown has lines,
+  "Change amount" offers By part, one field per part: grams where the words
+  state a weight ("113 g steamed basmati rice"), else a percent. Each line is
+  the model's guess at that part, so each is scaled by its own number, and the
+  total is the sum of the changed lines per nutrient (a nutrient the lines
+  don't state follows the calories). A count that doesn't match, or a part
+  count of one, gets no By part, since guessing which line a part is would scale
+  the wrong figures. What an entry stands at is read back from its figures
+  (`currentPartFactors`), never stored, like the whole-meal multiple.
+
   **It is asked in the estimate's own unit when its words give one.**
   `estimateCount` reads "2 slices" as two of one thing, so the question is
   "How many slices" and the answer scales the whole by new over old, logged as
