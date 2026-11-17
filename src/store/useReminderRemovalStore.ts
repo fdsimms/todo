@@ -3,6 +3,7 @@ import { dbDeleteSetting, dbGetSetting, dbSetSetting } from '../db/database';
 import {
   REMINDER_REMOVAL_KEEP_DAYS,
   addReminderRemovals,
+  defaultBoughtIds,
   liveReminderRemovals,
   parseReminderRemovals,
   purchaseGroups,
@@ -39,8 +40,16 @@ interface ReminderRemovalState {
    * purchases into the scratch database.
    */
   reload: () => void;
-  /** One mirror pass's removals. `removedAt` defaults to now. */
-  record: (removed: readonly { itemId: string; checked: boolean; checkedAt?: string }[], removedAt?: string) => void;
+  /**
+   * One mirror pass's removals. `removedAt` defaults to now. With
+   * `autoBought`, the rows that were in the cart are recorded as bought on the
+   * spot (`answer`) and only the rest wait for the card.
+   */
+  record: (
+    removed: readonly { itemId: string; checked: boolean; checkedAt?: string }[],
+    removedAt?: string,
+    autoBought?: boolean
+  ) => void;
   /**
    * The card's answer about the rows it showed. `boughtIds` are recorded as a
    * purchase through `finishShopping`, which is what puts them in the pantry,
@@ -83,11 +92,15 @@ export const useReminderRemovalStore = create<ReminderRemovalState>((set, get) =
     set({ removals: parseReminderRemovals(dbGetSetting(SETTINGS_KEY)), hydrated: true });
   },
 
-  record: (removed, removedAt = new Date().toISOString()) => {
+  record: (removed, removedAt = new Date().toISOString(), autoBought = false) => {
     if (removed.length === 0) return;
     get().hydrate();
     const next = addReminderRemovals(get().removals, removed, removedAt);
     set({ removals: persist(next, new Date()) });
+    if (autoBought) {
+      const inCart = defaultBoughtIds(next.filter(r => removed.some(x => x.itemId === r.itemId)));
+      if (inCart.length > 0) get().answer(inCart, inCart);
+    }
   },
 
   answer: (boughtIds, shownIds) => {

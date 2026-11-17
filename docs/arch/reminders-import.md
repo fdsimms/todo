@@ -144,8 +144,12 @@ Seven things that are the way they are for a reason:
   the pantry is read from. The mirror records each removal (and whether the row was in the cart) in
   `groceryImportRemovals`, device-local beside the links; the card asks which were bought, with the
   in-cart rows pre-selected, and records those through `finishShopping`'s `itemIds`. **It never
-  assumes a purchase**: a deleted reminder is either a cleared shop or a thing that stopped being
-  wanted, and only the person knows which. A removal stops being asked about once the row is back
+  assumes a purchase on its own**: a deleted reminder is either a cleared shop or a thing that
+  stopped being wanted, and only the person knows which. The one exception is a setting the person
+  turns on (`groceryImportAutoBought`, "Count cleared items as bought", off by default and
+  device-local): a row that was checked in Reminders before it was deleted is then recorded
+  straight away through the same `answer`, one undo entry per day checked, and a row deleted
+  unchecked is still asked about. A removal stops being asked about once the row is back
   on the list, bought since, or two weeks old. **The purchase is dated from the check, not the
   deletion**, since a list is cleared days after the shop and the cadence is measured from the
   date: each link keeps `checkedAt` (Reminders' own completion date, or the pass that saw an
