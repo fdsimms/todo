@@ -1319,7 +1319,7 @@ describe('finishShopping', () => {
     expect(probablyHaveReason(byId.get(eggs.id)!, new Date(), [])).toBeNull();
   });
 
-  it('clears a recipe-owned quantity, but leaves a hand-set one alone', () => {
+  it('clears the quantity on a purchase, recipe-owned or typed', () => {
     const rice = makeItem({ name: 'Rice', onList: true, checked: true, quantity: '3/4 cup', quantityFromRecipe: true });
     const flour = makeItem({ name: 'Flour', onList: true, checked: true, quantity: '2 bags', quantityFromRecipe: false });
     seed([rice, flour]);
@@ -1332,7 +1332,9 @@ describe('finishShopping', () => {
     expect(riceAfter.quantityFromRecipe).toBe(false);
 
     const flourAfter = useGroceryStore.getState().itemById(flour.id)!;
-    expect(flourAfter.quantity).toBe('2 bags');
+    // A typed amount described this trip too; left on the row it came back on
+    // every later plain add of the item.
+    expect(flourAfter.quantity).toBeNull();
   });
 
   // #1806 — a scanned receipt's own date, not the moment it got scanned.
