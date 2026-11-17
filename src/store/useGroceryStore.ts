@@ -4612,12 +4612,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           done.has(i.id)
             ? {
                 ...i,
-                // Mirrors the db's own CASE: the shop it was for has happened,
-                // so a recipe-owned quantity doesn't outlive it. A hand-set one
-                // survives untouched. Above the split below because it is the
-                // one thing an away trip does write — the shop happened either
-                // way, and the amount a recipe asked for was for that shop.
-                quantity: i.quantityFromRecipe ? null : i.quantity,
+                // Mirrors the db's own UPDATE: the shop it was for has happened,
+                // so neither a recipe's amount nor a typed one outlives it (a
+                // "1 lb" typed once came back on every later plain add of the
+                // item). Above the split below because it is the one thing an
+                // away trip does write: the shop happened either way.
+                quantity: null,
                 quantityFromRecipe: false,
                 // Same reasoning, same shop: the recipe credit was for why
                 // this trip needed the row, and the trip is over. See
