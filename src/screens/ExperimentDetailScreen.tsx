@@ -13,14 +13,13 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { BUTTON_LABEL } from '../copy/shared';
-import { severityLabel } from '../utils/moodLog';
 import { moodBarFraction } from '../utils/moodInsights';
 import {
   canStop,
   experimentProgress,
   experimentResult,
   overlappingChanges,
-  roundedSeverity,
+  severityAverageLine,
   symptomRate,
   type ExperimentSymptomRead,
 } from '../utils/experiments';
@@ -161,9 +160,7 @@ export function ExperimentDetailScreen() {
         </View>
       );
     }
-    const severityLine = row.before.averageSeverity !== null && row.during.averageSeverity !== null
-      ? `Usually ${severityLabel(roundedSeverity(row.before.averageSeverity)).toLowerCase()} before, ${severityLabel(roundedSeverity(row.during.averageSeverity)).toLowerCase()} during`
-      : undefined;
+    const severityLine = severityAverageLine(row.before, row.during) ?? undefined;
     const beforeText = `${row.before.daysWith} of ${days(row.before.loggedDays)}`;
     const duringText = `${row.during.daysWith} of ${days(row.during.loggedDays)}`;
     return (
@@ -320,7 +317,7 @@ export function ExperimentDetailScreen() {
               )}
               {result.picked.some(r => r.comparable) && (
                 <Text style={styles.caption}>
-                  How many of the days you logged had each symptom, and how bad it usually got.
+                  How many of the days you logged had each symptom, and its average severity on those days.
                   This compares two stretches of time and can’t show what caused a difference.
                 </Text>
               )}

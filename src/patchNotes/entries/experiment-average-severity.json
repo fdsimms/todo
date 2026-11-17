@@ -1,0 +1,4 @@
+{
+  "message": "An experiment's symptom rows now show each symptom's average severity as a number before and during, so a change inside one level (like 1.6 to 2.4) no longer reads as \"moderate\" on both sides",
+  "date": "2026-11-17"
+}
