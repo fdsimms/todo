@@ -195,7 +195,7 @@ import { anchorsForRun, runTemplateLabel, templateLinkState } from '../utils/tem
 import { useExperimentStore } from '../store/useExperimentStore';
 import { experimentLinkState, experimentStartedMessage, startExperimentLabel, VIEW_EXPERIMENT_LABEL, MISSING_EXPERIMENT_LABEL } from '../utils/experimentLink';
 import { startPlannedExperiment } from '../utils/experimentStart';
-import { resetToExperiment } from '../navigation/navigationRef';
+import { resetToExperiment, navigateToTab } from '../navigation/navigationRef';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { morningAlarmFor, morningChipLabel } from '../utils/morningAlarm';
 import { useSheetSubject } from '../hooks/useSheetSubject';
@@ -2787,7 +2787,14 @@ const TaskItemRow = React.memo(function TaskItem({
   const startLinkedExperiment = async () => {
     const started = startPlannedExperiment(task.experimentId!, { exceptTaskId: task.id });
     if (!started) {
-      Alert.alert('Couldn’t start the experiment', 'It may have been started or deleted on another phone. Open it from the Mood screen to check.');
+      Alert.alert(
+        'Couldn’t start the experiment',
+        'It may have been started or deleted on another phone. Open the Mood screen to check.',
+        [
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+          { text: 'Open Mood', onPress: () => navigateToTab('Mood') },
+        ],
+      );
       return;
     }
     setAutoNote(experimentStartedMessage(started));

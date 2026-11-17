@@ -51,6 +51,7 @@ const LABELS: Record<string, string> = {
   medicationUnit: 'logging', medicationExtras: 'logging', logMealSlot: 'logging', logSavedMealId: 'logging',
   logMealSlotByTime: 'logging', workoutRoutineId: 'logging', workoutProgramId: 'logging',
   templateId: 'template',
+  experimentId: 'experiment',
 };
 
 const OTHER = 'other settings';

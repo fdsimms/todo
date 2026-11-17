@@ -208,6 +208,8 @@ import { TextField } from './TextField';
 import { TaskCheckbox } from './TaskCheckbox';
 import { LazySheet } from './LazySheet';
 import { TemplatePickerSheet } from './TemplatePickerSheet';
+import { ExperimentPickerSheet } from './ExperimentPickerSheet';
+import { useExperimentStore } from '../store/useExperimentStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { RingtonePickerSheet } from './RingtonePickerSheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
@@ -990,6 +992,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // named as deleted here, so the person can see why the row's button is grey.
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  // A planned experiment this task starts from its row (Task.experimentId). One
+  // that is gone stays named as not found, as a deleted template does.
+  const [experimentId, setExperimentId] = useState<string | null>(null);
+  const [showExperimentPicker, setShowExperimentPicker] = useState(false);
+  const experiments = useExperimentStore(s => s.experiments);
+  const linkedExperimentName = experimentId ? experiments.find(e => e.id === experimentId)?.label ?? null : null;
   const linkedTemplateName = useTemplateStore(s => templateId ? s.templates.find(t => t.id === templateId)?.name ?? null : null);
   // Task.workoutRoutineId / workoutProgramId: the routine "Workout" on the
   // row opens, or the program whose next routine it starts. One or the other,
@@ -1386,6 +1394,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setStreakCountsUnits(task.streakCountsUnits ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setTemplateId(task.templateId ?? null);
+      setExperimentId(task.experimentId ?? null);
       setAlarmLink(task.alarmLink ?? null);
       setAlarmLinkLeavesOpen(task.alarmLinkLeavesOpen ?? false);
       setShowAlarmLinkPicker(false);
@@ -2326,6 +2335,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakCountsUnits: recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null && streakCountsUnits,
       linkUrl: resolveLinkUrl(),
       templateId,
+      experimentId,
       alarmLink,
       alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
@@ -3246,6 +3256,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakCountsUnits,
       linkUrl,
       templateId,
+      experimentId,
       alarmLink,
       alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
@@ -4176,6 +4187,15 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               visible={showTemplatePicker}
               onClose={() => setShowTemplatePicker(false)}
               onSelect={template => setTemplateId(template.id)}
+            />
+          </LazySheet>
+          <LazySheet open={showExperimentPicker}>
+            <ExperimentPickerSheet
+              visible={showExperimentPicker}
+              experiments={experiments}
+              selectedId={experimentId}
+              onSelect={experiment => setExperimentId(experiment.id)}
+              onClose={() => setShowExperimentPicker(false)}
             />
           </LazySheet>
           <LazySheet open={showBlockerPicker}>
@@ -8224,6 +8244,20 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 value={templateId ? (linkedTemplateName ?? 'Template deleted') : undefined}
                 onPress={() => setShowTemplatePicker(true)}
                 onClear={templateId ? () => setTemplateId(null) : undefined}
+              />
+            ),
+          },
+          {
+            key: 'experiment', label: 'Experiment', set: experimentId !== null,
+            keywords: ['start', 'trial', 'medication', 'supplement', 'health', 'planned'],
+            node: (
+              <EditorRow
+                icon="flask-outline"
+                label="Experiment"
+                hint="Adds a button to start a planned experiment from this task. Checking the task off asks before it starts."
+                value={experimentId ? (linkedExperimentName ?? 'Experiment not found') : undefined}
+                onPress={() => setShowExperimentPicker(true)}
+                onClear={experimentId ? () => setExperimentId(null) : undefined}
               />
             ),
           },

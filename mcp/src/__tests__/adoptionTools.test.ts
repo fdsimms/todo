@@ -162,6 +162,11 @@ describe('kitchen, people and mood checks', () => {
     expect(ids(fakeReplica({ symptomDays: 12 }))).toContain('experiments');
     expect(ids(fakeReplica({ symptomDays: 12, experiments: [{}] }))).not.toContain('experiments');
     expect(ids(fakeReplica({ symptomDays: 4, moodLogs: 30 }))).not.toContain('experiments');
+    // Planned ones: suggested once experiments have only ever been dated, not once one is planned or linked.
+    expect(ids(fakeReplica({ experiments: [{ startDate: '2026-11-01T12:00:00' }] }))).toContain('experiment_start_tasks');
+    expect(ids(fakeReplica({}))).not.toContain('experiment_start_tasks');
+    expect(ids(fakeReplica({ experiments: [{ startDate: null }] }))).not.toContain('experiment_start_tasks');
+    expect(ids(fakeReplica({ experiments: [{ startDate: '2026-11-01T12:00:00' }], tasks: [{ experimentId: 'x' }] }))).not.toContain('experiment_start_tasks');
   });
 
   it('suggests milestones only once there are enough mood check-ins to compare', () => {
