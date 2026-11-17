@@ -74,6 +74,10 @@ export function RoutineSwipeRow({ onArchive, archived, onDelete, name, children 
         renderRightActions={renderRight}
         overshootRight={false}
         friction={2}
+        // The panels are laid out behind the whole row, so the row needs a
+        // solid face: an archived routine is drawn faded, and the panels
+        // showed through it as it slid.
+        childrenContainerStyle={styles.face}
       >
         {children}
       </Swipeable>
@@ -83,6 +87,7 @@ export function RoutineSwipeRow({ onArchive, archived, onDelete, name, children 
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   clip: { overflow: 'hidden', borderRadius: radius.lg },
+  face: { backgroundColor: colors.bgSecondary },
   rightPanels: { flexDirection: 'row' },
   panel: { width: PANEL_WIDTH, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
   archive: { backgroundColor: colors.orangeFill },
