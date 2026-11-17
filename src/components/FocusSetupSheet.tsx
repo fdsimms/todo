@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
 import { SortableList } from './SortableList';
+import type { DragScroller } from '../utils/fabDrop';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
@@ -242,6 +243,38 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   // SortableList's onDragStateChange doc for why this is required, not just
   // tidy.
   const [reordering, setReordering] = useState(false);
+  // The list's own scroll view, so a drag held near its top or bottom edge can
+  // scroll it (SortableList's `autoscroll`) instead of the floating row being
+  // clipped by the list's bounds. Metrics live in a ref: they are read a frame
+  // at a time while a drag is in flight and must not re-render the sheet.
+  const listRef = useRef<ScrollView>(null);
+  const listMetrics = useRef({ offset: 0, content: 0, viewport: 0 });
+  // The list's window-space top and bottom, re-measured when a drag lifts
+  // because the sheet slides in and its position is not known at layout.
+  const listWindow = useRef({ top: 0, bottom: 0 });
+  const listScroller = useRef<DragScroller | null>(null);
+  if (listScroller.current === null) {
+    listScroller.current = {
+      getOffset: () => listMetrics.current.offset,
+      getMaxOffset: () => Math.max(0, listMetrics.current.content - listMetrics.current.viewport),
+      scrollToOffset: (y: number) => {
+        // Written back now: the scroll event confirming it lands a frame later.
+        listMetrics.current.offset = y;
+        listRef.current?.scrollTo({ y, animated: false });
+      },
+    };
+  }
+  const listAutoscroll = useMemo(() => ({
+    scroller: listScroller,
+    getViewport: () => listWindow.current,
+  }), []);
+  const handleDragStateChange = (dragging: boolean) => {
+    setReordering(dragging);
+    if (!dragging) return;
+    listRef.current?.getNativeScrollRef()?.measureInWindow((_x, y, _w, h) => {
+      listWindow.current = { top: y, bottom: y + h };
+    });
+  };
 
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
@@ -877,11 +910,21 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
             </Text>
           )}
 
-          <ScrollView style={styles.list} bounces={false} scrollEnabled={!reordering}>
+          <ScrollView
+            ref={listRef}
+            style={styles.list}
+            bounces={false}
+            scrollEnabled={!reordering}
+            scrollEventThrottle={16}
+            onScroll={e => { listMetrics.current.offset = e.nativeEvent.contentOffset.y; }}
+            onContentSizeChange={(_w, h) => { listMetrics.current.content = h; }}
+            onLayout={e => { listMetrics.current.viewport = e.nativeEvent.layout.height; }}
+          >
             <SortableList
               data={slots}
               onReorder={reorderSlots}
-              onDragStateChange={setReordering}
+              onDragStateChange={handleDragStateChange}
+              autoscroll={listAutoscroll}
               renderItem={(task, _i, drag, isActive) => renderSlot(task, drag, isActive)}
             />
           </ScrollView>
