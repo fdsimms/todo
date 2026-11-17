@@ -29,7 +29,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { haptics } from '../utils/haptics';
 import { formatClockDuration, formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import { isQuotaTask } from '../utils/visibilityUtils';
+import { isQuotaTask, displayTitleFor } from '../utils/visibilityUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { buildFocusPlan, focusPlanTotals, plannedTaskMinutes, type FocusPlanOptions } from '../utils/focusPlan';
 import {
@@ -507,6 +507,9 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   // ==== row renderers ====
   const renderRow = (task: Task, drag: () => void, isActive: boolean, stackCaption: string | null = null) => {
     const checked = selectedIds.has(task.id);
+    // Mid-chain the row is the active step, so it reads as that step rather
+    // than the chain's name (`displayTitleFor`, same as every other surface).
+    const title = displayTitleFor(task);
     const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;
     // A daily target is logged a unit at a time rather than ticked off once, so
     // its count leads the line: it's the difference between a stretch that
@@ -531,7 +534,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"
           accessibilityState={{ checked }}
-          accessibilityLabel={`${task.title}${count ? `, ${count} logged` : ''}${reason ? `, ${reason}` : ''}, ${spokenTime}`}
+          accessibilityLabel={`${title}${count ? `, ${count} logged` : ''}${reason ? `, ${reason}` : ''}, ${spokenTime}`}
         >
           <Ionicons
             name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -540,7 +543,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           />
           <View style={styles.rowContent}>
             <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
-              {task.title}
+              {title}
             </Text>
             {/* Separate Texts rather than one joined string: the reason can be
                 as long as a task title ("Goes with Draft the quarterly memo")
@@ -573,7 +576,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           disabled={!canSwap}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
-          accessibilityLabel={`Swap out ${task.title}`}
+          accessibilityLabel={`Swap out ${title}`}
           accessibilityHint="Replaces this suggestion with the next best task"
         >
           <Ionicons name="refresh" size={iconSize.sm} color={canSwap ? colors.textSecondary : colors.bgQuaternary} />
@@ -586,7 +589,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           hitSlop={8}
           style={styles.dragHandle}
           accessibilityRole="button"
-          accessibilityLabel={`Reorder ${task.title}`}
+          accessibilityLabel={`Reorder ${title}`}
         >
           <Ionicons name="reorder-three" size={iconSize.md} color={colors.textTertiary} />
         </TouchableOpacity>
