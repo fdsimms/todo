@@ -111,6 +111,10 @@ const NOT_SEEDED: Record<string, string[]> = {
   // (`TemplateItem.templateRef`); this is the task-side pointer to a run that
   // hasn't happened, so a seeded copy would have a template running itself.
   'a template to run from the task': ['templateId'],
+  // An experiment is one row of the person's own health data, which syncs
+  // apart from tasks, so a template run on another install would name one
+  // that isn't there. The link is made on the task, to a planned experiment.
+  'an experiment to start from the task': ['experimentId'],
   'not offered on a template yet': [
     'showStreak', 'streakRequiresWindow', 'streakCountsUnits', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible', 'quotaRestAfterLog', 'quotaLoggedDayKey', 'quotaTapTimes',

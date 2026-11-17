@@ -7,7 +7,7 @@
 //   makeStyles              styles, at the bottom
 //   Stat                    one stat tile, above the styles
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -92,7 +92,9 @@ import { PressableScale } from '../components/PressableScale';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ExperimentSheet } from '../components/ExperimentSheet';
-import { describeLength, experimentProgress, experimentResult, experimentSpan, experimentStatus, experimentSummary, sortExperimentsForList } from '../utils/experiments';
+import { describeLength, describeProgress, experimentProgress, experimentResult, experimentSpan, experimentStatus, experimentSummary, sortExperimentsForList } from '../utils/experiments';
+import { startPlannedExperiment } from '../utils/experimentStart';
+import { experimentStartedMessage } from '../utils/experimentLink';
 import { ContrastBars } from '../components/ContrastBars';
 import { capitalize } from '../utils/capitalize';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
@@ -419,13 +421,15 @@ export function MoodScreen() {
   const experimentRows = useMemo(
     () => sortExperimentsForList(experiments, todayKey).map(experiment => {
       const status = experimentStatus(experiment, todayKey);
-      const span = experimentSpan(experiment);
+      const span = experimentSpan(experiment, todayKey);
       const progress = experimentProgress(experiment, todayKey);
-      const meta = status === 'running'
-        ? `Day ${progress.day} of ${progress.of} · ends ${format(dayKeyToDate(span.endKey), 'MMM d')}`
-        : status === 'upcoming'
-          ? `Starts ${format(dayKeyToDate(span.startKey), 'MMM d')} · ${describeLength(span.lengthDays)}`
-          : `Finished ${format(dayKeyToDate(span.endKey), 'MMM d')} · ${describeLength(span.lengthDays)}`;
+      const meta = !span
+        ? `Planned · ${experiment.days ? describeLength(experiment.days) : 'until you stop it'} · not started`
+        : status === 'running'
+          ? `Day ${describeProgress(progress)} · ${experiment.endDate ? `ends ${format(dayKeyToDate(span.endKey), 'MMM d')}` : 'until you stop it'}`
+          : status === 'upcoming'
+            ? `Starts ${format(dayKeyToDate(span.startKey), 'MMM d')} · ${describeLength(span.lengthDays)}`
+            : `Finished ${format(dayKeyToDate(span.endKey), 'MMM d')} · ${describeLength(span.lengthDays)}`;
       // A finished one says how it came out, so the list answers "did it help"
       // without a tap. The page still has the rest: the other symptoms and the
       // changes in the same days.
@@ -1177,13 +1181,33 @@ export function MoodScreen() {
                         <Text style={styles.linkLabel} numberOfLines={2}>{experiment.label}</Text>
                         <Text style={styles.linkMeta}>{meta}</Text>
                         {summary && <Text style={styles.experimentSummary}>{summary}</Text>}
-                        {status === 'running' && (
+                        {status === 'planned' && experiment.symptoms.length > 0 && (
+                          <Text style={styles.experimentWatching}>Watching {experiment.symptoms.join(', ')}</Text>
+                        )}
+                        {status === 'running' && progress.of !== null && (
                           <View style={styles.experimentTrack}>
                             <View style={[styles.experimentFill, { width: `${(progress.day / progress.of) * 100}%` }]} />
                           </View>
                         )}
                       </View>
-                      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      {status === 'planned' ? (
+                        <TouchableOpacity
+                          style={styles.experimentStart}
+                          activeOpacity={interaction.activeOpacity}
+                          hitSlop={8}
+                          onPress={() => {
+                            haptics.tap();
+                            const started = startPlannedExperiment(experiment.id);
+                            if (started) Alert.alert('Experiment started', experimentStartedMessage(started));
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Start ${experiment.label} today`}
+                        >
+                          <Text style={styles.experimentStartText}>Start today</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      )}
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -1388,6 +1412,16 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   milestoneRowGap: { marginTop: spacing.md },
   // A finished experiment's result, under its meta line.
   experimentSummary: { fontSize: font.xs, color: colors.text, marginTop: spacing.xs, lineHeight: 17 },
+  // A planned experiment's symptoms, under its meta line.
+  experimentWatching: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xs },
+  // A planned experiment's Start today, in the slot a started one's chevron holds.
+  experimentStart: {
+    paddingVertical: spacing.xsm,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accentSubtle,
+  },
+  experimentStartText: { fontSize: font.xs, fontWeight: fontWeight.semibold, color: colors.accent },
   // A running experiment's progress, under its meta line.
   experimentTrack: {
     height: 4,

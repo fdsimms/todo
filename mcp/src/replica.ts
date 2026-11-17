@@ -1336,6 +1336,10 @@ export interface Replica {
   addExperiment(draft: import('../../src/store/useExperimentStore').ExperimentDraft): Experiment;
   updateExperiment(id: string, patch: import('../../src/store/useExperimentStore').ExperimentPatch): Experiment;
   deleteExperiment(id: string): Experiment;
+  /** `useExperimentStore.startExperiment`: begins a planned one. Throws what it refuses. */
+  startExperiment(id: string, start: { startDate: Date; days?: number | null }): Experiment;
+  /** `useExperimentStore.stopExperiment`: ends a started one on that day. Throws what it refuses. */
+  stopExperiment(id: string, endDate: Date): Experiment;
   /** Every saved pot, pan, lid and tub in the person's order. See src/utils/cookware.ts. */
   cookware(): Cookware[];
   /**
@@ -3883,6 +3887,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         errors.push(`templateId: no template with id ${templateId}. list_templates lists them.`);
       }
     }
+    if (patch.experimentId) {
+      const experimentId = patch.experimentId;
+      if (!db.dbGetAllExperiments().some(e => e.id === experimentId)) {
+        errors.push(`experimentId: no experiment with id ${experimentId}. list_experiments lists them, add_experiment with planned: true makes one.`);
+      }
+    }
     if (patch.workoutRoutineId) {
       const routineId = patch.workoutRoutineId;
       if (!db.dbGetAllWorkoutRoutines().some(r => r.id === routineId)) {
@@ -4857,11 +4867,30 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!existing) throw new Error(`No experiment with id ${id}. list_experiments names them.`);
       const refusal = experimentRefusal({
         label: patch.label ?? existing.label,
-        startDate: patch.startDate ?? new Date(existing.startDate),
-        endDate: patch.endDate ?? new Date(existing.endDate),
+        startDate: patch.startDate !== undefined ? patch.startDate : (existing.startDate ? new Date(existing.startDate) : null),
+        endDate: patch.endDate !== undefined ? patch.endDate : (existing.endDate ? new Date(existing.endDate) : null),
+        days: patch.days !== undefined ? patch.days : existing.days,
       });
       if (refusal) throw new Error(refusal);
       return store.updateExperiment(id, patch)!;
+    },
+    startExperiment(id, start) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useExperimentStore } = require('../../src/store/useExperimentStore') as typeof import('../../src/store/useExperimentStore');
+      const store = useExperimentStore.getState();
+      store.initialize();
+      const started = store.startExperiment(id, start);
+      if (!started) throw new Error('Could not start that experiment: it is not planned, or its length is out of range (1 to 365 days).');
+      return started;
+    },
+    stopExperiment(id, endDate) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useExperimentStore } = require('../../src/store/useExperimentStore') as typeof import('../../src/store/useExperimentStore');
+      const store = useExperimentStore.getState();
+      store.initialize();
+      const stopped = store.stopExperiment(id, endDate);
+      if (!stopped) throw new Error('Could not stop that experiment: it has not started, or that day is before its first day.');
+      return stopped;
     },
     deleteExperiment(id) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports

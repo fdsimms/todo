@@ -288,6 +288,21 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'experiment_start_tasks',
+    title: 'Planned experiments',
+    benefit: 'An experiment can be planned before its start day is known (a prescription still to arrive), and a task can carry a Start button that begins it and checks the task off, so each change starts on the day it really does.',
+    advanced: true,
+    since: '2026-11-17',
+    evidence: ({ replica }) => {
+      const experiments = replica.experiments();
+      if (experiments.length === 0) return null;
+      const linked = replica.tasks().some(t => t.experimentId);
+      return !linked && experiments.every(e => e.startDate)
+        ? `${experiments.length} experiment${experiments.length === 1 ? ' has' : 's have'} been started and none was planned ahead with a start task.`
+        : null;
+    },
+  },
+  {
     id: 'workout_task_link',
     title: 'Workouts on the schedule',
     benefit: 'A task can name a workout routine. Its row then starts the workout, and finishing the workout completes the task, with its streak and coins.',

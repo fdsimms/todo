@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -7,13 +7,16 @@ import { format } from 'date-fns/format';
 import { useExperimentStore } from '../store/useExperimentStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
+import { BUTTON_LABEL } from '../copy/shared';
 import { severityLabel } from '../utils/moodLog';
 import { moodBarFraction } from '../utils/moodInsights';
 import {
+  canStop,
   experimentProgress,
   experimentResult,
   overlappingChanges,
@@ -21,6 +24,10 @@ import {
   symptomRate,
   type ExperimentSymptomRead,
 } from '../utils/experiments';
+import { startPlannedExperiment } from '../utils/experimentStart';
+import { experimentStartedMessage } from '../utils/experimentLink';
+import { WhenPicker } from '../components/WhenPicker';
+import { InlineAction } from '../components/InlineAction';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { ContrastBars } from '../components/ContrastBars';
@@ -71,6 +78,13 @@ export function ExperimentDetailScreen() {
   const logs = useMoodStore(s => s.logs);
   const experiment = experiments.find(e => e.id === id) ?? null;
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [pickingStart, setPickingStart] = useState(false);
+  const allTasks = useTaskStore(s => s.tasks);
+  const startTasks = useMemo(
+    () => allTasks.filter(t => t.experimentId === id && !t.completed && !t.archived),
+    [allTasks, id],
+  );
+  const stopExperiment = useExperimentStore(s => s.stopExperiment);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const result = useMemo(
@@ -78,8 +92,8 @@ export function ExperimentDetailScreen() {
     [experiment, logs, todayKey],
   );
   const changes = useMemo(
-    () => (experiment ? overlappingChanges(experiment, milestones, experiments) : []),
-    [experiment, milestones, experiments],
+    () => (experiment ? overlappingChanges(experiment, milestones, experiments, todayKey) : []),
+    [experiment, milestones, experiments, todayKey],
   );
 
   if (!experiment || !result) {
@@ -94,13 +108,32 @@ export function ExperimentDetailScreen() {
 
   const { span, status } = result;
   const progress = experimentProgress(experiment, todayKey);
-  const comparedTo = `the ${days(span.lengthDays)} before it started`;
+  const comparedTo = span ? `the ${days(span.lengthDays)} before it started` : 'the days before it starts';
 
-  const statCells = status === 'running'
+  const startToday = (startDate?: Date) => {
+    haptics.tap();
+    const started = startPlannedExperiment(experiment.id, startDate ? { startDate } : {});
+    if (started) Alert.alert('Experiment started', experimentStartedMessage(started));
+  };
+  const stopNow = () => {
+    haptics.tap();
+    Alert.alert(
+      'Stop this experiment?',
+      'Its last day becomes today, and it is compared with the same number of days before it started.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Stop', style: 'destructive', onPress: () => stopExperiment(experiment.id, getLogicalToday()) },
+      ],
+    );
+  };
+
+  const statCells = !span
+    ? []
+    : status === 'running'
     ? [
-      { value: `Day ${progress.day}`, label: `of ${progress.of}` },
+      { value: `Day ${progress.day}`, label: progress.of === null ? 'no end set' : `of ${progress.of}` },
       { value: shortDay(span.startKey), label: 'Started' },
-      { value: shortDay(span.endKey), label: 'Ends' },
+      { value: experiment.endDate ? shortDay(span.endKey) : 'Open', label: experiment.endDate ? 'Ends' : 'Until stopped' },
     ]
     : status === 'upcoming'
       ? [
@@ -118,7 +151,7 @@ export function ExperimentDetailScreen() {
     if (!row.comparable) {
       const why = row.firstLoggedKey === null
         ? 'Not logged yet, so there’s nothing to compare.'
-        : row.firstLoggedKey > span.baselineFromKey
+        : row.firstLoggedKey > (span?.baselineFromKey ?? '')
           ? `First logged ${shortDay(row.firstLoggedKey)}, so there aren’t enough days to compare yet.`
           : 'Not enough days logged to compare yet.';
       return (
@@ -175,14 +208,42 @@ export function ExperimentDetailScreen() {
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + spacing.xl, scrollTop.clearance) }]}
       >
-        <View style={styles.statRow}>
+        {status === 'planned' && (
+          <View style={styles.card}>
+            <Text style={styles.noteLabel}>PLANNED</Text>
+            <Text style={styles.pending}>
+              Nothing is compared until it starts. Once it does, your mood and symptoms during it are
+              compared with {experiment.days ? `the ${days(experiment.days)}` : 'the same number of days'} before the day you start it.
+            </Text>
+            <View style={styles.startActions}>
+              <TouchableOpacity
+                style={styles.startButton}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => startToday()}
+                accessibilityRole="button"
+                accessibilityLabel={`Start ${experiment.label} today`}
+              >
+                <Text style={styles.startButtonText}>Start today</Text>
+              </TouchableOpacity>
+              <InlineAction label="Started earlier" icon="calendar-outline" variant="neutral" onPress={() => { haptics.tap(); setPickingStart(true); }} />
+            </View>
+          </View>
+        )}
+
+        {status === 'running' && canStop(experiment, todayKey) && (
+          <View style={styles.stopRow}>
+            <InlineAction label="Stop experiment" icon="stop-circle-outline" variant="neutral" onPress={stopNow} />
+          </View>
+        )}
+
+        {statCells.length > 0 && <View style={styles.statRow}>
           {statCells.map(cell => (
             <View key={cell.label} style={styles.statCell} accessible accessibilityLabel={`${cell.label} ${cell.value}`}>
               <Text style={styles.statValue}>{cell.value}</Text>
               <Text style={styles.statLabel}>{cell.label}</Text>
             </View>
           ))}
-        </View>
+        </View>}
 
         {experiment.note && (
           <View style={styles.card}>
@@ -191,7 +252,29 @@ export function ExperimentDetailScreen() {
           </View>
         )}
 
-        {status === 'upcoming' ? (
+        {status === 'planned' ? (
+          <>
+            <Text style={styles.sectionTitle}>WATCHING</Text>
+            <View style={styles.card}>
+              {experiment.symptoms.length === 0
+                ? <Text style={styles.pending}>No symptoms picked. Your mood is always compared.</Text>
+                : experiment.symptoms.map((name, i) => <Text key={name} style={[styles.rowLabel, i > 0 && styles.rowGap]}>{name}</Text>)}
+            </View>
+            {startTasks.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>STARTED BY</Text>
+                <View style={styles.card}>
+                  {startTasks.map((t, i) => (
+                    <View key={t.id} style={i > 0 ? styles.rowGap : undefined}>
+                      <Text style={styles.rowLabel}>{t.title}</Text>
+                      <Text style={styles.rowDetail}>Checked off when you start it from here or from the task.</Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+          </>
+        ) : status === 'upcoming' && span ? (
           <View style={styles.card}>
             <Text style={styles.pending}>
               Starts {format(dayKeyToDate(span.startKey), 'EEEE, MMMM d')}. Once it has a few days
@@ -284,6 +367,15 @@ export function ExperimentDetailScreen() {
         )}
       </ScrollView>
 
+      <WhenPicker
+        visible={pickingStart}
+        value={getLogicalToday()}
+        title="First day"
+        showTimeOfDay={false}
+        showSuggest={false}
+        onConfirm={picked => { setPickingStart(false); if (picked) startToday(picked); }}
+        onCancel={() => setPickingStart(false)}
+      />
       <LazySheet open={sheetOpen}>
         <ExperimentSheet
           visible={sheetOpen}
@@ -324,6 +416,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.lg,
   },
+  startActions: { marginTop: spacing.md, gap: spacing.sm, alignItems: 'stretch' },
+  startButton: {
+    backgroundColor: colors.accentFill,
+    borderRadius: radius.md,
+    paddingVertical: spacing.smd,
+    alignItems: 'center',
+  },
+  startButtonText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.onAccent },
+  stopRow: { alignItems: 'flex-start', marginBottom: spacing.md },
   noteLabel: { fontSize: font.xs, color: colors.textSecondary, marginBottom: spacing.xs },
   note: { fontSize: font.md, color: colors.text, lineHeight: 20 },
   pending: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },

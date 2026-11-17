@@ -2607,6 +2607,7 @@ describe('experiment finish notices', () => {
   const noonOf = (key: string) => new Date(`${key}T12:00:00`).toISOString();
   const experiment = (id: string, start: string, end: string) => ({
     id, label: `Experiment ${id}`, startDate: noonOf(start), endDate: noonOf(end),
+    days: null,
     symptoms: [], note: null, createdAt: '2026-10-01T09:00:00',
   });
   const placement = { dayResetTime: '00:00', activeHoursStart: '08:00', quietHoursStart: null, quietHoursEnd: null };

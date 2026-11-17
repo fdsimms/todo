@@ -320,6 +320,8 @@ export interface TaskFieldsInput {
   slotIn?: boolean | null;
   /** A template (list_templates) the task row offers to run: its questions are answered when the person taps it, so the task can be made before they can be answered, and running it checks the task off. null removes the link. Checked by the replica. */
   templateId?: string | null;
+  /** A planned experiment (list_experiments' planned) the task row offers to start, as "Start <label>": tapping it starts the experiment today and checks the task off. A plain check-off never starts it. null removes the link. Checked by the replica. */
+  experimentId?: string | null;
   /** The workout routine (list_workouts' routines) Start workout on the task opens. null removes the link. Checked by the replica. */
   workoutRoutineId?: string | null;
   /** The workout program whose next routine Start workout on the task opens. A task names a routine or a program: setting one clears the other. Checked by the replica. */
@@ -991,6 +993,11 @@ export function taskFieldsPatch(
     const templateLink = input.templateId?.trim() || null;
     if (templateLink && context.isSubtask) errors.push('templateId goes on a top-level task, not a checklist item.');
     else patch.templateId = templateLink;
+  }
+  if (input.experimentId !== undefined) {
+    const experimentLink = input.experimentId?.trim() || null;
+    if (experimentLink && context.isSubtask) errors.push('experimentId goes on a top-level task, not a checklist item.');
+    else patch.experimentId = experimentLink;
   }
   if (input.medication !== undefined) {
     const m = input.medication;

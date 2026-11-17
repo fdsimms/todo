@@ -202,7 +202,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
 - `src/utils/exerciseSwap.ts` — swappableSets, swapKindsMatch, swapCandidates, preferredFirst
 - `src/utils/exerciseUsage.ts` — MOST_USED_DAYS, MOST_USED_MIN_SESSIONS, MOST_USED_LIMIT, mostUsedExerciseIds
-- `src/utils/experiments.ts` — EXPERIMENT_LENGTH_PRESETS, describeLength, DEFAULT_EXPERIMENT_DAYS, EXPERIMENT_LABEL_MAX_LENGTH, ExperimentStatus, experimentDayKey, ExperimentSpan, experimentSpan, experimentStatus, experimentProgress, +16 more
+- `src/utils/experimentLink.ts` — ExperimentLinkState, experimentLinkState, startExperimentLabel, VIEW_EXPERIMENT_LABEL, MISSING_EXPERIMENT_LABEL, experimentStartedMessage, linkedExperimentTaskCounts, linkedExperimentTasksNote
+- `src/utils/experimentStart.ts` — startPlannedExperiment
+- `src/utils/experiments.ts` — EXPERIMENT_LENGTH_PRESETS, describeLength, DEFAULT_EXPERIMENT_DAYS, EXPERIMENT_LABEL_MAX_LENGTH, ExperimentStatus, experimentDayKey, ExperimentSpan, experimentSpan, experimentStatus, isOpenEnded, +21 more
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabAnchor.ts` — FabMenuAnchor, fabMenuAnchorFor
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more

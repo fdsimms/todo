@@ -22,6 +22,7 @@ import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLo
 import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { linkAppLabel } from '../../src/constants/linkApps';
+import { experimentStatus } from '../../src/utils/experiments';
 import { isRotationTask } from '../../src/utils/rotation';
 import { followUpTaskDraftIsEmpty, liveFollowUpSource } from '../../src/utils/followUpTask';
 import { groceryNameKey } from '../../src/utils/groceryParse';
@@ -330,6 +331,8 @@ export interface GetTaskResult {
    * Start workout would open now (derived from the program's sessions).
    */
   workout?: { routineId?: string; programId?: string; name?: string; next?: string };
+  /** The experiment the row offers to start (`experimentId`), with its status ("planned" shows Start, otherwise View experiment); `deleted` when it is not found, which the row shows as "Experiment not found". */
+  experiment?: { id: string; label?: string; status?: string; deleted?: true };
   /** The template the row offers to run (`templateId`); `deleted` when it no longer exists, which the row shows as "Template deleted". */
   template?: { id: string; name?: string; deleted?: true };
   /** A countdown (`minutes`) or an Apple Health reading (`healthTarget`) the task reads as ready at; `measuredMinutes` is how long it actually took. */
@@ -434,6 +437,12 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
   if (task.templateId) {
     const template = replica.templates().find(t => t.id === task.templateId);
     out.template = template ? { id: template.id, name: template.name } : { id: task.templateId, deleted: true };
+  }
+  if (task.experimentId) {
+    const experiment = replica.experiments().find(e => e.id === task.experimentId);
+    out.experiment = experiment
+      ? { id: experiment.id, label: experiment.label, status: experimentStatus(experiment, replica.todayKey()) }
+      : { id: task.experimentId, deleted: true };
   }
   if (task.timedMinutes != null) out.timer = { minutes: task.timedMinutes };
   if (task.actualMinutes != null) out.measuredMinutes = task.actualMinutes;

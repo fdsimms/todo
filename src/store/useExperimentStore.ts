@@ -8,7 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { keepUnchanged } from '../utils/structuralSharing';
-import { cleanExperimentSymptoms, experimentRefusal } from '../utils/experiments';
+import { DEFAULT_EXPERIMENT_DAYS, cleanExperimentSymptoms, endOfLength, experimentRefusal } from '../utils/experiments';
 
 /**
  * Experiments: a change tried for a set stretch of days, read against the
@@ -22,10 +22,15 @@ import { cleanExperimentSymptoms, experimentRefusal } from '../utils/experiments
 
 export interface ExperimentDraft {
   label: string;
-  /** Any time on the first day; stored as noon of it. */
-  startDate: Date;
-  /** Any time on the last day; stored as noon of it. */
-  endDate: Date;
+  /** Any time on the first day; stored as noon of it. Null plans it for later. */
+  startDate: Date | null;
+  /** Any time on the last day; stored as noon of it. Null with a start runs until stopped. */
+  endDate: Date | null;
+  /**
+   * The planned length, used to place the last day when a planned one is
+   * started. Null for open-ended. Ignored when `endDate` is given.
+   */
+  days?: number | null;
   symptoms: string[];
   note: string | null;
 }
@@ -38,6 +43,14 @@ interface ExperimentStore {
   initialize: () => void;
   addExperiment: (draft: ExperimentDraft) => Experiment | null;
   updateExperiment: (id: string, patch: ExperimentPatch) => Experiment | null;
+  /**
+   * Begins a planned experiment: `startDate` (default: given by the caller,
+   * normally today) and a last day from its planned `days`, or from `days`
+   * given here. Refuses one already started.
+   */
+  startExperiment: (id: string, start: { startDate: Date; days?: number | null }) => Experiment | null;
+  /** Ends a started experiment on `endDate`. Refuses a planned one, one already ended, or a day before its start. */
+  stopExperiment: (id: string, endDate: Date) => Experiment | null;
   removeExperiment: (id: string) => void;
 }
 
@@ -56,8 +69,9 @@ function cleanNote(note: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+// Planned ones (no start) sort after dated ones, in the order they were made.
 const byStart = (a: Experiment, b: Experiment) =>
-  a.startDate.localeCompare(b.startDate) || a.createdAt.localeCompare(b.createdAt);
+  (a.startDate ?? '9').localeCompare(b.startDate ?? '9') || a.createdAt.localeCompare(b.createdAt);
 
 export const useExperimentStore = create<ExperimentStore>((set, get) => ({
   experiments: [],
@@ -74,8 +88,9 @@ export const useExperimentStore = create<ExperimentStore>((set, get) => ({
     const experiment: Experiment = {
       id: generateId(),
       label: draft.label.trim(),
-      startDate: noonIso(draft.startDate),
-      endDate: noonIso(draft.endDate),
+      startDate: draft.startDate ? noonIso(draft.startDate) : null,
+      endDate: draft.endDate ? noonIso(draft.endDate) : null,
+      days: draft.days !== undefined ? draft.days : (draft.startDate && draft.endDate ? null : DEFAULT_EXPERIMENT_DAYS),
       symptoms: cleanExperimentSymptoms(draft.symptoms),
       note: cleanNote(draft.note),
       createdAt: new Date().toISOString(),
@@ -90,8 +105,9 @@ export const useExperimentStore = create<ExperimentStore>((set, get) => ({
     if (!existing) return null;
     const merged: ExperimentDraft = {
       label: patch.label ?? existing.label,
-      startDate: patch.startDate ?? new Date(existing.startDate),
-      endDate: patch.endDate ?? new Date(existing.endDate),
+      startDate: patch.startDate !== undefined ? patch.startDate : (existing.startDate ? new Date(existing.startDate) : null),
+      endDate: patch.endDate !== undefined ? patch.endDate : (existing.endDate ? new Date(existing.endDate) : null),
+      days: patch.days !== undefined ? patch.days : existing.days,
       symptoms: patch.symptoms ?? existing.symptoms,
       note: patch.note !== undefined ? patch.note : existing.note,
     };
@@ -99,11 +115,39 @@ export const useExperimentStore = create<ExperimentStore>((set, get) => ({
     const next: Experiment = {
       ...existing,
       label: merged.label.trim(),
-      startDate: patch.startDate ? noonIso(patch.startDate) : existing.startDate,
-      endDate: patch.endDate ? noonIso(patch.endDate) : existing.endDate,
+      startDate: patch.startDate !== undefined ? (patch.startDate ? noonIso(patch.startDate) : null) : existing.startDate,
+      endDate: patch.endDate !== undefined ? (patch.endDate ? noonIso(patch.endDate) : null) : existing.endDate,
+      days: merged.days ?? null,
       symptoms: cleanExperimentSymptoms(merged.symptoms),
       note: cleanNote(merged.note),
     };
+    dbUpdateExperiment(next);
+    set({ experiments: get().experiments.map(e => (e.id === id ? next : e)).sort(byStart) });
+    return next;
+  },
+
+  startExperiment(id, { startDate, days }) {
+    const existing = get().experiments.find(e => e.id === id);
+    if (!existing || existing.startDate) return null;
+    const length = days !== undefined ? days : existing.days;
+    const endDate = length === null ? null : endOfLength(startDate, length);
+    if (experimentRefusal({ label: existing.label, startDate, endDate, days: length })) return null;
+    const next: Experiment = {
+      ...existing,
+      startDate: noonIso(startDate),
+      endDate: endDate ? noonIso(endDate) : null,
+      days: length,
+    };
+    dbUpdateExperiment(next);
+    set({ experiments: get().experiments.map(e => (e.id === id ? next : e)).sort(byStart) });
+    return next;
+  },
+
+  stopExperiment(id, endDate) {
+    const existing = get().experiments.find(e => e.id === id);
+    if (!existing || !existing.startDate) return null;
+    if (experimentRefusal({ label: existing.label, startDate: new Date(existing.startDate), endDate })) return null;
+    const next: Experiment = { ...existing, endDate: noonIso(endDate) };
     dbUpdateExperiment(next);
     set({ experiments: get().experiments.map(e => (e.id === id ? next : e)).sort(byStart) });
     return next;

@@ -2798,6 +2798,17 @@ describe('demo seed — people', () => {
     expect(finished && experimentSummary(finished)).toMatch(/^Mood .* Poor sleep on/);
   });
 
+  it('seeds a planned experiment, with no days and no comparison, and the open task that starts it', () => {
+    const planned = useExperimentStore.getState().experiments.filter(e => e.startDate === null);
+    expect(planned).toHaveLength(1);
+    expect(planned[0].days).toBe(28);
+    const result = experimentResult(planned[0], useMoodStore.getState().logs, dayKeyOf(new Date()));
+    expect(result.status).toBe('planned');
+    expect(result.mood).toBeNull();
+    const starter = useTaskStore.getState().tasks.find(t => t.experimentId === planned[0].id);
+    expect(starter && !starter.completed).toBe(true);
+  });
+
   it('seeds a couple of nutrition targets, so the totals read against something', () => {
     // A target is invisible until something reads against it. Two rather than
     // ten: somebody watching what they eat watches a couple of numbers, and

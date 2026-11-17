@@ -1262,6 +1262,40 @@ run by the app-level `useExperimentNotices` on every change to the rows or
 the settings that place it), and it sends nothing in demo mode. A tap opens
 the experiment's page.
 
+## Planned, and started by a task
+
+An experiment can be planned before its first day is known (a prescription still to arrive, a
+referral to wait for). **A planned one has `startDate: null`, not a status field**: status is
+derived from the dates (`experimentStatus`: planned, upcoming, running, finished), so there is no
+second value to fall out of step with them. It has no span, no baseline, no comparison and no
+finish notice; `days` is the length it gets when started. `experiments.start_date` and `end_date`
+are NOT NULL and SQLite cannot relax that with an ALTER, so the db stores a missing day as `''`
+and maps it back to null in `rowToExperiment` (`dayColumn`); the type never shows the sentinel.
+
+**Starting sets the first day and places the last from `days`** (`startExperiment`), today by
+default or an earlier day for "I actually started 3 days ago", so the baseline counts back from
+the real start. A start day in the future is allowed in the app (it reads as upcoming) and
+refused over MCP, which has no reason to make one.
+
+**An open-ended one has a start and no last day** (`days: null`) and runs until it is stopped
+(`stopExperiment`, "Stop experiment"). While it runs its span ends at today, so its baseline is as
+long as it has run so far and grows with it: the comparison shifts a little each day, which is the
+price of keeping the "same number of days before" rule. Stopping fixes both, and the usual
+minimum-days gates then decide whether anything can be shown, so one stopped after two days says
+there is not enough to compare. A fixed-length one ended early is the same write ("End it today").
+
+**A task starts it, and checking the task off does not** (`Task.experimentId`,
+`src/utils/experimentLink.ts`, modeled on `templateId`). The row shows "Start <label>" while the
+experiment is planned, "View experiment" once it has begun, and "Experiment not found" when it is
+missing, which also covers an experiment that is not on this phone (tasks sync everywhere,
+experiments only with the health logs). Tapping Start begins it today and checks the task off; a
+plain check-off asks "Also start the experiment?", because the start day anchors the comparison
+and a check-off done a day late, or to clear the list, would silently move it. Starting from the
+Mood list or the experiment's page checks off the open tasks that point at it
+(`startPlannedExperiment`, the one function every Start goes through). Staggering one change at a
+time is the task's own `waitsOn`, not a second ordering on the experiment. Deleting an experiment
+leaves the id on its tasks, and the delete confirmation says how many.
+
 ## It syncs, and it hides
 
 `mood_logs` is in `SYNC_TRACKED_TABLES`. Half a person's health record on each

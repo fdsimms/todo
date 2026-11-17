@@ -531,7 +531,10 @@ export function experimentNoticeAt(
   now: Date,
   settings: { dayResetTime: string; activeHoursStart: string; quietHoursStart: string | null; quietHoursEnd: string | null },
 ): Date | null {
-  const dayStart = taskDayStart(new Date(`${experimentNoticeDayKey(experiment)}T00:00:00`), settings.dayResetTime);
+  const noticeKey = experimentNoticeDayKey(experiment);
+  // Planned and open-ended ones have no last day, so nothing to announce yet.
+  if (!noticeKey) return null;
+  const dayStart = taskDayStart(new Date(`${noticeKey}T00:00:00`), settings.dayResetTime);
   const at = deferPastQuietHours(
     onLogicalDay(dayStart, settings.activeHoursStart),
     settings.quietHoursStart,

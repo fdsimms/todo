@@ -2613,6 +2613,11 @@ function runInitDatabase(): void {
     'ALTER TABLE gyms ADD COLUMN dumbbell_min_kg REAL',
     'ALTER TABLE gyms ADD COLUMN dumbbell_max_kg REAL',
     'ALTER TABLE gyms ADD COLUMN dumbbell_step_kg REAL',
+    // Task.experimentId: NULL on every existing row, which is no linked experiment.
+    'ALTER TABLE tasks ADD COLUMN experiment_id TEXT',
+    // Experiment.days: NULL on every existing experiment, which already has its
+    // last day, so the planned length is never read.
+    'ALTER TABLE experiments ADD COLUMN days INTEGER',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -4633,6 +4638,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     alarmLink: typeof row.alarm_link === 'string' && row.alarm_link !== '' ? row.alarm_link : null,
     alarmLinkLeavesOpen: Boolean(row.alarm_link_leaves_open),
     templateId: typeof row.template_id === 'string' && row.template_id !== '' ? row.template_id : null,
+    experimentId: typeof row.experiment_id === 'string' && row.experiment_id !== '' ? row.experiment_id : null,
     completionTimerNote: (row.completion_timer_note as string | null) ?? null,
     completionTimerStartedAt: (row.completion_timer_started_at as string | null) ?? null,
     // Narrowed the same way healthMetric above is: an unrecognized column value
@@ -4775,8 +4781,8 @@ export function dbInsertTask(task: Task): void {
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, quota_tap_times, medication_extras, attachments, reminder_place_id, reminder_place_on,
-      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool, template_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool, template_id, experiment_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4933,6 +4939,7 @@ export function dbInsertTask(task: Task): void {
       task.alarmLinkLeavesOpen ? 1 : 0,
       task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
       task.templateId ?? null,
+      task.experimentId ?? null,
     ]
   );
 }
@@ -4972,7 +4979,7 @@ export function dbUpdateTask(task: Task): void {
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, quota_tap_times=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
-      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?, template_id=?
+      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?, template_id=?, experiment_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -5130,6 +5137,7 @@ export function dbUpdateTask(task: Task): void {
       task.alarmLinkLeavesOpen ? 1 : 0,
       task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
       task.templateId ?? null,
+      task.experimentId ?? null,
       task.id,
     ]
   );
@@ -8263,8 +8271,11 @@ function rowToExperiment(row: Record<string, unknown>): Experiment {
   return {
     id: row.id as string,
     label: row.label as string,
-    startDate: row.start_date as string,
-    endDate: row.end_date as string,
+    // A planned experiment has no days yet and an open-ended one no last day;
+    // the columns are NOT NULL, so both are stored as '' (see `dayColumn`).
+    startDate: (row.start_date as string) || null,
+    endDate: (row.end_date as string) || null,
+    days: typeof row.days === 'number' ? row.days : null,
     symptoms,
     note: (row.note as string | null) ?? null,
     createdAt: row.created_at as string,
@@ -8279,12 +8290,15 @@ export function dbGetAllExperiments(): Experiment[] {
   return rows.map(rowToExperiment);
 }
 
+/** A planned or open-ended experiment's missing day, stored as '' because the columns are NOT NULL (SQLite can't relax that with an ALTER). */
+const dayColumn = (iso: string | null): string => iso ?? '';
+
 export function dbInsertExperiment(experiment: Experiment): void {
   db.runSync(
-    `INSERT INTO experiments (id, label, start_date, end_date, symptoms, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO experiments (id, label, start_date, end_date, days, symptoms, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      experiment.id, experiment.label, experiment.startDate, experiment.endDate,
+      experiment.id, experiment.label, dayColumn(experiment.startDate), dayColumn(experiment.endDate), experiment.days,
       JSON.stringify(experiment.symptoms), experiment.note, experiment.createdAt,
     ]
   );
@@ -8292,9 +8306,9 @@ export function dbInsertExperiment(experiment: Experiment): void {
 
 export function dbUpdateExperiment(experiment: Experiment): void {
   db.runSync(
-    `UPDATE experiments SET label=?, start_date=?, end_date=?, symptoms=?, note=? WHERE id=?`,
+    `UPDATE experiments SET label=?, start_date=?, end_date=?, days=?, symptoms=?, note=? WHERE id=?`,
     [
-      experiment.label, experiment.startDate, experiment.endDate,
+      experiment.label, dayColumn(experiment.startDate), dayColumn(experiment.endDate), experiment.days,
       JSON.stringify(experiment.symptoms), experiment.note, experiment.id,
     ]
   );
