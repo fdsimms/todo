@@ -2403,7 +2403,7 @@ export function FoodLogEntrySheet({
       {offerDatabase && (
         <InlineAction
           icon="search-outline"
-          label={hasFdcKey ? 'Food database' : 'Add database key'}
+          label={hasFdcKey ? 'Food database' : 'Database key'}
           onPress={openFoodDatabase}
           style={styles.lookupOffer}
           accessibilityLabel={hasFdcKey
