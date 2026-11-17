@@ -13,6 +13,9 @@ import {
   describeEstimateCount,
   estimateAmountPatch,
   estimateAmountUnchanged,
+  estimateParts,
+  estimatePartsPatch,
+  currentPartFactors,
   estimateCount,
   estimateCountNoun,
   estimateCountQuestion,
@@ -62,6 +65,13 @@ export const ESTIMATE_AMOUNT_OPTIONS: SegmentOption<number | null>[] = ESTIMATE_
   label: a.label,
   accessibilityLabel: a.spoken,
 }));
+
+export type AmountMode = 'whole' | 'parts';
+
+export const MODE_OPTIONS: SegmentOption<AmountMode>[] = [
+  { value: 'whole', label: 'Whole meal', accessibilityLabel: 'Change the whole meal' },
+  { value: 'parts', label: 'By part', accessibilityLabel: 'Change each part of the meal on its own' },
+];
 
 export type AmountUnit = 'grams' | 'percent';
 
@@ -155,6 +165,12 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
   const [countTyped, setCountTyped] = useState<string | null>(null);
 
   const wholeGrams = whole ? estimateWholeGrams(whole) : null;
+  /** The meal's parts, when each can be changed on its own ("By part"). */
+  const parts = entry ? estimateParts(entry) : null;
+  const [mode, setMode] = useState<AmountMode>('whole');
+  /** The multiple of each part as it was estimated, and what was typed for it, by part. */
+  const [partFactors, setPartFactors] = useState<number[]>([]);
+  const [partTyped, setPartTyped] = useState<(string | null)[]>([]);
   const asksMeal = slot !== undefined;
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot ?? null);
 
@@ -166,6 +182,13 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
     setChosenSlot(slot ?? null);
     setUnit(wholeGrams ? 'grams' : 'percent');
     if (counted) setCount((entry && currentEstimateCount(entry)) ?? counted.count);
+    // An entry already changed part by part opens on the parts, since no one
+    // multiple of the whole says what it stands at.
+    const now = entry && parts ? currentPartFactors(entry) : null;
+    const wholeNow = entry ? currentEstimateFactor(entry) : null;
+    setMode(parts && now && wholeNow === null ? 'parts' : 'whole');
+    setPartFactors(parts ? now ?? parts.map(() => wholeNow ?? 1) : []);
+    setPartTyped(parts ? parts.map(() => null) : []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, entry?.id]);
 
@@ -194,7 +217,30 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
     setFactor(value);
     setTyped(null);
   };
-  const patch = entry && chosen !== null ? estimateAmountPatch(entry, chosen) : null;
+  const partsMode = mode === 'parts' && !!parts;
+  const partUnit = (i: number): AmountUnit => (parts?.[i].grams ? 'grams' : 'percent');
+  /** What part i's field shows, and the multiple it means (null when what was typed is no amount). */
+  const partText = (i: number) => partTyped[i] ?? amountText(partFactors[i] ?? 1, partUnit(i), parts?.[i].grams ?? null);
+  const partFactor = (i: number): number | null => partTyped[i] != null
+    ? factorFromTyped(partTyped[i]!, partUnit(i), parts?.[i].grams ?? null)
+    : partFactors[i] ?? 1;
+  const partChoices = partsMode ? parts!.map((_, i) => partFactor(i)) : [];
+  const pickMode = (next: AmountMode) => {
+    if (next === mode) return;
+    if (next === 'parts' && parts) {
+      // Start every part at the multiple the whole meal is at now.
+      setPartFactors(parts.map(() => chosen ?? 1));
+      setPartTyped(parts.map(() => null));
+    } else if (partChoices.length > 0 && partChoices.every(f => f !== null && Math.abs(f - partChoices[0]!) < 1e-9)) {
+      // Parts all at one multiple are that multiple of the whole.
+      setFactor(partChoices[0]);
+      setTyped(null);
+    }
+    setMode(next);
+  };
+  const patch = !entry ? null
+    : partsMode ? (partChoices.every(f => f !== null) ? estimatePartsPatch(entry, partChoices as number[]) : null)
+    : chosen !== null ? estimateAmountPatch(entry, chosen) : null;
   const unchanged = !patch || (!allowUnchanged && !!entry && estimateAmountUnchanged(entry, patch));
 
   const save = () => {
@@ -207,7 +253,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
   const protein = patch?.nutrition.amounts.proteinG;
   const wholeKcal = whole?.amounts.calorieKcal;
   const wholeKcalText = wholeKcal !== undefined ? `${Math.round(wholeKcal).toLocaleString()} cal` : null;
-  const question = counted ? estimateCountQuestion(counted) : 'How much you ate';
+  const question = partsMode ? 'How much of each you ate' : counted ? estimateCountQuestion(counted) : 'How much you ate';
 
   return (
     <CardSheet
@@ -237,7 +283,41 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
 
         <Text style={styles.label}>{question}</Text>
         <View style={styles.body}>
-          {counted && stepped ? (
+          {!!parts && (
+            <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={pickMode} label="What to change" />
+          )}
+          {partsMode ? (
+            <View style={styles.amountBlock}>
+              {parts!.map((part, i) => {
+                const unit = partUnit(i);
+                const text = partTyped[i];
+                const bad = text != null && text.trim() !== '' && partFactor(i) === null;
+                const line = patch?.nutrition.breakdown?.[i]?.amounts.calorieKcal;
+                return (
+                  <View key={`${i}-${part.label}`}>
+                    <View style={styles.amountRow}>
+                      <View style={styles.partName}>
+                        <Text style={styles.countNoun}>{part.label}</Text>
+                        {line !== undefined && <Text style={styles.amount}>{`${Math.round(line).toLocaleString()} cal`}</Text>}
+                      </View>
+                      <TextField
+                        style={styles.partInput}
+                        value={partText(i)}
+                        onChangeText={next => setPartTyped(prev => prev.map((v, j) => (j === i ? next : v)))}
+                        keyboardType="decimal-pad"
+                        inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                        returnKeyType="done"
+                        selectTextOnFocus
+                        accessibilityLabel={`${part.label}, in ${unit === 'grams' ? 'grams' : 'percent of the part'}`}
+                      />
+                      <Text style={[styles.unitText, styles.partUnit]}>{unit === 'grams' ? 'g' : '%'}</Text>
+                    </View>
+                    {bad && <Text style={styles.error}>{amountRefusal(unit, part.grams)}</Text>}
+                  </View>
+                );
+              })}
+            </View>
+          ) : counted && stepped ? (
             <View style={styles.countRow}>
               <CountStepper
                 value={count}
@@ -328,7 +408,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
               {!stepped && !!patch.quantity && <Text style={styles.amount}>{patch.quantity}</Text>}
               {/* The parts scale with the total, so the choice can be checked
                   against what each one comes to. */}
-              {(patch.nutrition.breakdown ?? []).map((line, index) => (
+              {!partsMode && (patch.nutrition.breakdown ?? []).map((line, index) => (
                 <View key={`${index}-${line.label}`} style={styles.partRow}>
                   <Text style={[styles.amount, styles.partLabel]}>{line.label}</Text>
                   {line.amounts.calorieKcal !== undefined && (
@@ -339,7 +419,9 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
             </View>
           )}
           <Text style={styles.hint}>
-            {counted
+            {partsMode
+              ? `Each part is the estimate for that part, scaled to your choice, so nothing is re-estimated. Entering a part’s original amount puts it back.`
+              : counted
               ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing is re-estimated. ${stepped ? 'Setting it back to' : 'Entering'} ${formatQuantityAmount(counted.count, counted.decimal)}${stepped ? '' : ` ${estimateCountNoun(counted, counted.count)}`} puts them back.`
               : `The figures are the estimate for the whole meal${wholeKcalText ? ` (${wholeKcalText})` : ''}, scaled to your choice, so nothing is re-estimated. ${wholeGrams ? `Entering ${Math.round(wholeGrams * 10) / 10} g puts them back.` : 'All puts them back.'}`}
           </Text>
@@ -417,6 +499,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   previewBlock: { gap: spacing.xxs, marginTop: spacing.xs },
   preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   amount: { color: colors.textSecondary, fontSize: font.sm },
+  partName: { flex: 1, gap: spacing.xxs },
+  partInput: {
+    width: 84,
+    color: colors.text,
+    fontSize: font.lg,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.smd,
+    textAlign: 'right',
+    minHeight: 44,
+  },
+  partUnit: { width: 16 },
   partRow: { flexDirection: 'row', justifyContent: 'space-between' },
   partLabel: { flex: 1, marginRight: spacing.md },
   hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },

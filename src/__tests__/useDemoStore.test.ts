@@ -52,7 +52,7 @@ import { isNutrientOnlyEntry } from '../utils/nutrientLog';
 import { supplementDoseIdOf } from '../utils/supplementDose';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
-import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
+import { currentEstimateFactor, describeFoodLogEntry, estimateParts, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
 import { alcoholGramsOf } from '../utils/alcohol';
 import { isWaterEntry } from '../utils/waterLog';
@@ -3247,6 +3247,14 @@ describe('demo seed — people', () => {
     expect(lines.length).toBeGreaterThan(1);
     expect(lines.reduce((sum, l) => sum + (l.amounts.calorieKcal ?? 0), 0))
       .toBe(eatenOut[0].nutrition.amounts.calorieKcal);
+  });
+
+  it('seeds an estimated meal whose parts can each be changed (Change amount, By part)', () => {
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const byPart = seededFood().find(e => estimateParts(e) !== null);
+    expect(byPart).toBeDefined();
+    expect(estimateParts(byPart!)!.map(p => p.grams)).toEqual([113, 136]);
   });
 
   it('seeds figures from more than one source, so the provenance stat has content', () => {

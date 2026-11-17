@@ -2860,6 +2860,36 @@ function seedFoodLog(today: Date): void {
     });
   }
 
+  // A described meal whose words name each part's weight, which is what "Change
+  // amount" offers to change part by part. Logged twice for the same reason as
+  // the one above.
+  for (const daysAgo of [4, 11]) {
+    const at = subDays(today, daysAgo);
+    at.setHours(19, 0, 0, 0);
+    const words = '113 g steamed basmati rice and 136 g paneer tikka masala';
+    addEntry({
+      label: 'Paneer tikka masala with steamed basmati rice',
+      quantity: words,
+      grams: null,
+      nutrition: {
+        basis: 'perServing',
+        servingGrams: null,
+        servingText: words,
+        amounts: { calorieKcal: 419, proteinG: 14 },
+        source: 'estimated',
+        sourceId: null,
+        portions: [],
+        recordedAt: at.toISOString(),
+        breakdown: [
+          { label: 'steamed basmati rice', amounts: { calorieKcal: 147, proteinG: 3 } },
+          { label: 'paneer tikka masala', amounts: { calorieKcal: 272, proteinG: 11 } },
+        ],
+      },
+      slot: 'dinner',
+      at,
+    });
+  }
+
   /**
    * A food a database answered that nobody filed, logged by weight.
    *
