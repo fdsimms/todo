@@ -1716,6 +1716,15 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return request;
     },
 
+    // The same kind of card: a new alarm for the person to accept, so the
+    // entry says "suggest" and its undo is taking the card back.
+    proposeAlarm(input) {
+      const request = replica.proposeAlarm(input);
+      const focus = input.savedFocus ? ` that offers the focus session "${input.savedFocus.name}"` : '';
+      log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id, note: `Suggest, for the person to accept in their Inbox, a new alarm at ${String(input.hour).padStart(2, '0')}:${String(input.minute).padStart(2, '0')}${focus}` });
+      return request;
+    },
+
     requestCalendarChange(targetId, change) {
       const request = replica.requestCalendarChange(targetId, change);
       const target = replica.calendarRequests().find(r => r.id === targetId);

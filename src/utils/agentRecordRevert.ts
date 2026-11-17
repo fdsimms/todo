@@ -194,11 +194,11 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
         // A proposal is taken back the same way: the person has not tapped it.
         case 'proposed':
         case 'pending': {
-          const what = request.kind === 'task_alarm' ? 'alarm' : request.kind === 'task_deadline' ? 'deadline' : 'event';
+          const what = request.kind === 'task_alarm' || request.kind === 'new_alarm' ? 'alarm' : request.kind === 'task_deadline' ? 'deadline' : 'event';
           return { kind: 'cancelCalendarRequest', id, what, proposed: request.status === 'proposed' };
         }
-        case 'written': return { kind: 'none', reason: request.kind === 'task_alarm' ? 'Alarm set' : 'On your calendar' };
-        case 'failed': return { kind: 'none', reason: request.kind === 'task_alarm' ? 'Not set' : 'Not added' };
+        case 'written': return { kind: 'none', reason: request.kind === 'task_alarm' || request.kind === 'new_alarm' ? 'Alarm set' : 'On your calendar' };
+        case 'failed': return { kind: 'none', reason: request.kind === 'task_alarm' || request.kind === 'new_alarm' ? 'Not set' : 'Not added' };
         case 'cancelled': return { kind: 'none', reason: 'Undone' };
       }
       return NONE;

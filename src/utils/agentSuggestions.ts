@@ -1,6 +1,8 @@
 import { format } from 'date-fns/format';
 import type { CalendarRequest, ReminderKind, Task } from '../types';
 import { formatTimeOfDay } from './dateUtils';
+import { describeRepeat, formatAlarmMinutes } from './alarms';
+import { describeFilter } from './savedFocus';
 import { suggestionIsStale } from './calendarRequests';
 
 /**
@@ -99,6 +101,21 @@ export function describeSuggestion(r: CalendarRequest, ctx: SuggestionContext): 
     if (at) lines.push(`${format(at, DAY_FORMAT)} · ${formatTimeOfDay(at, ctx.use24Hour)}`);
     if (ctx.alarmKitAvailable && r.payload?.ringKind === 'persistent') lines.push('Repeats until you finish the task');
     return { id: r.id, icon: 'alarm-outline', title: `${word} for “${name}”`, lines, primaryLabel: `Set ${word.toLowerCase()}` };
+  }
+
+  if (kind === 'new_alarm') {
+    const alarm = r.payload?.alarm;
+    const lines: string[] = [];
+    if (alarm) {
+      const at = new Date(2000, 0, 1, alarm.hour, alarm.minute);
+      lines.push(`${alarm.repeatDays.length > 0 ? describeRepeat(alarm.repeatDays) : 'Once'} · ${formatTimeOfDay(at, ctx.use24Hour)}`);
+    }
+    const focus = r.payload?.savedFocus;
+    if (focus) {
+      const limit = focus.windowMinutes === null ? 'no time limit' : formatAlarmMinutes(focus.windowMinutes);
+      lines.push(`Offers a focus session when you turn it off: ${focus.name} (${describeFilter(focus.filter).toLowerCase()}, ${limit})`);
+    }
+    return { id: r.id, icon: 'alarm-outline', title: `New alarm “${r.title}”`, lines, primaryLabel: 'Set alarm' };
   }
 
   if (r.action === 'delete' || r.action === 'update') {

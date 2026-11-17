@@ -2729,10 +2729,10 @@ describe('demo seed — people', () => {
     expect(entries).toHaveLength(0);
   });
 
-  it('seeds the Inbox suggestions: an event, a deadline and an alarm, each for a task that exists', () => {
+  it('seeds the Inbox suggestions: an event, a deadline, an alarm and a new alarm, each task kind for a task that exists', () => {
     const rows = useAgentSuggestionStore.getState().requests;
     expect(rows.filter(r => r.status === 'proposed').map(r => r.kind ?? 'event').sort())
-      .toEqual(['event', 'task_alarm', 'task_deadline']);
+      .toEqual(['event', 'new_alarm', 'task_alarm', 'task_deadline']);
     const tasks = useTaskStore.getState().tasks;
     for (const r of rows.filter(x => x.kind === 'task_alarm' || x.kind === 'task_deadline')) {
       expect(tasks.some(t => t.id === r.taskId)).toBe(true);

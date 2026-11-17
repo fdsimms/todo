@@ -161,6 +161,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     calendarRequests: () => [],
     requestCalendarEvent: () => { throw new Error('not stubbed'); },
     proposeTaskAction: () => { throw new Error('not stubbed'); },
+    proposeAlarm: () => { throw new Error('not stubbed'); },
     cancelCalendarRequest: () => { throw new Error('not stubbed'); },
     updateMeal: () => { throw new Error('not stubbed'); },
     removeMeal: () => { throw new Error('not stubbed'); },

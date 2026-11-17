@@ -47,6 +47,16 @@ const deadline = (over: Partial<CalendarRequest> = {}): CalendarRequest => reque
   ...over,
 });
 
+const newAlarm = (over: Partial<CalendarRequest> = {}): CalendarRequest => request({
+  kind: 'new_alarm', taskId: null, title: 'Start work',
+  startAt: new Date(0).toISOString(), endAt: new Date(0).toISOString(), location: null,
+  payload: {
+    alarm: { label: 'Start work', hour: 9, minute: 0, repeatDays: [1, 2, 3, 4, 5] },
+    savedFocus: { name: 'Deep work', filter: { kind: 'project', value: 'p1' }, windowMinutes: 90 },
+  },
+  ...over,
+});
+
 const task = (over: Partial<Task> = {}): Task =>
   ({ id: 't1', title: 'File taxes', completed: false, archived: false, deadline: new Date(2026, 3, 15, 12).toISOString(), deadlineOnCalendar: false, ...over }) as Task;
 
@@ -74,6 +84,9 @@ describe('liveSuggestions', () => {
     expect(suggestionIsStale(old, NOW)).toBe(true);
     const change = request({ action: 'delete', startAt: new Date(0).toISOString(), endAt: new Date(0).toISOString() });
     expect(suggestionIsStale(change, NOW)).toBe(false);
+    // A new alarm names a time of day, so only the month's wait expires it.
+    expect(suggestionIsStale(newAlarm(), NOW)).toBe(false);
+    expect(suggestionIsStale(newAlarm({ createdAt: old.createdAt }), NOW)).toBe(true);
   });
 });
 
@@ -125,6 +138,25 @@ describe('describeSuggestion', () => {
     expect(card).toMatchObject({ icon: 'flag-outline', primaryLabel: 'Add to calendar' });
     expect(card.lines).toEqual(['Due Apr 15 · all-day event']);
     expect(describeSuggestion(deadline(), base(task({ deadlineTime: '17:00' }))).lines).toEqual(['Due Apr 15 at 5:00 PM']);
+  });
+
+  it('describes a new alarm with the focus session it offers', () => {
+    const card = describeSuggestion(newAlarm(), base());
+    expect(card).toMatchObject({ icon: 'alarm-outline', title: 'New alarm “Start work”', primaryLabel: 'Set alarm' });
+    expect(card.lines).toEqual([
+      'Weekdays · 9:00 AM',
+      'Offers a focus session when you turn it off: Deep work (project: p1, 1.5 hr)',
+    ]);
+  });
+
+  it('describes a plain one-off new alarm with no focus line', () => {
+    const card = describeSuggestion(newAlarm({ payload: { alarm: { label: 'Start work', hour: 9, minute: 0, repeatDays: [] } } }), base());
+    expect(card.lines).toEqual(['Once · 9:00 AM']);
+  });
+
+  it('says no time limit for a session without one', () => {
+    const payload = { alarm: { label: '', hour: 6, minute: 5, repeatDays: [] }, savedFocus: { name: 'Admin', filter: { kind: 'all' as const }, windowMinutes: null } };
+    expect(describeSuggestion(newAlarm({ payload }), base()).lines[1]).toBe('Offers a focus session when you turn it off: Admin (any task, no time limit)');
   });
 
   it('calls an alarm an alarm only where one can ring, and a reminder elsewhere', () => {

@@ -1,5 +1,5 @@
 import type { CalendarRequest } from '../../src/types';
-import type { CalendarRequestInput, Replica } from './replica';
+import type { AlarmProposalInput, CalendarRequestInput, Replica } from './replica';
 import { requestEventIsOver } from '../../src/utils/calendarRequests';
 
 /**
@@ -134,9 +134,30 @@ export interface SerializedCalendarRequest {
   /** For an alarm: when it rings (ISO), and whether it repeats until the task is done. */
   alarmAt?: string;
   ring?: 'alarm' | 'persistent';
+  /** Present on a suggestion for a new alarm of its own: when it rings, and the focus session it offers. */
+  newAlarm?: { time: string; days: string[]; focusSession?: string };
 }
 
 export function serializeCalendarRequest(r: CalendarRequest): SerializedCalendarRequest {
+  if (r.kind === 'new_alarm') {
+    const alarm = r.payload?.alarm;
+    return {
+      id: r.id,
+      title: r.title,
+      start: '',
+      end: '',
+      allDay: false,
+      status: r.status,
+      ...(r.failureReason ? { failureReason: r.failureReason } : {}),
+      requestedAt: r.createdAt,
+      ...(r.resolvedAt ? { resolvedAt: r.resolvedAt } : {}),
+      newAlarm: {
+        time: `${String(alarm?.hour ?? 0).padStart(2, '0')}:${String(alarm?.minute ?? 0).padStart(2, '0')}`,
+        days: (alarm?.repeatDays ?? []).map(d => WEEKDAYS[d]),
+        ...(r.payload?.savedFocus ? { focusSession: r.payload.savedFocus.name } : {}),
+      },
+    };
+  }
   if (r.kind === 'task_deadline' || r.kind === 'task_alarm') {
     return {
       id: r.id,
@@ -195,6 +216,9 @@ const PROPOSED_NOTE =
 const TASK_PROPOSED_NOTE =
   'A card in the person\'s Inbox, waiting for their tap. Nothing is changed on the task until they accept it, and it only takes effect on their phone, so say it is suggested, not set. Check list_calendar_requests for the outcome.';
 
+const ALARM_PROPOSED_NOTE =
+  'A card in the person\'s Inbox, waiting for their tap. The alarm and its focus session are made on their phone only when they accept, and it needs a phone that supports system alarms, so say it is suggested, not set. Check list_calendar_requests for the outcome.';
+
 const PENDING_NOTE =
   'Queued, not on the calendar yet. The phone set to add these writes it the next time it syncs (when the app is opened, or in the background). Check list_calendar_requests for the outcome rather than saying it was added.';
 
@@ -232,6 +256,78 @@ export function proposeTaskDeviceAction(replica: Replica, input: TaskActionToolI
   if (at <= now) throw new Error('That time has already passed.');
   const request = replica.proposeTaskAction({ kind: 'task_alarm', taskId: input.taskId, alarmAt: at.toISOString(), ringKind: input.ring ?? 'alarm' });
   return { request: serializeCalendarRequest(request), note: TASK_PROPOSED_NOTE };
+}
+
+export const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+export interface AlarmToolInput {
+  /** HH:MM, 24-hour, in their time zone. */
+  time: string;
+  /** Days it repeats on. Empty or absent rings once, the next time the clock reads that time. */
+  days?: (typeof WEEKDAYS)[number][];
+  label?: string;
+  /** The saved focus session the alarm offers once it is turned off. Reused if they already have one by this name. */
+  focusName?: string;
+  /** What a new session draws tasks from. Default any task. */
+  focusTasksFrom?: 'category' | 'project' | 'tag';
+  /** A category name, a project's title or id, or a tag. Required with focusTasksFrom. */
+  focusValue?: string;
+  /** Time available for a new session, 15 to 480. Absent is no limit. */
+  focusMinutes?: number;
+}
+
+const CLOCK = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * Suggest, never set, a new alarm that offers a saved focus session when it is
+ * turned off. Alarms and saved sessions live only on the phone, so this is a
+ * card for the person's tap, and the phone that is tapped makes both. A focus
+ * session they already have under focusName is used as it is, and the rule
+ * given here only makes a new one.
+ */
+export function proposeAlarm(replica: Replica, input: AlarmToolInput) {
+  const m = CLOCK.exec(input.time.trim());
+  if (!m) throw new Error(`"${input.time}" is not a time. Use HH:MM, 24-hour.`);
+  const repeatDays = [...new Set((input.days ?? []).map(d => WEEKDAYS.indexOf(d)))].sort((a, b) => a - b);
+  const label = (input.label ?? '').trim();
+  let savedFocus: AlarmProposalInput['savedFocus'] = null;
+  if (input.focusName !== undefined && input.focusName.trim() === '') throw new Error('focusName is empty. Name the focus session, or leave it out for a plain alarm.');
+  if (input.focusName !== undefined) {
+    savedFocus = { name: input.focusName.trim(), filter: { kind: 'all' }, windowMinutes: null };
+    if (input.focusTasksFrom) {
+      const value = (input.focusValue ?? '').trim();
+      if (!value) throw new Error(`focusTasksFrom ${input.focusTasksFrom} needs focusValue: a ${input.focusTasksFrom === 'project' ? 'project title or id' : input.focusTasksFrom === 'category' ? 'category name' : 'tag'}.`);
+      savedFocus.filter = { kind: input.focusTasksFrom, value: resolveFocusValue(replica, input.focusTasksFrom, value) };
+    } else if (input.focusValue !== undefined) {
+      throw new Error('focusValue needs focusTasksFrom: category, project or tag.');
+    }
+    if (input.focusMinutes !== undefined) {
+      if (!Number.isFinite(input.focusMinutes) || input.focusMinutes < 15 || input.focusMinutes > 480) throw new Error('focusMinutes is 15 to 480, or leave it out for no limit.');
+      savedFocus.windowMinutes = Math.round(input.focusMinutes);
+    }
+  } else if (input.focusTasksFrom || input.focusValue !== undefined || input.focusMinutes !== undefined) {
+    throw new Error('The focus fields need focusName. Name the session, or leave them out.');
+  }
+  const request = replica.proposeAlarm({ label, hour: Number(m[1]), minute: Number(m[2]), repeatDays, savedFocus });
+  return { request: serializeCalendarRequest(request), note: ALARM_PROPOSED_NOTE };
+}
+
+/** The value a saved session's filter stores: a category or tag as named, a project by its id. */
+function resolveFocusValue(replica: Replica, kind: 'category' | 'project' | 'tag', value: string): string {
+  const same = (a: string) => a.trim().toLowerCase() === value.toLowerCase();
+  if (kind === 'project') {
+    const project = replica.projects().find(p => p.id === value || same(p.title));
+    if (!project) throw new Error(`No project "${value}". list_projects gives their names and ids.`);
+    return project.id;
+  }
+  if (kind === 'category') {
+    const category = replica.categories().find(c => same(c.name));
+    if (!category) throw new Error(`No category "${value}". get_overview lists their categories.`);
+    return category.name;
+  }
+  const tag = replica.tagRegistry().find(same);
+  if (!tag) throw new Error(`No tag "${value}". get_overview lists their tags.`);
+  return tag;
 }
 
 export function listCalendarRequests(replica: Replica, input: { status?: CalendarRequest['status'] }) {

@@ -1,3 +1,4 @@
+import type { SavedFocusFilter } from './alarms';
 /**
  * Where a calendar request stands (see `CalendarRequest`). `pending` until the
  * device named by `calendarRequestDeviceId` picks it up; that device moves it
@@ -20,7 +21,7 @@ export type CalendarRequestStatus = 'proposed' | 'pending' | 'written' | 'failed
  * event, an AlarmKit alarm). They are always `proposed` and are applied by the
  * device the person taps on, through `updateTask`, never by the drain.
  */
-export type CalendarRequestKind = 'event' | 'task_deadline' | 'task_alarm';
+export type CalendarRequestKind = 'event' | 'task_deadline' | 'task_alarm' | 'new_alarm';
 
 /** The numbers a `task_alarm` request carries; absent keys mean the task's own. */
 export interface CalendarRequestPayload {
@@ -28,6 +29,18 @@ export interface CalendarRequestPayload {
   alarmAt?: string;
   /** `alarm` rings once, `persistent` repeats until the task is done. */
   ringKind?: 'alarm' | 'persistent';
+  /**
+   * A `new_alarm` request: the alarm of its own to create (utils/alarms.ts).
+   * It has no task, and rings once or on `repeatDays` (0 = Sunday, empty =
+   * the next time the clock reads that time).
+   */
+  alarm?: { label: string; hour: number; minute: number; repeatDays: number[] };
+  /**
+   * A `new_alarm` request: the saved focus session the alarm offers once it
+   * is turned off. A session the person already has under this name is used
+   * as it is, and this rule only makes a new one.
+   */
+  savedFocus?: { name: string; filter: SavedFocusFilter; windowMinutes: number | null };
 }
 
 /**

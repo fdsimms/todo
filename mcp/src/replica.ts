@@ -37,6 +37,7 @@ import type {
   PlateInventory,
   CalendarRequest,
   CalendarRequestChanges,
+  SavedFocusFilter,
   Category,
   ChainItem,
   CoinEntry,
@@ -304,6 +305,19 @@ export interface TaskActionProposalInput {
   taskId: string;
   alarmAt?: string;
   ringKind?: 'alarm' | 'persistent';
+}
+
+/**
+ * A new alarm of its own for the Inbox (`CalendarRequest.kind` `new_alarm`),
+ * optionally offering a saved focus session once it is turned off. Already
+ * parsed: the filter's value is a category name, a project id or a tag.
+ */
+export interface AlarmProposalInput {
+  label: string;
+  hour: number;
+  minute: number;
+  repeatDays: number[];
+  savedFocus: { name: string; filter: SavedFocusFilter; windowMinutes: number | null } | null;
 }
 
 /** An event to ask the phone to write. Already parsed: instants, and an exclusive end. */
@@ -1704,6 +1718,13 @@ export interface Replica {
    * on a calendar.
    */
   proposeTaskAction(input: TaskActionProposalInput): CalendarRequest;
+  /**
+   * Suggest a new alarm that offers a saved focus session when it is turned
+   * off. Alarms and saved sessions are device-only, so this is only ever a
+   * proposal: the phone that is tapped makes both. Refused while the same
+   * alarm is already waiting.
+   */
+  proposeAlarm(input: AlarmProposalInput): CalendarRequest;
   /** Take back a request that is still pending, or a proposal not yet answered. One already answered is the phone's to keep. */
   cancelCalendarRequest(id: string): CalendarRequest;
   /**
@@ -6009,6 +6030,38 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         kind: input.kind,
         taskId: task.id,
         payload: input.kind === 'task_alarm' ? { alarmAt: input.alarmAt, ringKind: input.ringKind ?? 'alarm' } : null,
+      };
+      db.dbInsertCalendarRequest(request);
+      return request;
+    },
+
+    proposeAlarm(input: AlarmProposalInput): CalendarRequest {
+      const title = input.label || input.savedFocus?.name || 'Alarm';
+      const open = db.dbGetAllCalendarRequests().find(r =>
+        r.status === 'proposed' && r.kind === 'new_alarm'
+        && r.payload?.alarm?.hour === input.hour && r.payload.alarm.minute === input.minute
+        && r.payload.alarm.repeatDays.join() === input.repeatDays.join() && r.title === title);
+      if (open) throw new Error(`That alarm is already suggested and waiting for the person (request ${open.id}). cancel_calendar_request takes it back if it should change.`);
+      const epoch = new Date(0).toISOString();
+      const request: CalendarRequest = {
+        id: generateId(),
+        title,
+        startAt: epoch,
+        endAt: epoch,
+        allDay: false,
+        location: null,
+        notes: null,
+        status: 'proposed',
+        failureReason: null,
+        eventExternalId: null,
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+        kind: 'new_alarm',
+        taskId: null,
+        payload: {
+          alarm: { label: input.label, hour: input.hour, minute: input.minute, repeatDays: input.repeatDays },
+          ...(input.savedFocus ? { savedFocus: input.savedFocus } : {}),
+        },
       };
       db.dbInsertCalendarRequest(request);
       return request;

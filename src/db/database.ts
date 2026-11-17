@@ -8980,7 +8980,7 @@ function rowToCalendarRequest(row: Record<string, unknown>): CalendarRequest {
     changes: parseCalendarRequestChanges(row.changes),
     // A kind from a newer peer reads as an event, which a task_ kind's epoch
     // times make the drain expire rather than write.
-    kind: row.kind === 'task_deadline' || row.kind === 'task_alarm' ? row.kind : 'event',
+    kind: row.kind === 'task_deadline' || row.kind === 'task_alarm' || row.kind === 'new_alarm' ? row.kind : 'event',
     taskId: (row.task_id as string | null) ?? null,
     payload: parseCalendarRequestPayload(row.payload),
   };

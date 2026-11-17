@@ -127,6 +127,8 @@ export function suggestionIsStale(r: CalendarRequest, now: Date, dayResetTime?: 
     return Number.isNaN(at) || at <= now.getTime();
   }
   if (r.kind === 'task_deadline') return false;
+  // A new alarm names a time of day, not a moment, so only the month's wait expires it.
+  if (r.kind === 'new_alarm') return false;
   if (r.action === 'update' || r.action === 'delete') return false;
   return requestEventIsOver(r, now, dayResetTime);
 }

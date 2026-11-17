@@ -44,6 +44,7 @@ const CONFIRMATION_HOLD_MS = 1600;
 /** What a card says once its button has been pressed. */
 function confirmationFor(request: CalendarRequest, model: SuggestionCardModel): string {
   if (request.kind === 'task_alarm') return model.primaryLabel === 'Set alarm' ? 'Alarm set' : 'Reminder set';
+  if (request.kind === 'new_alarm') return 'Alarm set';
   if (request.kind === 'task_deadline') return 'Added to Calendar';
   if (request.action === 'delete') return 'Removing from Calendar';
   if (request.action === 'update') return 'Changing on Calendar';

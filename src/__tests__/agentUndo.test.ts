@@ -90,10 +90,12 @@ describe('agentRecordPlan', () => {
     expect(agentRecordPlan(e, at('proposed'))).toEqual({ kind: 'cancelCalendarRequest', id: 'c1', what: 'event', proposed: true });
     expect(agentUndoLabel(agentRecordPlan(e, at('proposed')))).toBe('Skip');
     // A task suggestion says which kind it is, so the confirmation can name it.
-    const kindAt = (kind: 'task_alarm' | 'task_deadline', status: 'proposed' | 'written' | 'failed') =>
+    const kindAt = (kind: 'task_alarm' | 'task_deadline' | 'new_alarm', status: 'proposed' | 'written' | 'failed') =>
       state({ calendarRequest: () => ({ status, kind }) });
     expect(agentRecordPlan(e, kindAt('task_alarm', 'proposed'))).toMatchObject({ what: 'alarm', proposed: true });
     expect(agentRecordPlan(e, kindAt('task_deadline', 'proposed'))).toMatchObject({ what: 'deadline', proposed: true });
+    expect(agentRecordPlan(e, kindAt('new_alarm', 'proposed'))).toMatchObject({ what: 'alarm', proposed: true });
+    expect(agentRecordPlan(e, kindAt('new_alarm', 'written'))).toEqual({ kind: 'none', reason: 'Alarm set' });
     expect(agentRecordPlan(e, kindAt('task_alarm', 'written'))).toEqual({ kind: 'none', reason: 'Alarm set' });
     expect(agentRecordPlan(e, kindAt('task_alarm', 'failed'))).toEqual({ kind: 'none', reason: 'Not set' });
     expect(agentUndoLabel(agentRecordPlan(e, at('pending')))).toBe('Don’t add');
