@@ -1027,8 +1027,9 @@ interface SettingsStore {
   // written back out on the next pass, for ever.
   groceryImportTwoWay: boolean;
   // Whether a reminder that was checked off in Reminders and then deleted is
-  // recorded as bought without asking (`reminderRemovals.ts`). Off by default:
-  // the "Cleared in Reminders" card asks about every removal. Only rows that
+  // recorded as bought without asking (`reminderRemovals.ts`). On by default,
+  // since checking an item off is the signal; turn it off to have the
+  // "Cleared in Reminders" card ask about every removal. Only rows that
   // were in the cart count; a row deleted unchecked is still asked about.
   // Device-local, like the rest of the `groceryImport*` family.
   groceryImportAutoBought: boolean;
@@ -2850,7 +2851,7 @@ const DEFAULT_SETTINGS = {
   groceryImportEnabled: false,
   groceryImportDelete: true,
   groceryImportTwoWay: false,
-  groceryImportAutoBought: false,
+  groceryImportAutoBought: true,
   remindersImportReview: true,
   calendarReadEnabled: false,
   healthReadEnabled: false,
@@ -3333,7 +3334,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   groceryImportConfirmedListId: null,
   groceryImportDelete: true,
   groceryImportTwoWay: false,
-  groceryImportAutoBought: false,
+  groceryImportAutoBought: true,
   remindersImportReview: true,
   reminderCaptures: [],
   calendarReadEnabled: false,
@@ -3814,7 +3815,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
     const groceryImportTwoWay = dbGetSetting('groceryImportTwoWay') === 'true';
-    const groceryImportAutoBought = dbGetSetting('groceryImportAutoBought') === 'true';
+    const groceryImportAutoBought = dbGetSetting('groceryImportAutoBought') !== 'false';
     const reminderCaptures = parseReminderCaptures(dbGetSetting('reminderCaptures'));
     const calendarReadEnabled = dbGetSetting('calendarReadEnabled') === 'true';
     const calendarIds = parseCalendarIds(dbGetSetting('calendarIds'));

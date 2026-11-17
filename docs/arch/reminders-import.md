@@ -145,9 +145,9 @@ Seven things that are the way they are for a reason:
   `groceryImportRemovals`, device-local beside the links; the card asks which were bought, with the
   in-cart rows pre-selected, and records those through `finishShopping`'s `itemIds`. **It never
   assumes a purchase on its own**: a deleted reminder is either a cleared shop or a thing that
-  stopped being wanted, and only the person knows which. The one exception is a setting the person
-  turns on (`groceryImportAutoBought`, "Count cleared items as bought", off by default and
-  device-local): a row that was checked in Reminders before it was deleted is then recorded
+  stopped being wanted, and only the person knows which. The one exception is a setting
+  (`groceryImportAutoBought`, "Count cleared items as bought", on by default and device-local,
+  which the person can turn off): a row that was checked in Reminders before it was deleted is then recorded
   straight away through the same `answer`, one undo entry per day checked, and a row deleted
   unchecked is still asked about. A removal stops being asked about once the row is back
   on the list, bought since, or two weeks old. **The purchase is dated from the check, not the
