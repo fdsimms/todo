@@ -146,6 +146,7 @@ import { deleteGeneratedTaskQuietly, dropGeneratedTask, markGeneratedReady, reco
 import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } from '../utils/savedEvents';
 import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
 import { reopenBlockedByLater, reopenedTask } from '../utils/taskReopen';
+import { planQuotaRollover, planVacationEndQuotas, type QuotaRolloverPlan } from '../utils/quotaRollover';
 import { forgiveVacationStreaks, forgivePausedProjectStreaks as pausedStreaksForgiven } from '../utils/vacationStreaks';
 import { pauseEndsOn, registerPauseEndListener } from '../utils/projectPause';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, stoppableGenerator } from '../utils/generatedTasks';
@@ -321,7 +322,7 @@ import { mealStripCoins, mealStripDoneSlots, mealStripOn, mealStripSlots } from 
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
-import { inheritedOccurrence, isRotationTask, rotationDoneCount, rotationPick, rotationPlanFor, rotationUnpick } from '../utils/rotation';
+import { isRotationTask, rotationDoneCount, rotationPick, rotationPlanFor, rotationUnpick } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
@@ -522,7 +523,7 @@ import {
 import { leavePrepLine, openLeavePrep } from '../utils/leavePrep';
 import { describeDisruptions, disruptionHeadlines, journeyDisruptions } from '../utils/transitAlerts';
 import { carryClockTime, dateToHHMM, onLogicalDay } from '../utils/clockTime';
-import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
+import { reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
 import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
 import { duplicateRows } from '../utils/taskDuplicate';
 import { useTransitStore } from './useTransitStore';
@@ -656,6 +657,32 @@ function resyncOkAgain(names: readonly string[]): void {
 function writeSpawnedTask(row: Task, held: ReadonlySet<string>): void {
   if (held.has(row.id)) dbUpdateTask(row);
   else dbInsertTask(row);
+}
+
+/**
+ * Writes the rows a quota plan names (`src/utils/quotaRollover.ts`): one WAL
+ * transaction for the lot rather than one per row, since this runs at launch
+ * and on every background refresh and a day's worth of quota tasks is a row
+ * each. Scheduling the reminders stays outside it, since that reaches the
+ * notification system rather than the database.
+ */
+function applyQuotaPlan({ closed, spawned, scaled = [] }: QuotaRolloverPlan & { scaled?: Task[] }): void {
+  if (closed.length === 0 && spawned.length === 0 && scaled.length === 0) return;
+  const held = new Set(useTaskStore.getState().tasks.map(t => t.id));
+  dbTransaction(() => {
+    closed.forEach(dbUpdateTask);
+    spawned.forEach(row => writeSpawnedTask(row, held));
+    scaled.forEach(dbUpdateTask);
+  });
+  spawned.forEach(scheduleTaskReminder);
+  // The day's nudges belong to the row that just closed; the new day's come
+  // from its successor.
+  closed.forEach(t => { if (t.quotaReminders) cancelQuotaNudges(t.id); });
+  spawned.forEach(t => { scheduleQuotaNudges(t); });
+  const rewritten = new Map([...closed, ...scaled].map(t => [t.id, t]));
+  useTaskStore.setState(s => ({
+    tasks: withSpawnedTasks(s.tasks.map(t => rewritten.get(t.id) ?? t), spawned),
+  }));
 }
 
 /** `tasks` with each spawned row in place of one sharing its id, the rest appended. */
@@ -2341,6 +2368,8 @@ interface TaskStore extends UndoHistoryActions {
   holdQuotaOnToday: (id: string) => void;
   releaseQuotaHold: (id: string) => void;
   rolloverQuotas: () => void;
+  /** What a vacation ending owes weekly targets: see its doc comment in the implementation. */
+  prorateQuotasForVacationEnd: (startedAt: string | null) => void;
   /** Opt-in counterpart to rolloverQuotas for allowOvershoot tasks — see its doc comment. */
   sweepOvershootQuotas: () => void;
   /**
@@ -6025,217 +6054,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // checkVacationExpiry, it's "time passed while we weren't looking" cleanup,
   // and the app may have been closed for days.
   rolloverQuotas() {
-    const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
-    const todayStart = getCurrentDayStart();
-    // Which period a date belongs to, as that period's opening instant. Two
-    // dates compare equal exactly when they share a period, which is the test
-    // this sweep is really making — "has the stretch this row was counting
-    // across finished" — rather than the day comparison it used to make.
-    const periodStartOf = (date: Date, period: QuotaPeriod): number => {
-      const dayStart = getTaskDayStart(date, dayResetTime);
-      return +(period === 'week' ? quotaWeekStart(dayStart, weekStartsOn) : dayStart);
-    };
-    const stale = get().tasks.filter(t =>
-      isQuotaTask(t) &&
-      !t.completed &&
-      !t.archived &&
-      // A quota with no repeat has no next day to reset into — it's a one-off
-      // ("read 8 chapters"), so it stays overdue like any other undone task
-      // rather than being closed out and silently re-spawned as a habit.
-      t.recurrenceType !== 'none' &&
-      // Vacation-paused tasks are protected from streak loss by design.
-      !isWithheld(t) &&
-      // allowOvershoot tasks get their own sweep (sweepOvershootQuotas, below)
-      // that goes through completeTask so an overshot count survives — this
-      // manual close always writes progressCount as-is but forces
-      // streakCount to 0, which is right for a shortfall but wrong for a
-      // task that actually met or beat its target.
-      //
-      // An interval quota is excluded for a stronger version of the same
-      // reason: it has no shortfall to record. Its target is span ÷ interval,
-      // so falling "short" of it means nothing more than not having tapped
-      // every nudge, and closing the day with streakCount: 0 for that would
-      // break the streak on essentially every day the feature works. See
-      // sweepFinishedQuotaRuns, which closes it at the end of its run instead.
-      !quotaRidesOutTheDay(t) &&
-      t.dueDate !== null &&
-      // "Its own period is over", not "its own day is over" — a weekly target
-      // has six days left to run on the morning after it was spawned, and the
-      // day test would close it out short every single night. See
-      // Task.quotaPeriod, and periodStartOf just below for the two readings.
-      //
-      // getEffectiveTaskDate rather than the raw dueDate: a quota task pushed
-      // out with deferUntil is hidden until that later day (isTaskVisible),
-      // so its stored dueDate reads as overdue every launch in between even
-      // though the user moved it forward on purpose. Without this, the row
-      // got closed as a shortfall (breaking its streak) and a fresh successor
-      // spawned for today — reappearing on Today despite having just been
-      // rescheduled later, and duplicating it once the deferred date itself
-      // arrived and rolled over a second time.
-      //
-      // The effective date only decides whether the row is still *ahead of*
-      // today's period, though. The count on it was logged in the period its
-      // dueDate belongs to, so once that period is over and the deferred day
-      // has arrived in a later one, the count is last period's and closes out
-      // here. Left alone, a weekly target pushed from Monday to the next
-      // Sunday opened the new week still showing last week's 1/5.
-      periodStartOf(new Date(t.dueDate), t.quotaPeriod) < periodStartOf(todayStart, t.quotaPeriod) &&
-      periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <=
-        periodStartOf(todayStart, t.quotaPeriod)
-    );
-    if (stale.length === 0) return;
+    applyQuotaPlan(planQuotaRollover(get().tasks));
+  },
 
-    const closed: Task[] = [];
-    const spawned: Task[] = [];
-    const now = new Date().toISOString();
-    for (const task of stale) {
-      // Stamped at the end of the period it belonged to, not now — the partial
-      // is a record of *that* day (or week), and the Logbook groups by
-      // completedAt.
-      const ownPeriodStart = periodStartOf(new Date(task.dueDate!), task.quotaPeriod);
-      // addDays rather than a fixed 24h: the DST spring-forward day is 23
-      // hours long, and a fixed stride landed the stamp at 00:59 the next
-      // morning, which getLogicalDayKey filed under the wrong day.
-      const ownDayEnd = new Date(+addDays(ownPeriodStart, task.quotaPeriod === 'week' ? 7 : 1) - 1);
-      // A day the task's own category schedule doesn't cover (see #2201,
-      // isCategoryScheduledDay) wasn't a work day, so it closes as a no-op
-      // rather than a shortfall — neither advancing nor breaking the streak.
-      // Day-period only: a weekly target can still be met on any of the
-      // category's scheduled days within its week, so a single day-of-week
-      // check doesn't say anything about whether the week itself was worked.
-      // `nextStreak` reused for both fields the same way completeTask does,
-      // so nextStreakRecord folds nothing when it's unchanged.
-      const neutral = task.quotaPeriod !== 'week' && !isCategoryScheduledDay(task.category, new Date(ownPeriodStart));
-      // A weekly target counting units is a total, so a short week keeps it.
-      const keepsStreak = neutral || countsUnits(task);
-      const nextStreak = keepsStreak ? task.streakCount : 0;
-      closed.push({
-        ...task,
-        completed: true,
-        completedAt: ownDayEnd.toISOString(),
-        // progressCount deliberately left as-is — that's the record.
-        streakCount: nextStreak,
-        streakDate: keepsStreak ? task.streakDate : null,
-        previousStreakCount: task.streakCount,
-        previousStreakDate: task.streakDate,
-        // A partial day closes the run out, so the run it ends is a candidate
-        // for the personal best like any other ending.
-        priorBestStreak: nextStreakRecord(task, nextStreak),
-      });
-      // A series that has run out (recurrenceEndDate/recurrenceCount) gets the
-      // partial record but no successor — the schedule is consulted only for
-      // *whether* it continues, since its answer for *when* would still be in
-      // the past if the app sat closed for a week.
-      if (getNextDueDate(task, dayResetTime) === null) continue;
-      // Today, unless the person had pushed this occurrence to a later day of
-      // the current period: the successor keeps that day rather than
-      // reappearing on Today.
-      const heldDay = getTaskDayStart(new Date(getEffectiveTaskDate(task, dayResetTime)!), dayResetTime);
-      // And the repeat rule's own next day for a day-period target. "Drink
-      // water, Mon to Fri" left short on Friday and rolled on Saturday was dated
-      // Saturday, a day the rule skips, where finishing it on time puts the next
-      // one on Monday (the same getNextOccurrence a skip uses, which covers no
-      // day). A daily rule gives today, as before. A weekly target keeps its
-      // period reading: its row stands for the whole week.
-      //
-      // completedAt is the day being closed, because a repeat-from-completion
-      // rule measures from the day the work was done and otherwise reads "now":
-      // a daily target left short yesterday was then counted from today and
-      // landed on tomorrow, skipping today altogether.
-      const ruleDay = task.quotaPeriod !== 'week'
-        ? getNextOccurrence(task, dayResetTime, { catchUp: true, completedAt: ownDayEnd })
-        : null;
-      const ruleStart = ruleDay ? getTaskDayStart(ruleDay.date, dayResetTime) : todayStart;
-      const earliest = ruleStart > todayStart ? ruleStart : todayStart;
-      const nextDue = new Date(heldDay > earliest ? heldDay : earliest);
-      nextDue.setHours(12, 0, 0, 0);
-      const effective: Task = inheritedOccurrence(task);
-      spawned.push({
-        ...effective,
-        // The same seed completeTask's successor uses, because it is the same
-        // row: the next occurrence of this task. A partial day closed here on
-        // one device while the last unit was logged on the other spawned two
-        // successors under two seeds, and nothing merged them.
-        id: derivedId(spawnSeed.occurrence(task.id)),
-        completed: false,
-        completedAt: null,
-        missedAt: null,
-        doneByOtherAt: null,
-        // Same as completeTask's successor: the stamp is per-occurrence, and
-        // carrying it would leave this row unable to be charged at all.
-        penaltyFiredAt: null,
-        penaltyCreditedAt: null,
-        autoScheduledAt: null,
-        createdAt: now,
-        seenAt: now,
-        dueDate: nextDue.toISOString(),
-        deferUntil: null,
-        // Same as completeTask's successor: pinned only when the task asked
-        // for every occurrence to be.
-        pinned: !!task.pinEachOccurrence,
-        progressCount: 0,
-        quotaLoggedDayKey: null,
-        quotaTapTimes: [],
-        // Same as completeTask's successor: the count resets, the mute carries.
-        postponeCount: 0,
-        driftingSince: null,
-        bountyPushes: null,
-        // A neutral close (see nextStreak above) carries the live streak
-        // forward exactly as it stood — a non-work day never happened, so
-        // the successor picking it up must not read as day one either.
-        streakCount: nextStreak,
-        streakDate: keepsStreak ? task.streakDate : null,
-        previousStreakCount: 0,
-        previousStreakDate: null,
-        // Not 0, unlike everything else reset on this successor: the streak
-        // starts again but the record is the task's history, and this row is
-        // where the task continues.
-        priorBestStreak: nextStreakRecord(task, nextStreak),
-        timerStartedAt: null,
-        // A target's per-unit countdown banked on the day it closes must not
-        // carry onto the next day's first unit.
-        timerElapsedSeconds: 0,
-        previousOccurrenceId: task.id,
-        seriesDefaults: null,
-        // The rest of what buildCompletion resets on a successor, which this
-        // row had been spreading forward from the day it replaces. Left as
-        // they were, yesterday's reminder time was in the past and never fired
-        // again, and a repeat count never ran down however many days fell short.
-        ...reminderOnto(effective, nextDue),
-        deadline: deadlineOnto({ ...effective, deadline: null }, nextDue),
-        recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
-        recurrenceAnchorDate: null,
-        deliverableValue: null,
-        deliverableWhy: null,
-        deliverableRevisitIf: null,
-        rotationLog: [],
-        rotationPeriodStart: null,
-        quotaStartedAt: null,
-        calendarEventId: null,
-        calendarEventExternalId: null,
-        completionCalendarEventId: null,
-        completionCalendarEventExternalId: null,
-      });
-    }
-
-    // One WAL transaction for the whole rollover rather than one per row:
-    // this runs at launch and on every background refresh, and a day's worth
-    // of quota tasks is a row each. Scheduling the reminders stays outside it,
-    // since that reaches the notification system rather than the database.
-    const held = new Set(get().tasks.map(t => t.id));
-    dbTransaction(() => {
-      closed.forEach(dbUpdateTask);
-      spawned.forEach(row => writeSpawnedTask(row, held));
-    });
-    spawned.forEach(scheduleTaskReminder);
-    // The day's nudges belong to the row that just closed; the new day's come
-    // from its successor.
-    closed.forEach(t => { if (t.quotaReminders) cancelQuotaNudges(t.id); });
-    spawned.forEach(t => { scheduleQuotaNudges(t); });
-    const closedById = new Map(closed.map(t => [t.id, t]));
-    set(s => ({
-      tasks: withSpawnedTasks(s.tasks.map(t => closedById.get(t.id) ?? t), spawned),
-    }));
+  // What a vacation ending owes weekly targets (see planVacationEndQuotas):
+  // weeks left behind closed and replaced, the rest scaled to the days that
+  // weren't vacation. Run before vacation mode is switched off, as
+  // forgivVacationStreaks is, because it reads which rows vacation was hiding
+  // and `startedAt` is cleared with the mode.
+  prorateQuotasForVacationEnd(startedAt) {
+    if (!startedAt) return;
+    applyQuotaPlan(planVacationEndQuotas(get().tasks, startedAt));
   },
 
   // Folded into one loop rather than split into a sibling function: both
@@ -11762,10 +11591,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // lost its streak at the end of every vacation. Both callers run this
     // before switching vacation mode off, which is what the check reads.
     const forgiven = forgiveVacationStreaks(get().tasks, getCurrentDayStart().toISOString(), isHiddenForVacation);
-    if (forgiven.length === 0) return;
-    forgiven.forEach(t => dbUpdateTask(t));
-    const byId = new Map(forgiven.map(t => [t.id, t]));
-    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+    if (forgiven.length > 0) {
+      forgiven.forEach(t => dbUpdateTask(t));
+      const byId = new Map(forgiven.map(t => [t.id, t]));
+      set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+    }
+    // The other thing every path that ends vacation owes, and for the same
+    // reason it runs before the mode is off: weekly targets, scaled to the days
+    // that weren't vacation.
+    get().prorateQuotasForVacationEnd(useSettingsStore.getState().vacationStart);
   },
 
   forgivePausedProjectStreaks(endedOn) {

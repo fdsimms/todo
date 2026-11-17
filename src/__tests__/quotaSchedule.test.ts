@@ -12,6 +12,8 @@ import {
   quotaProrationPatch,
   firstWeekAnchor,
   firstWeekPatch,
+  partWeekPatch,
+  vacationDaysInWeek,
 } from '../utils/quotaSchedule';
 
 const DAY = new Date('2026-08-26T00:00:00');
@@ -411,6 +413,54 @@ describe('firstWeekPatch', () => {
     expect(firstWeekAnchor(thu, today)).toEqual(thu);
     expect(firstWeekAnchor(new Date('2026-08-20T00:00:00'), today)).toEqual(today);
     expect(firstWeekAnchor(null, today)).toEqual(today);
+  });
+});
+
+describe('vacationDaysInWeek', () => {
+  // Monday-start week of Aug 24 to Aug 30, 2026.
+  const mon = new Date('2026-08-24T00:00:00');
+  const day = (d: number) => new Date(`2026-08-${String(d).padStart(2, '0')}T00:00:00`);
+
+  it('counts the days before the return day when the vacation began earlier', () => {
+    expect(vacationDaysInWeek(mon, day(17), day(28))).toBe(4);
+  });
+
+  it('counts from the day it began when that is inside the week', () => {
+    expect(vacationDaysInWeek(mon, day(26), day(29))).toBe(3);
+  });
+
+  it('is 0 when the vacation ended before the week began or began after it ended', () => {
+    expect(vacationDaysInWeek(mon, day(10), day(24))).toBe(0);
+    expect(vacationDaysInWeek(mon, day(31), day(31))).toBe(0);
+  });
+
+  it('caps at the week when it runs past it', () => {
+    expect(vacationDaysInWeek(mon, day(20), new Date('2026-09-10T00:00:00'))).toBe(7);
+  });
+
+  it('keeps counting whole days across the DST change', () => {
+    const sunday = new Date('2026-11-01T00:00:00'); // US fall back
+    expect(vacationDaysInWeek(sunday, sunday, new Date('2026-11-05T00:00:00'))).toBe(4);
+  });
+});
+
+describe('partWeekPatch', () => {
+  const thu = new Date('2026-08-27T00:00:00');
+  const plain = {
+    quotaPeriod: 'week' as const, targetCount: 3, seriesDefaults: null, quotaStartedAt: null,
+    rotationEnabled: false, quotaIntervalMinutes: null,
+  };
+
+  it('scales to the days that can be used and keeps the full count for next week', () => {
+    expect(partWeekPatch(plain, 4, thu)).toMatchObject({
+      targetCount: 2, seriesDefaults: { targetCount: 3 }, quotaStartedAt: thu.toISOString(),
+    });
+  });
+
+  it('does nothing for a full week or for a target that is not a plain weekly one', () => {
+    expect(partWeekPatch(plain, 7, thu)).toBeNull();
+    expect(partWeekPatch({ ...plain, quotaPeriod: 'day' }, 4, thu)).toBeNull();
+    expect(partWeekPatch({ ...plain, rotationEnabled: true }, 4, thu)).toBeNull();
   });
 });
 

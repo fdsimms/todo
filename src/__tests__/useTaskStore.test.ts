@@ -16687,6 +16687,101 @@ describe('quota tasks', () => {
     });
   });
 
+  // Coming back from vacation partway through a week: the weekly target is
+  // scaled to the days that weren't vacation. The clock is Tuesday June 10 2025
+  // and weeks start on Sunday, so a vacation that began on or before Sunday
+  // June 8 took two days of this week.
+  describe('ending vacation with a weekly target', () => {
+    const weekly = (overrides: Partial<Task> = {}) =>
+      quota({
+        quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, progressCount: 0,
+        vacationPause: true, streakCount: 4, streakDate: new Date(2025, 5, 3, 12, 0, 0).toISOString(),
+        dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(), ...overrides,
+      });
+    const settingsMock = useSettingsStore.getState as unknown as jest.Mock;
+    let original: ((...a: unknown[]) => unknown) | undefined;
+    const onVacation = (startedAt: string) => {
+      original = settingsMock.getMockImplementation();
+      const base = settingsMock();
+      settingsMock.mockImplementation(() => ({ ...base, vacationMode: true, vacationStart: startedAt }));
+    };
+    afterEach(() => { if (original) settingsMock.mockImplementation(original); original = undefined; });
+    const june = (d: number) => new Date(2025, 5, d, 9, 0, 0).toISOString();
+
+    it('scales a row still in the week it began in', () => {
+      onVacation(june(8));
+      useTaskStore.setState({ tasks: [weekly()] });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(8));
+      const t = useTaskStore.getState().tasks.find(x => x.id === 'water')!;
+      expect(t.targetCount).toBe(2);
+      expect(t.seriesDefaults).toMatchObject({ targetCount: 3 });
+    });
+
+    it('leaves a row alone once it has logged the scaled count', () => {
+      onVacation(june(8));
+      useTaskStore.setState({ tasks: [weekly({ progressCount: 2 })] });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(8));
+      expect(useTaskStore.getState().tasks.find(x => x.id === 'water')!.targetCount).toBe(3);
+    });
+
+    it('closes last week without breaking the streak and scales its replacement', () => {
+      onVacation(june(4));
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 1, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(4));
+      const { tasks } = useTaskStore.getState();
+      const closed = tasks.find(x => x.id === 'water')!;
+      const next = tasks.find(x => x.id !== 'water' && !x.completed)!;
+      expect(closed.completed).toBe(true);
+      expect(closed.streakCount).toBe(4);
+      expect(next.targetCount).toBe(2);
+      expect(next.seriesDefaults).toMatchObject({ targetCount: 3 });
+      expect(next.streakCount).toBe(4);
+    });
+
+    const routine = [
+      { id: 'cardio', title: 'Cardio', perWeek: 3 },
+      { id: 'weights', title: 'Weight lifting', perWeek: 3 },
+      { id: 'rest', title: 'Rest day' },
+    ];
+    const rotation = (overrides: Partial<Task> = {}) =>
+      weekly({ rotationEnabled: true, rotationItems: routine, targetCount: 7, ...overrides });
+
+    it('scales a rotation by member and brings the full set back next week', () => {
+      onVacation(june(8));
+      useTaskStore.setState({ tasks: [rotation()] });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(8));
+      const t = useTaskStore.getState().tasks.find(x => x.id === 'water')!;
+      expect(t.targetCount).toBe(5);
+      expect(t.rotationItems.map(i => i.perWeek ?? 1)).toEqual([2, 2, 1]);
+      expect(t.seriesDefaults).toMatchObject({ rotationItems: routine });
+    });
+
+    it('scales the replacement of a rotation left in an earlier week', () => {
+      onVacation(june(4));
+      useTaskStore.setState({
+        tasks: [rotation({ dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(4));
+      const { tasks } = useTaskStore.getState();
+      const next = tasks.find(x => x.id !== 'water' && !x.completed)!;
+      expect(tasks.find(x => x.id === 'water')!.completed).toBe(true);
+      expect(next.targetCount).toBe(5);
+      expect(next.rotationItems.map(i => i.perWeek ?? 1)).toEqual([2, 2, 1]);
+    });
+
+    it('leaves a target that was not paused for vacation, and a vacation that took no day of the week', () => {
+      onVacation(june(8));
+      useTaskStore.setState({ tasks: [weekly({ vacationPause: false })] });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(8));
+      expect(useTaskStore.getState().tasks.find(x => x.id === 'water')!.targetCount).toBe(3);
+      useTaskStore.setState({ tasks: [weekly()] });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(10));
+      expect(useTaskStore.getState().tasks.find(x => x.id === 'water')!.targetCount).toBe(3);
+    });
+  });
+
   // A daily target that repeats on weekdays only. The row left over from Friday
   // closes when the app next runs, and the next one belongs on the rule's next day.
   describe('rolloverQuotas: a daily target on weekdays only', () => {

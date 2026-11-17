@@ -475,7 +475,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quickEventSave.ts` — splitNotesAndLink, QuickEventSaveInput, quickEventSaveFields, alertMinutesFromOffset, describeAlert, ALERT_CHOICES, quickEventFromLine
 - `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch
 - `src/utils/quotaRamp.ts` — QUOTA_RAMP_MAX_TARGET, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_EVERY, canRampQuota, hasQuotaRamp, quotaRampAtGoal, QuotaRampResult, advanceQuotaRamp, describeQuotaRamp
-- `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, proratedFrom, weekDaysLeft, proratedWeeklyTarget, quotaProrationPatch, firstWeekAnchor, +5 more
+- `src/utils/quotaRollover.ts` — QuotaRolloverPlan, planQuotaRollover, planVacationScaling, planVacationEndQuotas
+- `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, proratedFrom, weekDaysLeft, proratedWeeklyTarget, quotaProrationPatch, firstWeekAnchor, +7 more
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
 - `src/utils/rainUnits.ts` — RainUnit, rainUnitFor, formatRain
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring, MatchExcerpt, matchExcerpt
@@ -534,7 +535,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +70 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
-- `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, withWorkout, rotationMemberForWorkout, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, +30 more
+- `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, withWorkout, rotationMemberForWorkout, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, +33 more
 - `src/utils/routineGroups.ts` — RoutineGroup, RoutineSections, groupNames, resolveGroupName, routineSections, renamedRegistry, FlatRoutineRow, placementsFromList
 - `src/utils/routinePicker.ts` — RoutineOption, RoutineFilterResult, filterRoutines, resolveRoutineSubmit
 - `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart

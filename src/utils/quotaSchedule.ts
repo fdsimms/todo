@@ -268,12 +268,48 @@ export function firstWeekPatch(
   anchorDayStart: Date,
   weekStartsOn: 0 | 1,
 ): Partial<Task> | null {
+  return partWeekPatch(task, weekDaysLeft(anchorDayStart, weekStartsOn), anchorDayStart);
+}
+
+/**
+ * The patch that scales a weekly target's occurrence to the days of its week
+ * that can be used, counted from `anchorDayStart`, or null when there is
+ * nothing to scale. `firstWeekPatch` (days left after the day it was set up)
+ * and the end of a vacation (`vacationDaysInWeek`) both reach it, so a part
+ * week is scaled the same way whichever took the days away.
+ *
+ * Only a plain weekly target: a rotation's count is its members, and an
+ * interval quota is day-shaped (see `Task.quotaPeriod`).
+ */
+export function partWeekPatch(
+  task: Pick<Task, 'quotaPeriod' | 'targetCount' | 'seriesDefaults' | 'quotaStartedAt' | 'rotationEnabled' | 'quotaIntervalMinutes'>,
+  availableDays: number,
+  anchorDayStart: Date,
+): Partial<Task> | null {
   if (
     task.quotaPeriod !== 'week' || task.targetCount === null || task.targetCount < 2 ||
     task.rotationEnabled || task.quotaIntervalMinutes !== null
   ) return null;
-  const scaled = proratedWeeklyTarget(task.targetCount, weekDaysLeft(anchorDayStart, weekStartsOn));
+  const scaled = proratedWeeklyTarget(task.targetCount, availableDays);
   return quotaProrationPatch(task, task.targetCount, scaled, anchorDayStart);
+}
+
+/**
+ * How many days of the logical week starting at `weekStart` were spent on
+ * vacation, for a vacation that began on `vacationStartDay` and ends on
+ * `returnDay` (the first day back, which is not a vacation day). Whole days,
+ * each a logical day start, so the count is the same on a DST-shifted week.
+ *
+ * Only the last vacation is known (`vacationStart` is stamped when it switches
+ * on and cleared when it ends), so an earlier one in the same week isn't
+ * counted.
+ */
+export function vacationDaysInWeek(weekStart: Date, vacationStartDay: Date, returnDay: Date): number {
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const from = Math.max(+weekStart, +vacationStartDay);
+  const to = Math.min(+weekEnd, +returnDay);
+  return Math.max(0, Math.round((to - from) / 86_400_000));
 }
 
 /**

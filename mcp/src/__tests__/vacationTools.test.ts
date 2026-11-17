@@ -106,4 +106,30 @@ describe('the vacation switch', () => {
     expect(() => setVacationMode(replica, { on: false })).toThrow(/already off/);
     expect(() => setVacationMode(replica, { on: false, until: null })).toThrow(/until goes with on: true/);
   });
+
+  it('scales a weekly target to the days of the week that were not vacation, as the app does on the way off', () => {
+    // Thursday Nov 19 2026 with Monday-start weeks: three days of this week were vacation.
+    jest.useFakeTimers({ now: new Date(2026, 10, 19, 10, 0, 0) });
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useSettingsStore } = require('../../../src/store/useSettingsStore');
+      const weeklyId = replica.createTask({ title: 'Run', category: 'Home' }).id;
+      mockRaw.runSync(
+        "UPDATE tasks SET vacation_pause = 1, recurrence_type = 'weekly', quota_period = 'week', target_count = 3, progress_count = 1, due_date = ? WHERE id = ?",
+        [new Date(2026, 10, 10, 12).toISOString(), weeklyId],
+      );
+      replica.refresh();
+      setVacationMode(replica, { on: true });
+      useSettingsStore.setState({ vacationStart: new Date(2026, 10, 12, 9).toISOString(), weekStartsOn: 1 });
+      const result = setVacationMode(replica, { on: false });
+      expect(result.scaledTargets).toBe(1);
+      expect(result.note).toMatch(/1 weekly target was scaled/);
+      const rows = mockRaw.getAllSync('SELECT id, completed, target_count FROM tasks WHERE title = ?', ['Run']) as
+        { id: string; completed: number; target_count: number }[];
+      expect(rows.find(r => r.id === weeklyId)!.completed).toBe(1);
+      expect(rows.filter(r => r.completed === 0).map(r => r.target_count)).toEqual([2]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

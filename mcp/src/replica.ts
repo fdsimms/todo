@@ -381,6 +381,8 @@ export interface VacationSwitchOutcome {
   hiddenCategories: string[];
   /** Streaks re-dated on the way off (`forgiveVacationStreaks`); 0 on the way on. */
   forgivenStreaks: number;
+  /** Weekly targets scaled to the days that weren't vacation on the way off (`planVacationEndQuotas`); 0 on the way on. */
+  scaledTargets: number;
   /** True when the call only moved the end date of a mode already on. */
   endOnly: boolean;
 }
@@ -1480,7 +1482,9 @@ export interface Replica {
    * Vacation mode through the settings store's own setter, the way the
    * Settings toggle does it. On the way off the protected streaks are forgiven
    * first (`forgiveVacationStreaks`, the rule every off-path shares), or a
-   * paused daily habit reads as broken the moment the pause lifts. `until` is
+   * paused daily habit reads as broken the moment the pause lifts, and weekly
+   * targets are scaled to the days that weren't vacation (`planVacationEndQuotas`,
+   * what the app's own off-paths do). `until` is
    * the day it turns itself off, stored as that day's start as the Settings
    * picker stores it; with the mode already on, a call with `until` moves only
    * the end date. Already on without `until`, or already off, is refused.
@@ -5175,10 +5179,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (settings.vacationMode) {
           if (end === undefined) throw new Error('Vacation mode is already on.');
           settings.setVacationEnd(end);
-          return { on: true, hiddenTasks: hiddenTasks(), hiddenCategories: hiddenCategories(), forgivenStreaks: 0, endOnly: true };
+          return { on: true, hiddenTasks: hiddenTasks(), hiddenCategories: hiddenCategories(), forgivenStreaks: 0, scaledTargets: 0, endOnly: true };
         }
         settings.setVacationMode(true, end ?? null);
-        return { on: true, hiddenTasks: hiddenTasks(), hiddenCategories: hiddenCategories(), forgivenStreaks: 0, endOnly: false };
+        return { on: true, hiddenTasks: hiddenTasks(), hiddenCategories: hiddenCategories(), forgivenStreaks: 0, scaledTargets: 0, endOnly: false };
       }
 
       if (!settings.vacationMode) throw new Error('Vacation mode is already off.');
@@ -5187,8 +5191,27 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const forgiven = streaks.forgiveVacationStreaks(tasks(), dates.getCurrentDayStart().toISOString(), visibility.isHiddenForVacation);
       forgiven.forEach(t => db.dbUpdateTask(t));
       taskCache = null;
+      // Weekly targets, scaled to the days that weren't vacation, as the app
+      // does on the way off (`prorateQuotasForVacationEnd` in the store). The
+      // phone reschedules reminders for rows written here once they sync.
+      let scaledTargets = 0;
+      if (settings.vacationStart) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const quotas = require('../../src/utils/quotaRollover') as typeof import('../../src/utils/quotaRollover');
+        const plan = quotas.planVacationEndQuotas(tasks(), settings.vacationStart);
+        if (plan.closed.length + plan.spawned.length + plan.scaled.length > 0) {
+          const held = new Set(tasks().map(t => t.id));
+          db.dbTransaction(() => {
+            plan.closed.forEach(t => db.dbUpdateTask(t));
+            plan.spawned.forEach(t => (held.has(t.id) ? db.dbUpdateTask(t) : db.dbInsertTask(t)));
+            plan.scaled.forEach(t => db.dbUpdateTask(t));
+          });
+          taskCache = null;
+        }
+        scaledTargets = plan.scaled.length + plan.spawned.filter(t => t.seriesDefaults !== null).length;
+      }
       settings.setVacationMode(false);
-      return { on: false, hiddenTasks: wasHiding, hiddenCategories: categories, forgivenStreaks: forgiven.length, endOnly: false };
+      return { on: false, hiddenTasks: wasHiding, hiddenCategories: categories, forgivenStreaks: forgiven.length, scaledTargets, endOnly: false };
     },
     tagRegistry: () => db.dbGetTagRegistry(),
     createRecipe(input: RecipeInput): Recipe {
