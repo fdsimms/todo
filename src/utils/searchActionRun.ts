@@ -3,6 +3,7 @@ import type { MedicationLog } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { clockTimeToken } from './clockTime';
 import { dbGetFoodLogEntries } from '../db/database';
@@ -16,6 +17,7 @@ import { describeWater, waterEntryOf, waterHelping, waterTotalMl } from './water
 import { resetToMood } from '../navigation/navigationRef';
 import type { DoseAction, GroceryAction, MoodAction, SearchAction, SymptomAction, WaterAction } from './searchActions';
 import { runPantry } from './searchPantryRun';
+import { topOf, type UndoHistoryActions, type UndoableAction } from './undoHistory';
 
 /**
  * Running a search action (see `searchActions.ts`): the write, through the
@@ -36,6 +38,25 @@ export interface SearchActionReceipt {
    * this one, whose Undo takes back both.
    */
   followUp?: { label: string; accessibilityLabel: string; run: () => SearchActionReceipt };
+}
+
+/**
+ * The row's own Undo for a write that also armed shake-to-undo: while that
+ * entry is still the top of its store's history, undo through the history so
+ * the shake doesn't offer the same step again; once something newer is on top,
+ * take back just this write.
+ */
+function undoThrough(
+  getStore: () => { undoStack: UndoableAction[] } & Pick<UndoHistoryActions, 'undoLastAction'>,
+  entry: UndoableAction | null,
+  direct: () => void,
+): () => void {
+  return () => {
+    // Read when tapped: the history has moved on since the row was made.
+    const store = getStore();
+    if (entry && topOf(store.undoStack) === entry) store.undoLastAction();
+    else direct();
+  };
 }
 
 /** The store's water for one logical day, in ml. */
@@ -105,10 +126,11 @@ async function runDose(action: DoseAction): Promise<SearchActionReceipt | null> 
   if (!(await confirmWithinLimit(action.dose.name, new Date(), action.dose))) return null;
   const log: MedicationLog | null = recordDose(action.dose);
   if (!log) return null;
+  const entry = topOf(useMedicationStore.getState().undoStack);
   return {
     title: `Recorded ${log.name}`,
     meta: [formatDose(log), format(new Date(log.takenAt), clockTimeToken(useSettingsStore.getState().use24HourTime))].filter(Boolean).join(' · '),
-    undo: () => unrecordDose(log),
+    undo: undoThrough(useMedicationStore.getState, entry, () => unrecordDose(log)),
   };
 }
 
@@ -155,10 +177,12 @@ function runSymptom(action: SymptomAction): SearchActionReceipt | null {
   // `dayResetTime`. No mood level: this entry says only that the symptom happened.
   const log = useMoodStore.getState().addLog(null, [{ name: action.symptom, severity: action.severity }], null, action.at ?? undefined);
   if (!log) return null;
+  useMoodStore.getState().registerLogUndo(log);
+  const entry = topOf(useMoodStore.getState().undoStack);
   return {
     title: `Logged ${action.symptom}`,
     meta: `${severityLabel(action.severity)} · ${format(new Date(log.loggedAt), clockTimeToken(useSettingsStore.getState().use24HourTime))}`,
-    undo: () => useMoodStore.getState().removeLog(log.id),
+    undo: undoThrough(useMoodStore.getState, entry, () => useMoodStore.getState().removeLog(log.id)),
   };
 }
 

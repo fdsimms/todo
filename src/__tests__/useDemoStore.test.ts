@@ -523,6 +523,17 @@ describe('demo mode', () => {
     expect(usePersonGroupStore.getState().undoStack).toHaveLength(0);
   });
 
+  it('drops the mood and medication logs\' undo history too', () => {
+    useDemoStore.getState().enterDemoMode();
+    useMoodStore.setState({ undoStack: [{ label: 'x', undo: () => {}, redo: () => {} } as never] });
+    useMedicationStore.setState({ undoStack: [{ label: 'x', undo: () => {}, redo: () => {} } as never] });
+
+    useDemoStore.getState().exitDemoMode();
+
+    expect(useMoodStore.getState().undoStack).toHaveLength(0);
+    expect(useMedicationStore.getState().undoStack).toHaveLength(0);
+  });
+
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');

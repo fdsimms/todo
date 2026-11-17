@@ -6,6 +6,8 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { useMoodStore } from '../store/useMoodStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
 import { BannerBar } from './BannerBar';
@@ -59,8 +61,8 @@ const VISIBLE_MS = 6000;
  * rule above would leave a reschedule or a grocery check with no way back.
  * Only a destructive entry buzzes, in either mode.
  *
- * **One bar for seven independent histories.** Mirrors `useShakeToUndo`:
- * offers whichever of the seven stores' top entry is freshest, so a grocery
+ * **One bar for nine independent histories.** Mirrors `useShakeToUndo`:
+ * offers whichever of the nine stores' top entry is freshest, so a grocery
  * clear and a task delete can't both want the slot at once.
  *
  * **It stays up to offer the redo.** Undoing from the bar replaces it with
@@ -109,6 +111,14 @@ export function UndoBar() {
   const foodLogRedo = useFoodLogStore(s => topOf(s.redoStack));
   const undoFoodLog = useFoodLogStore(s => s.undoLastAction);
   const redoFoodLog = useFoodLogStore(s => s.redoLastUndone);
+  const moodAction = useMoodStore(s => topOf(s.undoStack));
+  const moodRedo = useMoodStore(s => topOf(s.redoStack));
+  const undoMood = useMoodStore(s => s.undoLastAction);
+  const redoMood = useMoodStore(s => s.redoLastUndone);
+  const medicationAction = useMedicationStore(s => topOf(s.undoStack));
+  const medicationRedo = useMedicationStore(s => topOf(s.redoStack));
+  const undoMedication = useMedicationStore(s => s.undoLastAction);
+  const redoMedication = useMedicationStore(s => s.redoLastUndone);
 
   const candidates = [
     { action: taskAction, redoEntry: taskRedo, undo: undoTask, redo: redoTask },
@@ -118,6 +128,8 @@ export function UndoBar() {
     { action: personAction, redoEntry: personRedo, undo: undoPerson, redo: redoPerson },
     { action: personGroupAction, redoEntry: personGroupRedo, undo: undoPersonGroup, redo: redoPersonGroup },
     { action: foodLogAction, redoEntry: foodLogRedo, undo: undoFoodLog, redo: redoFoodLog },
+    { action: moodAction, redoEntry: moodRedo, undo: undoMood, redo: redoMood },
+    { action: medicationAction, redoEntry: medicationRedo, undo: undoMedication, redo: redoMedication },
   ];
   const freshestUndo = freshest(
     candidates.filter(c => offersOnUndoBar(c.action, everyAction)),

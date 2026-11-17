@@ -132,8 +132,12 @@ function offerRefill(name: string, remaining: number, unit: string): void {
  * Alert), for a dose drained from a queue while the person is mid-way through
  * something else; the offer comes back the next time they record one, since
  * nothing was declined.
+ *
+ * `undoable: false` skips shake-to-undo, for the same caller: a dose drained
+ * from the widget's queue isn't something the person just did, so a shake
+ * must not offer to take it back.
  */
-export function recordDose(input: DoseInput, opts: { quiet?: boolean } = {}): MedicationLog | null {
+export function recordDose(input: DoseInput, opts: { quiet?: boolean; undoable?: boolean } = {}): MedicationLog | null {
   const store = useMedicationStore.getState();
   const { supply } = prefsFor(store.settings, input.name);
   const before = supplyRemaining(store.logs, input.name, supply);
@@ -151,6 +155,13 @@ export function recordDose(input: DoseInput, opts: { quiet?: boolean } = {}): Me
     const unit = supply.unit;
     setTimeout(() => offerRefill(log.name, after, unit), REFILL_OFFER_DELAY_MS);
   }
+  if (opts.undoable !== false) {
+    useMedicationStore.getState().setLastAction({
+      label: `Recorded ${log.name}`,
+      undo: () => unrecordDose(log),
+      redo: () => restoreDose(log),
+    });
+  }
   return log;
 }
 
@@ -162,6 +173,9 @@ export function recordDose(input: DoseInput, opts: { quiet?: boolean } = {}): Me
  * number in it that no tablet in the box matches.
  */
 export function unrecordDose(log: MedicationLog): void {
+  // Already gone (the row's own Undo, or a delete, came first): nothing to take
+  // back, and the supply must not be returned twice.
+  if (!useMedicationStore.getState().logs.some(l => l.id === log.id)) return;
   useMedicationStore.getState().removeLog(log.id);
   syncOkAgainNotification(log.name);
   // A dose taken back has nothing left to follow up on.
@@ -174,11 +188,27 @@ export function unrecordDose(log: MedicationLog): void {
 }
 
 /**
+ * A person deleting a dose: `unrecordDose` plus a shake-to-undo that puts it
+ * back. Not folded into `unrecordDose`, which the quick-record Undo, search
+ * receipts and undo closures call, none of which is a delete to offer undoing.
+ */
+export function deleteDose(log: MedicationLog): void {
+  unrecordDose(log);
+  useMedicationStore.getState().setLastAction({
+    label: `Deleted ${log.name} dose`,
+    undo: () => restoreDose(log),
+    redo: () => unrecordDose(log),
+  });
+}
+
+/**
  * Put back a dose `unrecordDose` took away, for an undo. Spends the one
  * `unrecordDose` returned to its task's supply, under the same conditions, so
  * delete then undo leaves the count where it started.
  */
 export function restoreDose(log: MedicationLog): void {
+  // Already back (the sheet's own Undo came first): the supply must not be spent twice.
+  if (useMedicationStore.getState().logs.some(l => l.id === log.id)) return;
   useMedicationStore.getState().restoreLog(log);
   syncOkAgainNotification(log.name);
   if (log.taskId !== null || log.dayKey !== dayKeyOf(getCurrentDayStart())) return;

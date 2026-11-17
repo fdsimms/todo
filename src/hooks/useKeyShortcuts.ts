@@ -9,6 +9,8 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { useMoodStore } from '../store/useMoodStore';
 import { isAppLocked } from '../store/useAppLockStore';
 import { KEY_SHORTCUTS, describeShortcuts, shortcutById, type KeyShortcut, type ShortcutAction } from '../utils/keyShortcuts';
 import { buildMenuItems, shortcutsWithMenuBar, sinkShortcuts } from '../utils/macMenu';
@@ -26,7 +28,7 @@ import {
 } from '../navigation/navigationRef';
 import { animateLayout } from '../utils/layoutAnimation';
 
-/** The same seven histories `useShakeToUndo` and the UndoBar choose between. */
+/** The same nine histories `useShakeToUndo` and the UndoBar choose between. */
 function undoHistories() {
   return [
     useTaskStore.getState(),
@@ -36,6 +38,8 @@ function undoHistories() {
     usePersonStore.getState(),
     usePersonGroupStore.getState(),
     useFoodLogStore.getState(),
+    useMoodStore.getState(),
+    useMedicationStore.getState(),
   ];
 }
 

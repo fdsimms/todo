@@ -10,6 +10,11 @@ import {
   dbSetSetting,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import {
+  type UndoableAction,
+  type UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import {
   ARCHIVED_MEDICATIONS_SETTING_KEY,
@@ -148,7 +153,11 @@ function runEffect(run: (fx: DoseEffects) => void): void {
 export type MedicationLogPatch =
   Partial<Pick<MedicationLog, 'name' | 'amount' | 'unit' | 'asNeeded' | 'note'>>;
 
-interface MedicationStore {
+interface MedicationStore extends UndoHistoryActions {
+  /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
+  lastAction: UndoableAction | null;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
   logs: MedicationLog[];
   /** `medicationKey`s you have archived. A set of names, not a flag on a dose. */
   archived: string[];
@@ -254,6 +263,10 @@ interface MedicationStore {
 }
 
 export const useMedicationStore = create<MedicationStore>((set, get) => ({
+  lastAction: null,
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
   logs: [],
   archived: [],
   registered: [],
@@ -545,6 +558,20 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     if (patch.note !== undefined) next.note = patch.note?.trim() || null;
     dbUpdateMedicationLog(next);
     set({ logs: get().logs.map(l => (l.id === id ? next : l)) });
+    // The dose sheet is the only caller, so every edit is a person's: file the
+    // undo here. Only the fields a patch may touch are put back.
+    const fields = (l: MedicationLog): MedicationLogPatch => ({
+      name: l.name, amount: l.amount, unit: l.unit, asNeeded: l.asNeeded, note: l.note,
+    });
+    const before = fields(existing);
+    const after = fields(next);
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      get().setLastAction({
+        label: `Edited ${existing.name} dose`,
+        undo: () => get().updateLog(id, before),
+        redo: () => get().updateLog(id, after),
+      });
+    }
     runEffect(fx => fx.updated(existing, next));
   },
 

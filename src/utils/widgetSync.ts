@@ -206,7 +206,7 @@ async function processPendingDoses(): Promise<void> {
     for (const dose of queued) {
       const { logs, registered, settings } = useMedicationStore.getState();
       const name = resolveQueuedDoseName(dose, logs, registered);
-      recordDose({ ...repeatDose(logs, name, defaultUsualDose(prefsFor(settings, name))), at: dose.at ?? undefined });
+      recordDose({ ...repeatDose(logs, name, defaultUsualDose(prefsFor(settings, name))), at: dose.at ?? undefined }, { undoable: false });
     }
     haptics.success();
   } catch {
