@@ -321,7 +321,7 @@ import { mealStripCoins, mealStripDoneSlots, mealStripOn, mealStripSlots } from 
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart, partWeekPatch, proratedFrom, vacationDaysInWeek } from '../utils/quotaSchedule';
-import { inheritedOccurrence, isRotationTask, rotationDoneCount, rotationPick, rotationPlanFor, rotationUnpick } from '../utils/rotation';
+import { inheritedOccurrence, isRotationTask, rotationDoneCount, rotationMembers, rotationPartWeekPatch, rotationPerWeek, rotationPick, rotationPlanFor, rotationUnpick } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
@@ -6237,7 +6237,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         const row = spawned[spawned.length - 1];
         const week = quotaWeekStart(getTaskDayStart(new Date(row.dueDate!), dayResetTime), weekStartsOn);
         const away = vacationDaysInWeek(week, getTaskDayStart(new Date(endingVacation.startedAt), dayResetTime), todayStart);
-        const patch = away > 0 ? partWeekPatch(row, 7 - away, todayStart) : null;
+        const patch = away === 0 ? null
+          : isRotationTask(row) ? rotationPartWeekPatch(row, 7 - away, todayStart)
+          : partWeekPatch(row, 7 - away, todayStart);
         if (patch) spawned[spawned.length - 1] = { ...row, ...patch };
       }
     }
@@ -6289,8 +6291,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         t.dueDate === null || !isHiddenForVacation(t) || isInPausedProject(t) || proratedFrom(t) !== null ||
         +quotaWeekStart(getTaskDayStart(new Date(t.dueDate), dayResetTime), weekStartsOn) !== +week
       ) continue;
-      const patch = partWeekPatch(t, 7 - away, todayStart);
-      if (!patch || patch.targetCount == null || t.progressCount >= patch.targetCount) continue;
+      let patch: Partial<Task> | null;
+      let reached: boolean;
+      if (isRotationTask(t)) {
+        const counts = new Map(rotationMembers(t, todayStart, weekStartsOn).map(m => [m.item.id, m.count]));
+        patch = rotationPartWeekPatch(t, 7 - away, todayStart, counts);
+        // Every member already at its scaled count would leave a full row
+        // that nothing completes, so that week is left as it is.
+        reached = !!patch && patch.rotationItems!.every(i => (counts.get(i.id) ?? 0) >= rotationPerWeek(i));
+      } else {
+        patch = partWeekPatch(t, 7 - away, todayStart);
+        reached = !!patch && t.progressCount >= patch.targetCount!;
+      }
+      if (!patch || reached) continue;
       scaled.push({ ...t, ...patch });
     }
     if (scaled.length === 0) return;

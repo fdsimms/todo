@@ -167,7 +167,7 @@ import { EditorGroup, EditorRowFilterContext } from './EditorGroup';
 import { listItemFinder, listItemRowShown } from '../utils/listMode';
 import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
-import { MAX_ROTATION_PER_WEEK, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek, withWorkout } from '../utils/rotation';
+import { MAX_ROTATION_PER_WEEK, editableRotationItems, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek, withWorkout } from '../utils/rotation';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
@@ -1360,7 +1360,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setHealthTarget(task.healthTarget ?? null);
       setHealthFollowGoal(task.healthFollowGoal ?? false);
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
-      setRotationEnabled(task.rotationEnabled); setRotationItems(task.rotationItems);
+      setRotationEnabled(task.rotationEnabled); setRotationItems(editableRotationItems(task));
       setChainIndex(task.chainIndex);
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);

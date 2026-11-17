@@ -228,6 +228,87 @@ export function isRotationTask(task: RotationCarrier): boolean {
     && (task.rotationItems?.length ?? 0) >= MIN_ROTATION_ITEMS;
 }
 
+/**
+ * The members with their weekly counts scaled to `availableDays` of the 7, or
+ * null when nothing would change.
+ *
+ * The total is scaled and then shared out by largest remainder, so 3 cardio, 3
+ * weights and 1 rest on 4 days come to 4 in all (2, 1, 1) rather than each
+ * count rounding on its own. A member is never dropped or taken below once, and
+ * never raised past its own count, so a small week can leave the total above
+ * the days (the set still has to name every member). `logged` is what each
+ * member has already done this week: a count is never scaled below it.
+ */
+export function scaledRotationItems(
+  items: readonly RotationItem[],
+  availableDays: number,
+  logged: ReadonlyMap<string, number> = new Map(),
+): RotationItem[] | null {
+  if (availableDays >= 7 || availableDays < 1 || items.length === 0) return null;
+  const full = items.map(rotationPerWeek);
+  const total = full.reduce((a, b) => a + b, 0);
+  const target = Math.max(items.length, Math.round((total * availableDays) / 7));
+  if (target >= total) return null;
+  const share = full.map(n => (n * availableDays) / 7);
+  const counts = items.map((item, i) =>
+    Math.min(full[i], Math.max(1, Math.floor(share[i]), logged.get(item.id) ?? 0)));
+  let sum = counts.reduce((a, b) => a + b, 0);
+  while (sum !== target) {
+    const up = sum < target;
+    let pick = -1;
+    for (let i = 0; i < counts.length; i++) {
+      const room = up ? counts[i] < full[i] : counts[i] > Math.max(1, logged.get(items[i].id) ?? 0);
+      if (!room) continue;
+      const gap = share[i] - counts[i];
+      if (pick === -1 || (up ? gap > share[pick] - counts[pick] : gap < share[pick] - counts[pick])) pick = i;
+    }
+    if (pick === -1) break;
+    counts[pick] += up ? 1 : -1;
+    sum += up ? 1 : -1;
+  }
+  const scaled = items.map((item, i) => withPerWeek(item, counts[i]));
+  return scaled.every((item, i) => rotationPerWeek(item) === full[i]) ? null : scaled;
+}
+
+/**
+ * The patch that scales a rotation's current week to the days that can be
+ * used, or null when there is nothing to scale. A rotation's target is its
+ * members' total, so the counts are what is scaled and the full set waits in
+ * `seriesDefaults.rotationItems`, the same "this occurrence only" revert an
+ * occurrence-only edit of the members writes: the next week's row is built
+ * from it by `inheritedOccurrence`, which also re-derives the total. Null when
+ * that revert is already pending, so a scaled or hand-edited week is left as is.
+ * The ramp starts on `anchorDayStart`, as `quotaProrationPatch` does.
+ */
+export function rotationPartWeekPatch(
+  task: Pick<Task, 'rotationEnabled' | 'rotationItems' | 'quotaPeriod' | 'seriesDefaults'>,
+  availableDays: number,
+  anchorDayStart: Date,
+  logged?: ReadonlyMap<string, number>,
+): Partial<Task> | null {
+  if (!isRotationTask(task) || task.quotaPeriod !== 'week') return null;
+  if (task.seriesDefaults && 'rotationItems' in task.seriesDefaults) return null;
+  const scaled = scaledRotationItems(task.rotationItems, availableDays, logged);
+  if (!scaled) return null;
+  return {
+    rotationItems: scaled,
+    targetCount: rotationTargetTotal(scaled),
+    seriesDefaults: { ...(task.seriesDefaults ?? {}), rotationItems: [...task.rotationItems] },
+    quotaStartedAt: anchorDayStart.toISOString(),
+  };
+}
+
+/**
+ * The members the editor shows: the full set, not a week scaled down by
+ * `rotationPartWeekPatch` (marked by its ramp start beside the pending
+ * revert). Saved as they are, the scaled counts would become the rotation's
+ * counts for good.
+ */
+export function editableRotationItems(task: Pick<Task, 'rotationItems' | 'seriesDefaults' | 'quotaStartedAt'>): RotationItem[] {
+  const full = task.seriesDefaults?.rotationItems;
+  return full && task.quotaStartedAt !== null ? full : task.rotationItems;
+}
+
 /** Normalizes stored JSON; anything unrecognisable becomes an empty set. */
 export function parseRotationItems(raw: unknown): RotationItem[] {
   if (!Array.isArray(raw)) return [];

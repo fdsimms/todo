@@ -31,6 +31,9 @@ import {
   plannedRotationItem,
   rotationPlanFor,
   type RotationCarrier,
+  scaledRotationItems,
+  rotationPartWeekPatch,
+  editableRotationItems,
 } from '../utils/rotation';
 
 // 2026-09-14 is a Monday, so a Sunday-start week opens on the 13th and a
@@ -566,5 +569,57 @@ describe('workout links on a member', () => {
     expect(rotationMemberForWorkout(members, { routineId: 'push', programId: 'ppl' })?.id).toBe('lift');
     expect(rotationMemberForWorkout(members, { routineId: 'yoga' })).toBeNull();
     expect(rotationPills(task, WED, 1).map(p => p.hasWorkout)).toEqual([true, true, true]);
+  });
+});
+
+describe('scaling a week to the days available', () => {
+  // Exercise routine: 3 cardio, 3 weights, 1 rest day.
+  const routine = [
+    { id: 'cardio', title: 'Cardio', perWeek: 3 },
+    { id: 'weights', title: 'Weight lifting', perWeek: 3 },
+    { id: 'rest', title: 'Rest day' },
+  ];
+  const counts = (items: { perWeek?: number }[] | null) => items?.map(i => i.perWeek ?? 1);
+
+  it('shares the scaled total out so the counts add up to it', () => {
+    expect(counts(scaledRotationItems(routine, 4))).toEqual([2, 1, 1]);
+    expect(counts(scaledRotationItems(routine, 5))).toEqual([2, 2, 1]);
+    expect(counts(scaledRotationItems(routine, 6))).toEqual([3, 2, 1]);
+  });
+
+  it('never drops a member, so a short week can ask for more than the days it has', () => {
+    expect(counts(scaledRotationItems(routine, 1))).toEqual([1, 1, 1]);
+  });
+
+  it('does not scale a full week', () => {
+    expect(scaledRotationItems(routine, 7)).toBeNull();
+  });
+
+  it('never takes a count below what was already logged', () => {
+    const scaled = scaledRotationItems(routine, 4, new Map([['weights', 2]]));
+    expect(counts(scaled)![1]).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the full set in seriesDefaults and the ramp start on the first day back', () => {
+    const anchor = new Date('2025-06-10T00:00:00');
+    const patch = rotationPartWeekPatch(
+      { rotationEnabled: true, rotationItems: routine, quotaPeriod: 'week', seriesDefaults: null }, 5, anchor,
+    )!;
+    expect(patch.targetCount).toBe(5);
+    expect(patch.seriesDefaults).toEqual({ rotationItems: routine });
+    expect(patch.quotaStartedAt).toBe(anchor.toISOString());
+  });
+
+  it('leaves a week whose members are already pending a revert alone', () => {
+    expect(rotationPartWeekPatch(
+      { rotationEnabled: true, rotationItems: routine, quotaPeriod: 'week', seriesDefaults: { rotationItems: routine } },
+      5, new Date('2025-06-10T00:00:00'),
+    )).toBeNull();
+  });
+
+  it('shows the editor the full set while a week is scaled', () => {
+    const scaled = scaledRotationItems(routine, 4)!;
+    expect(editableRotationItems({ rotationItems: scaled, seriesDefaults: { rotationItems: routine }, quotaStartedAt: '2025-06-10T00:00:00.000Z' })).toEqual(routine);
+    expect(editableRotationItems({ rotationItems: scaled, seriesDefaults: { rotationItems: routine }, quotaStartedAt: null })).toEqual(scaled);
   });
 });

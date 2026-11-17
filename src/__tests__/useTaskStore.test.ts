@@ -16740,6 +16740,37 @@ describe('quota tasks', () => {
       expect(next.streakCount).toBe(4);
     });
 
+    const routine = [
+      { id: 'cardio', title: 'Cardio', perWeek: 3 },
+      { id: 'weights', title: 'Weight lifting', perWeek: 3 },
+      { id: 'rest', title: 'Rest day' },
+    ];
+    const rotation = (overrides: Partial<Task> = {}) =>
+      weekly({ rotationEnabled: true, rotationItems: routine, targetCount: 7, ...overrides });
+
+    it('scales a rotation by member and brings the full set back next week', () => {
+      onVacation(june(8));
+      useTaskStore.setState({ tasks: [rotation()] });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(8));
+      const t = useTaskStore.getState().tasks.find(x => x.id === 'water')!;
+      expect(t.targetCount).toBe(5);
+      expect(t.rotationItems.map(i => i.perWeek ?? 1)).toEqual([2, 2, 1]);
+      expect(t.seriesDefaults).toMatchObject({ rotationItems: routine });
+    });
+
+    it('scales the replacement of a rotation left in an earlier week', () => {
+      onVacation(june(4));
+      useTaskStore.setState({
+        tasks: [rotation({ dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().prorateQuotasForVacationEnd(june(4));
+      const { tasks } = useTaskStore.getState();
+      const next = tasks.find(x => x.id !== 'water' && !x.completed)!;
+      expect(tasks.find(x => x.id === 'water')!.completed).toBe(true);
+      expect(next.targetCount).toBe(5);
+      expect(next.rotationItems.map(i => i.perWeek ?? 1)).toEqual([2, 2, 1]);
+    });
+
     it('leaves a target that was not paused for vacation, and a vacation that took no day of the week', () => {
       onVacation(june(8));
       useTaskStore.setState({ tasks: [weekly({ vacationPause: false })] });
