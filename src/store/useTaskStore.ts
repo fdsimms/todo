@@ -10142,7 +10142,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   clearAllPins() {
-    const ids = get().tasks.filter(t => t.pinned).map(t => t.id);
+    const pinnedRows = get().tasks.filter(t => t.pinned);
+    const ids = pinnedRows.map(t => t.id);
+    // The label counts what the Pinned block showed. A repeating task's
+    // finished occurrences keep their pin flag, so counting every flagged row
+    // said "Unpinned 4 tasks" for one visible pin. Undo still restores all of
+    // them, since the clear wrote all of them.
+    const shown = pinnedRows.filter(t => !t.parentId && !t.completed && !t.archived).length;
     dbClearAllPins();
     set(s => ({
       tasks: s.tasks.map(t => (t.pinned ? { ...t, pinned: false } : t)),
@@ -10152,7 +10158,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // untouched by the clear, so putting the flag back restores the block in
     // the order it had.
     get().setLastAction({
-      label: ids.length === 1 ? 'Unpinned 1 task' : `Unpinned ${ids.length} tasks`,
+      label: shown === 1 ? 'Unpinned 1 task' : `Unpinned ${shown} tasks`,
       destructive: true,
       redo: () => get().clearAllPins(),
       undo: () => {

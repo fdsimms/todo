@@ -11213,6 +11213,23 @@ describe('clearAllPins', () => {
     const pinned = useTaskStore.getState().tasks.filter(t => t.pinned).map(t => t.id);
     expect(pinned).toEqual(['t1', 't2']);
   });
+
+  it('counts only the pins the block showed, but undo restores finished occurrences too', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'live', pinned: true }),
+        makeTask({ id: 'done1', pinned: true, completed: true }),
+        makeTask({ id: 'done2', pinned: true, completed: true }),
+        makeTask({ id: 'old', pinned: true, archived: true }),
+      ],
+    });
+    useTaskStore.getState().clearAllPins();
+    expect(useTaskStore.getState().lastAction!.label).toBe('Unpinned 1 task');
+
+    useTaskStore.getState().undoLastAction();
+    const pinned = useTaskStore.getState().tasks.filter(t => t.pinned).map(t => t.id);
+    expect(pinned).toEqual(['live', 'done1', 'done2', 'old']);
+  });
 });
 
 // ─── pinCategory ───────────────────────────────────────────────────────────
