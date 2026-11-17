@@ -74,7 +74,7 @@ export function reconcileAppShield(): Date | null {
  * stale copy would keep apps blocked past the bump's end. Groups are resolved
  * like every other reason's, so a removed group is Default.
  */
-function liveSpeedBumpNow(now: Date): LiveSpeedBump | null {
+export function liveSpeedBumpNow(now: Date): LiveSpeedBump | null {
   const bridge = screenTimeBridge();
   if (!bridge) return null;
   const bump = liveSpeedBump(bridge.readSpeedBump(), now);

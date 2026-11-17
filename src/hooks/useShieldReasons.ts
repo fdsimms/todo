@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
+import { liveSpeedBumpNow } from '../utils/appShieldReconcile';
+import type { LiveSpeedBump } from '../utils/speedBump';
 import { outstandingGates } from '../utils/appGate';
 import { shieldReasons, type AppShieldState, type ShieldReasonEntry } from '../utils/appShield';
 import { canLock } from '../utils/nfcKey';
@@ -72,16 +75,29 @@ export function useShieldReasons(): ShieldReasonEntry[] {
   );
   // Bumped by the timer below so the effect re-arms for the following boundary.
   const [tick, setTick] = useState(0);
+  // A speed bump is raised by the monitor extension, often with the app closed,
+  // so it lives in the App Group rather than a store. Read again whenever the
+  // effect below runs, and when the app returns to the foreground.
+  const [speedBump, setSpeedBump] = useState<LiveSpeedBump | null>(() => liveSpeedBumpNow(new Date()));
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', s => {
+      if (s === 'active') setTick(t => t + 1);
+    });
+    return () => sub.remove();
+  }, []);
 
-  // Waits at whichever comes first: the penalty's end, or a schedule opening
-  // or closing. Neither writes anything at that instant.
+  // Waits at whichever comes first: the penalty's end, a speed bump's end, or a
+  // schedule opening or closing. None of them writes anything at that instant.
   useEffect(() => {
     const current = new Date();
     setNow(current);
+    const bump = liveSpeedBumpNow(current);
+    setSpeedBump(prev => (JSON.stringify(prev) === JSON.stringify(bump) ? prev : bump));
+    const bumpAt = bump ? new Date(bump.untilIso) : null;
     const penaltyAt = penaltyUntil ? new Date(penaltyUntil) : null;
     const manualAt = manualBlock?.untilIso ? new Date(manualBlock.untilIso) : null;
     const boundary = nextScheduleBoundary(schedules, current);
-    const next = [penaltyAt, manualAt, boundary].filter((d): d is Date => d !== null && d > current)
+    const next = [penaltyAt, manualAt, bumpAt, boundary].filter((d): d is Date => d !== null && d > current)
       .reduce<Date | null>((a, d) => (a === null || d < a ? d : a), null);
     if (!next) return;
     const remaining = next.getTime() - Date.now();
@@ -101,6 +117,7 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       penaltyReason,
       gateEnabled,
       manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, resolveGroupNow).groupIds } : null,
+      speedBump,
       keyLocked: locked && canLock(keys),
       gateTitles: gateRows.map(g => g.title),
       gateGroupIds: gateRows.map(g => (g.own ? resolveGroupNow(g.own) : settingGroup)),
@@ -112,5 +129,5 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       now,
     };
     return shieldReasons(state);
-  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, unlockKey, manualBlock, now, groups, assignments, schedules]);
+  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, unlockKey, manualBlock, speedBump, now, groups, assignments, schedules]);
 }
