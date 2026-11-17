@@ -27,7 +27,7 @@ jest.mock('../utils/dateUtils', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useMoodStore.setState({ logs: [], initialized: false });
+  useMoodStore.setState({ logs: [], initialized: false, lastAction: null, undoStack: [], redoStack: [] });
 });
 
 const state = () => useMoodStore.getState();
@@ -226,5 +226,38 @@ describe('removeLog', () => {
     state().removeLog(log.id);
     expect(dbDeleteMoodLog).toHaveBeenCalledWith(log.id);
     expect(state().logs).toHaveLength(0);
+  });
+});
+
+describe('registerLogUndo', () => {
+  it('addLog alone files nothing, so unattended writers never arm a shake', () => {
+    state().addLog(4, []);
+    expect(state().undoStack).toHaveLength(0);
+  });
+
+  it('files an undo that removes the entry and a redo that puts it back', () => {
+    const log = state().addLog(null, [{ name: 'Headache', severity: 2 }])!;
+    state().registerLogUndo(log);
+    expect(state().undoStack).toHaveLength(1);
+    expect(state().lastAction?.label).toBe('Logged “Headache”');
+
+    state().undoLastAction();
+    expect(state().logs).toHaveLength(0);
+    // Replaying the undo must not file an entry describing itself.
+    expect(state().undoStack).toHaveLength(0);
+    expect(state().redoStack).toHaveLength(1);
+
+    state().redoLastUndone();
+    expect(state().logs.map(l => l.id)).toEqual([log.id]);
+    expect(dbInsertMoodLog).toHaveBeenLastCalledWith(log);
+    expect(state().undoStack).toHaveLength(1);
+  });
+
+  it('restoreLog leaves an entry that is already there alone', () => {
+    const log = state().addLog(3, [])!;
+    jest.clearAllMocks();
+    state().restoreLog(log);
+    expect(dbInsertMoodLog).not.toHaveBeenCalled();
+    expect(state().logs).toHaveLength(1);
   });
 });

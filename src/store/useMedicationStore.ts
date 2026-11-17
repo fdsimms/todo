@@ -10,6 +10,11 @@ import {
   dbSetSetting,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import {
+  type UndoableAction,
+  type UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import {
   ARCHIVED_MEDICATIONS_SETTING_KEY,
@@ -148,7 +153,11 @@ function runEffect(run: (fx: DoseEffects) => void): void {
 export type MedicationLogPatch =
   Partial<Pick<MedicationLog, 'name' | 'amount' | 'unit' | 'asNeeded' | 'note'>>;
 
-interface MedicationStore {
+interface MedicationStore extends UndoHistoryActions {
+  /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
+  lastAction: UndoableAction | null;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
   logs: MedicationLog[];
   /** `medicationKey`s you have archived. A set of names, not a flag on a dose. */
   archived: string[];
@@ -254,6 +263,10 @@ interface MedicationStore {
 }
 
 export const useMedicationStore = create<MedicationStore>((set, get) => ({
+  lastAction: null,
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
   logs: [],
   archived: [],
   registered: [],

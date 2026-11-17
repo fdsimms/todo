@@ -129,6 +129,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const logs = useMoodStore(s => s.logs);
   const addLog = useMoodStore(s => s.addLog);
   const updateLog = useMoodStore(s => s.updateLog);
+  const registerLogUndo = useMoodStore(s => s.registerLogUndo);
   const removeLog = useMoodStore(s => s.removeLog);
   const renameContextTag = useMoodStore(s => s.renameContextTag);
   // What this offers a suggestion from — see docs/arch/mood-log.md. Other data
@@ -412,7 +413,8 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       const at = isToday ? undefined : noonOn(day);
       // The history behind the sheet gains a row; let it ease in as the sheet goes.
       animateLayout();
-      addLog(mood, symptoms, note, at, contextTags, savedChange);
+      const saved = addLog(mood, symptoms, note, at, contextTags, savedChange);
+      if (saved) registerLogUndo(saved);
       // The saved entry answers the check-in task (recordTasks.ts), so its row
       // plays the tick and leaves. A backdated entry answers nothing, and the
       // request skips any task the entry doesn't answer.

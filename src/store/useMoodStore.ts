@@ -10,6 +10,11 @@ import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { contextTagKey, renamedContextTags, symptomKey } from '../utils/moodLog';
 import { keepUnchanged } from '../utils/structuralSharing';
+import {
+  type UndoableAction,
+  type UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 
 /**
  * The mood/symptom log — see `src/utils/moodLog.ts` for every rule and
@@ -28,7 +33,11 @@ import { keepUnchanged } from '../utils/structuralSharing';
 
 export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'symptoms' | 'contextTags' | 'change' | 'note'>>;
 
-interface MoodStore {
+interface MoodStore extends UndoHistoryActions {
+  /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
+  lastAction: UndoableAction | null;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
   logs: MoodLog[];
   initialized: boolean;
   initialize: () => void;
@@ -64,6 +73,15 @@ interface MoodStore {
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
+  /** Writes a removed entry back under its own id, for redo. Already present: left alone. */
+  restoreLog: (log: MoodLog) => void;
+  /**
+   * Files shake-to-undo for an entry a person just logged. Separate from
+   * `addLog` and opt-in, because not every caller is a person looking at the
+   * screen: the widget's queued mood taps and the demo seed also write here, and
+   * an undo armed by one of those would take back an entry nobody just made.
+   */
+  registerLogUndo: (log: MoodLog) => void;
   /**
    * Correct a context tag's text everywhere it was logged, not just on one
    * entry — the vocabulary is derived from the logs (see `moodLog.ts`), so a
@@ -76,6 +94,10 @@ interface MoodStore {
 export const useMoodStore = create<MoodStore>((set, get) => ({
   logs: [],
   initialized: false,
+  lastAction: null,
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
 
   initialize() {
     set(state => keepUnchanged(state, { logs: dbGetAllMoodLogs(), initialized: true }));
@@ -131,6 +153,22 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
   removeLog(id) {
     dbDeleteMoodLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
+  },
+
+  restoreLog(log) {
+    if (get().logs.some(l => l.id === log.id)) return;
+    dbInsertMoodLog(log);
+    set({ logs: [log, ...get().logs].sort((a, b) => b.loggedAt.localeCompare(a.loggedAt)) });
+  },
+
+  registerLogUndo(log) {
+    get().setLastAction({
+      label: log.symptoms.length > 0 && log.mood === null
+        ? `Logged ${log.symptoms.map(s => `“${s.name}”`).join(', ')}`
+        : 'Logged a mood entry',
+      undo: () => get().removeLog(log.id),
+      redo: () => get().restoreLog(log),
+    });
   },
 
   renameContextTag(oldName, newName) {

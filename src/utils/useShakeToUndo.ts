@@ -8,6 +8,8 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { useMoodStore } from '../store/useMoodStore';
 import { isAppLocked } from '../store/useAppLockStore';
 import { haptics } from './haptics';
 import { animateLayout } from './layoutAnimation';
@@ -77,11 +79,11 @@ export function useShakeToUndo(enabled: boolean): void {
         // a task title on top of a lock screen. A locked app stays locked.
         if (isAppLocked()) return;
 
-        // Tasks, grocery, meal plan, leftovers, people, person groups and the food log each
+        // Tasks, grocery, meal plan, leftovers, people, person groups, the food log, the mood log and the medication log each
         // keep an independent undo history (see utils/undoHistory) — offer
         // whichever is freshest, same as if there were one shared stack.
         // Every entry is stamped with when it landed, so freshest-first
-        // across all seven is the order the user actually did things in.
+        // across all nine is the order the user actually did things in.
         const stores = [
           useTaskStore.getState(),
           useGroceryStore.getState(),
@@ -90,6 +92,8 @@ export function useShakeToUndo(enabled: boolean): void {
           usePersonStore.getState(),
           usePersonGroupStore.getState(),
           useFoodLogStore.getState(),
+          useMoodStore.getState(),
+          useMedicationStore.getState(),
         ];
         const topUndos = stores.map(s => topOf(s.undoStack));
         const undoStore = freshest(stores, s => topOf(s.undoStack)?.at);

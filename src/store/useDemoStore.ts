@@ -24,6 +24,8 @@ import { useReminderRemovalStore } from './useReminderRemovalStore';
 import { usePersonStore } from './usePersonStore';
 import { usePersonGroupStore } from './usePersonGroupStore';
 import { useFoodLogStore } from './useFoodLogStore';
+import { useMedicationStore } from './useMedicationStore';
+import { useMoodStore } from './useMoodStore';
 
 /**
  * Drops every undo and redo entry in all four stores that keep a history.
@@ -48,6 +50,8 @@ export function clearUndoHistories(): void {
   usePersonStore.getState().clearUndoHistory();
   usePersonGroupStore.getState().clearUndoHistory();
   useFoodLogStore.getState().clearUndoHistory();
+  useMoodStore.getState().clearUndoHistory();
+  useMedicationStore.getState().clearUndoHistory();
 }
 
 /**
