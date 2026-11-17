@@ -1369,10 +1369,15 @@ export const QuickAddModal = React.memo(function QuickAddModal({
 
   // Pop the tooltip in once it is measured and placed (not on every keystroke
   // that merely extends the phrase).
+  // JS-driven on purpose: the render that makes the tooltip ready is also the
+  // one that moves the bubble off the left edge, and a native-driven spring
+  // starts on the UI thread without waiting for that render to be mounted, so
+  // the bubble could show at the left edge for a frame before jumping into
+  // place. A JS-driven frame is a commit of its own, after the move.
   useEffect(() => {
     if (tooltipReady && !hadParse.current) {
       tooltipAnim.setValue(0);
-      Animated.spring(tooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+      Animated.spring(tooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: false }).start();
     } else if (!tooltipReady) {
       tooltipAnim.setValue(0);
     }

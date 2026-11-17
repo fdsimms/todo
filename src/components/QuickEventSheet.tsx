@@ -559,10 +559,15 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   }, [activeMatch]);
   const tooltipReady = activeMatch != null && prefixW != null && matchW != null && bubbleW > 0 && tooltipRowW > 0;
 
+  // JS-driven on purpose: the render that makes the tooltip ready is also the
+  // one that moves the bubble off the left edge, and a native-driven spring
+  // starts on the UI thread without waiting for that render to be mounted, so
+  // the bubble could show at the left edge for a frame before jumping into
+  // place. A JS-driven frame is a commit of its own, after the move.
   useEffect(() => {
     if (tooltipReady && !hadMatch.current) {
       tooltipAnim.setValue(0);
-      Animated.spring(tooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+      Animated.spring(tooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: false }).start();
     } else if (!tooltipReady) {
       tooltipAnim.setValue(0);
     }
