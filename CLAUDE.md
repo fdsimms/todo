@@ -79,7 +79,11 @@ around one instance of a pattern is rarely a request to leave the rest inconsist
 noticed, or only ran into, the one. Leaving three near-identical components unfixed because only
 the fourth was named is how the drift `SheetHeaderButton`, `InlineAction` and this note's own
 siblings were created to undo starts. A menu that overflows its card is the typical case: check
-every other menu built on the same `CardSheet` before calling it done.
+every other menu built on the same `CardSheet` before calling it done. Grep the whole repo for the
+exact thing you changed (the literal, the constant, the copy-pasted block), `mcp/` included, and
+say in the PR what else it found. A sibling includes the same value written out in another file
+(share it instead) and the twin editor (`TaskEditor` and `TemplateItemEditor`). "Nobody reported
+that one" is not a reason to skip it.
 
 What you do with what you find depends on the fix:
 
@@ -140,6 +144,9 @@ reference the issue number for context once one exists, but the issue is what pe
 paragraph explaining your reasoning isn't. Do this for every scope decision the task surfaced, not
 just the one you'd think to mention — if a "What's left" list would otherwise have three items,
 that's three questions, not three bullet points or three issues filed on your own judgment.
+That holds whatever the heading says: a "Not changed", "Known limits", "Not covered", "Not
+included" or "Left out" section is a "What's left" list, and each item is a question you skipped,
+even with a reason attached. A known bug never ships as a line in the body.
 
 This is "Bugs found in passing" above, generalized past bugs specifically: the thing that must not
 happen is a decision (fix it / file it / leave it) made unilaterally, or left sitting only in prose
@@ -297,7 +304,8 @@ tsc --noEmit && tsc -p mcp/tsconfig.json && npm test && npm run docs && git stat
 
 It is one command rather than a chain to retype because the part that gets dropped is always the
 same part: the generators at the end, which is the single most common reason a PR goes red (see
-below). Run `npm run verify`, not a subset of it.
+below). Run `npm run verify`, not a subset of it, for a one-line or copy-only change too: if you
+didn't run it, the PR isn't ready to open.
 
 `tsc` is incremental (`.tsbuildinfo`, gitignored), so every run after the first is a few seconds;
 the suite is about a minute. Run one test file while iterating, and the whole loop before you
@@ -368,8 +376,7 @@ checked in CI, so reach for them before grepping the tree blind.
 end costs more context than the rest of the task will. Grep for the symbol and read the
 surrounding range instead; `docs/module-map.md` says which file owns what.
 
-**`docs/repo-stats.md` has the current figures** — how many test suites there are, which files
-are over 1,000 lines, the ten biggest source files by name, and which big components still have no
+**`docs/repo-stats.md` has the current figures**: which files are over 1,000 lines, the ten biggest source files by name, and which big components still have no
 map (below). It is generated from the tree and checked in CI, so it is the one place those numbers
 are worth reading.
 
@@ -473,7 +480,8 @@ approach, say so and ask rather than either blindly complying or silently ignori
 explaining why the reasoning doesn't apply here, not just disliking the rule. That applies to the
 `docs/arch/` files too: they were part of this file until they made it too expensive to load,
 being in another file doesn't make them any less worth reading, and the routing table says which
-one to read first for a given change.
+one to read first for a given change. When the user agrees to a change that goes against one of
+these rules, rewrite or delete the rule in the same PR, so the guidance says what the code does.
 
 ## Architecture
 
@@ -582,6 +590,9 @@ behind each rule below, is `.claude/rules/dates-and-visibility.md`, which loads 
   `refreshGuard.ts` is the store-level form of the same check. For a sheet, "is it still open" is
   not that check, since Cancel and a reopen pass it: use `useSheetOpening` (`src/hooks/`), whose
   `begin()`/`isCurrent()` count openings.
+- **A screen that shows what another code path decides calls that path's function**; don't build a
+  second copy of the state. When a rule gains an input, make the parameter required, not defaulted,
+  so every caller has to decide and none keeps compiling on the old behavior.
 - **An "already exists" check calls the same key function as the refusal it predicts.** The AI
   recipe sheets pre-checked names with a bare `toLowerCase()` while `addRecipe` refuses on
   `groceryNameKey`, so "Chicken Tacos" and "Chicken taco" were two names to the sheet and one to

@@ -34,8 +34,9 @@ store reaches it for free, but a new field, tool or rule does not: `serialize.ts
 what it lists, `taskFields.ts` and the tool inputs write only what they name, and
 `mcp/src/instructions.ts` is where a changed cross-cutting rule (what the lenses mean, how a day or
 a reschedule works) has to be restated. For a `Task` field, `mcp/src/__tests__/taskFieldCoverage.test.ts`
-fails until the field is exposed or added to its `NOT_EXPOSED` list. For anything else (a feature,
-a rule, a new area) nothing checks, so ask: does Claude need to read it, write it, or know the rule?
+fails until the field is exposed or added to its `NOT_EXPOSED` list, and for a synced setting
+`mcp/src/__tests__/settingsCoverage.test.ts` does the same. For anything else (a feature, a rule, a
+new area) nothing checks, so ask: does Claude need to read it, write it, or know the rule?
 Update `docs/arch/mcp-server.md` and `mcp/README.md`'s tool table when a tool is added.
 A new feature worth recommending also gets an `ADOPTION_CHECKS` entry in `mcp/src/adoptionTools.ts`
 with `since` set to the ship date, so `unused_features` can say it is new and not yet tried; skip it
