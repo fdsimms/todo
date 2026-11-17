@@ -101,7 +101,7 @@ import {
   finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedWithinSuperset, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
-  restSecondsFor, supersetColor, supersetColorIndexes, supersetGroup,
+  ALL_RESTS_OFF_KEY, restSecondsFor, restsAreOff, supersetColor, supersetColorIndexes, supersetGroup,
 } from '../utils/workoutSession';
 import { tickSet, type TickValues } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
@@ -570,6 +570,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [restFor, setRestFor] = useState<string | null>(null);
   // The header's timer card, for a rest no set started.
   const [timerOpen, setTimerOpen] = useState(false);
+  // This workout's rest timers are turned off (`restsAreOff`): no rest starts, and the Rest chips are hidden.
+  const restsOff = restsAreOff(session?.restOverrides);
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
   // The trophy's card keeps the lines it was opened with, so it reads the same while it fades.
   const [recordCard, setRecordCard] = useState<{ lines: ReturnType<typeof recordLines>; anchor: CardAnchor } | null>(null);
@@ -851,9 +853,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); Keyboard.dismiss(); setTimerOpen(true); }}
                 accessibilityRole="button"
-                accessibilityLabel="Start a timer"
+                accessibilityLabel={restsOff ? 'Timer, rest timers are off' : 'Start a timer'}
               >
-                <Ionicons name="timer-outline" size={iconSize.lg} color={colors.accentText} />
+                <Ionicons name="timer-outline" size={iconSize.lg} color={restsOff ? colors.textTertiary : colors.accentText} />
+                {restsOff && <View style={styles.headerIconSlash} pointerEvents="none" />}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.headerIcon}
@@ -878,6 +881,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         {/* Under the header, not in a footer: the keyboard is up while sets are
             typed, and anything at the bottom of the sheet is behind it. */}
         {session && !finishing && <RestStrip sessionId={visible ? session.id : undefined} styles={styles} />}
+        {session && !finishing && restsOff && (
+          <View style={styles.restsOffBanner}>
+            <Text style={styles.restsOffText}><Text style={styles.restsOffBold}>Rest timers off</Text> for this workout</Text>
+            <InlineAction
+              label="Turn on"
+              variant="neutral"
+              accessibilityLabel="Turn rest timers back on"
+              onPress={() => { haptics.tap(); useWorkoutStore.getState().setSessionRest(session.id, ALL_RESTS_OFF_KEY, null); }}
+            />
+          </View>
+        )}
         {session && !finishing && <WorkoutVolumePill volumeKg={liveVolumeKg} bodyweightVolumeKg={liveBodyweightVolumeKg} unit={unit} />}
 
         {!session ? (
@@ -1176,7 +1190,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               // Where this card sits in its superset: partners close up into one accent-edged block.
               const pairPos = viewedGroup.length > 1 ? viewedGroup.findIndex(e => e.exerciseId === viewed.exerciseId) : -1;
               const pairColor = pairPos >= 0 ? supersetColor(colors.tagPalette, supersetColorIdx[exercises.findIndex(e => e.exerciseId === viewed.exerciseId)]) : null;
-              const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
+              const restChip = session && !restsOff && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
                 ? {
                     seconds: restSecondsFor(startedPlan, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
                     overridden: session.restOverrides?.[viewed.exerciseId] !== undefined,
@@ -1649,6 +1663,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ManualRestSheet
         visible={visible && timerOpen && session !== null}
         initialSeconds={defaultRestSeconds}
+        restsOn={!restsOff}
+        onRestsOnChange={on => {
+          if (!session) return;
+          useWorkoutStore.getState().setSessionRest(session.id, ALL_RESTS_OFF_KEY, on ? null : 0);
+          // Turning them off also drops the rest that is counting down.
+          if (!on) {
+            const running = useStepTimerStore.getState().restFor(session.id);
+            if (running) useStepTimerStore.getState().remove(running.id);
+          }
+        }}
         onStart={seconds => {
           if (!session) return;
           // exerciseId and label are empty: no set started this one, and an empty
@@ -2017,6 +2041,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerSpacer: { minWidth: 64 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+  // The slash across the timer icon while rest timers are off.
+  headerIconSlash: { position: 'absolute', width: 26, height: 2, borderRadius: 1, backgroundColor: colors.orangeText, transform: [{ rotate: '-45deg' }] },
+  restsOffBanner: { marginHorizontal: spacing.md, marginBottom: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md, paddingLeft: spacing.md, paddingRight: spacing.sm, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  restsOffText: { flex: 1, minWidth: 0, color: colors.textSecondary, fontSize: font.sm },
+  restsOffBold: { color: colors.orangeText, fontWeight: fontWeight.semibold },
   titleBlock: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
   title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },

@@ -304,10 +304,26 @@ export function afterLog(sets: readonly WorkoutSet[], loggedSetId: string): Afte
 }
 
 /**
- * How long the rest after a set of this exercise runs: the rest set on it in
- * this workout (`WorkoutSession.restOverrides`), else its routine item's own
- * rest where the session follows a routine that has the exercise and says,
- * else the `defaultRestSeconds` setting. Zero means no rest.
+ * The key in `WorkoutSession.restOverrides` that turns every rest off for the
+ * workout. It sits in the same map as the per-exercise rests, so it needs no
+ * column and reaches the tick, the Lock Screen and the watch through the
+ * overrides they already pass. An exercise id is generated, so it can't be `*`.
+ */
+export const ALL_RESTS_OFF_KEY = '*';
+
+/** Whether this workout has its rest timers turned off (`ALL_RESTS_OFF_KEY`). */
+export function restsAreOff(restOverrides?: Readonly<Record<string, number>> | null): boolean {
+  return restOverrides?.[ALL_RESTS_OFF_KEY] !== undefined;
+}
+
+/**
+ * How long the rest after a set of this exercise runs: none when the workout
+ * has its rest timers turned off (`restsAreOff`, which outranks everything
+ * below and leaves the per-exercise rests in place for when they come back
+ * on), else the rest set on it in this workout (`WorkoutSession.restOverrides`),
+ * else its routine item's own rest where the session follows a routine that
+ * has the exercise and says, else the `defaultRestSeconds` setting. Zero means
+ * no rest.
  */
 export function restSecondsFor(
   routine: Pick<WorkoutRoutine, 'items'> | null,
@@ -315,6 +331,7 @@ export function restSecondsFor(
   defaultRestSeconds: number,
   restOverrides?: Readonly<Record<string, number>> | null,
 ): number {
+  if (restsAreOff(restOverrides)) return 0;
   const own = restOverrides?.[exerciseId];
   if (own !== undefined) return own;
   const item = routine?.items.find(i => i.exerciseId === exerciseId);

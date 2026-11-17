@@ -121,6 +121,8 @@ describe('tickOutcome', () => {
     const outcome = tickOutcome(sets, sets[0].id, { ...ctx, routine: routine([{ exerciseId: 'bench', restSeconds: 150 }]), restOverrides: { bench: 45 } });
     expect(outcome?.restPlan).toMatchObject({ kind: 'start', seconds: 45 });
     expect(tickOutcome(sets, sets[0].id, { ...ctx, restOverrides: { bench: 0 } })?.restPlan).toEqual({ kind: 'clear' });
+    // Rest timers turned off for the workout outrank the exercise's own rest.
+    expect(tickOutcome(sets, sets[0].id, { ...ctx, restOverrides: { bench: 45, '*': 0 } })?.restPlan).toEqual({ kind: 'clear' });
   });
 
   it('drops the last rest when the exercise asks for none', () => {
