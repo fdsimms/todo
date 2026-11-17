@@ -320,7 +320,7 @@ import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { mealStripCoins, mealStripDoneSlots, mealStripOn, mealStripSlots } from '../utils/mealStrip';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
-import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
+import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart, partWeekPatch, proratedFrom, vacationDaysInWeek } from '../utils/quotaSchedule';
 import { inheritedOccurrence, isRotationTask, rotationDoneCount, rotationPick, rotationPlanFor, rotationUnpick } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
@@ -2340,7 +2340,9 @@ interface TaskStore extends UndoHistoryActions {
   /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
   holdQuotaOnToday: (id: string) => void;
   releaseQuotaHold: (id: string) => void;
-  rolloverQuotas: () => void;
+  rolloverQuotas: (endingVacation?: { startedAt: string }) => void;
+  /** What a vacation ending owes weekly targets: see its doc comment in the implementation. */
+  prorateQuotasForVacationEnd: (startedAt: string | null) => void;
   /** Opt-in counterpart to rolloverQuotas for allowOvershoot tasks — see its doc comment. */
   sweepOvershootQuotas: () => void;
   /**
@@ -6024,7 +6026,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // Called on foreground and at startup rather than on a timer — like
   // checkVacationExpiry, it's "time passed while we weren't looking" cleanup,
   // and the app may have been closed for days.
-  rolloverQuotas() {
+  //
+  // `endingVacation` is the vacation about to be switched off (see
+  // prorateQuotasForVacationEnd). A weekly target is withheld all through it, so
+  // this pass skips it, and the week it was left in would close only after
+  // vacation mode is off, with nothing left saying how much of the new week
+  // the vacation took. With it, those weekly rows are settled here instead:
+  // the week left behind closes without touching the streak, and the row that
+  // replaces it is scaled to the days of its week that weren't vacation.
+  rolloverQuotas(endingVacation) {
     const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
     const todayStart = getCurrentDayStart();
     // Which period a date belongs to, as that period's opening instant. Two
@@ -6035,6 +6045,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const dayStart = getTaskDayStart(date, dayResetTime);
       return +(period === 'week' ? quotaWeekStart(dayStart, weekStartsOn) : dayStart);
     };
+    // A weekly target that only the ending vacation is holding back: a paused
+    // project still withholds it, since that pause has its own end.
+    const isEndingVacationWeekly = (t: Task) =>
+      !!endingVacation && t.quotaPeriod === 'week' && isHiddenForVacation(t) && !isInPausedProject(t);
     const stale = get().tasks.filter(t =>
       isQuotaTask(t) &&
       !t.completed &&
@@ -6044,7 +6058,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // rather than being closed out and silently re-spawned as a habit.
       t.recurrenceType !== 'none' &&
       // Vacation-paused tasks are protected from streak loss by design.
-      !isWithheld(t) &&
+      (!isWithheld(t) || isEndingVacationWeekly(t)) &&
       // allowOvershoot tasks get their own sweep (sweepOvershootQuotas, below)
       // that goes through completeTask so an overshot count survives — this
       // manual close always writes progressCount as-is but forces
@@ -6089,6 +6103,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const spawned: Task[] = [];
     const now = new Date().toISOString();
     for (const task of stale) {
+      const spawnedBefore = spawned.length;
       // Stamped at the end of the period it belonged to, not now — the partial
       // is a record of *that* day (or week), and the Logbook groups by
       // completedAt.
@@ -6107,7 +6122,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // so nextStreakRecord folds nothing when it's unchanged.
       const neutral = task.quotaPeriod !== 'week' && !isCategoryScheduledDay(task.category, new Date(ownPeriodStart));
       // A weekly target counting units is a total, so a short week keeps it.
-      const keepsStreak = neutral || countsUnits(task);
+      // A week left behind for a vacation is neutral too: nothing could be
+      // logged while it was hidden, so a short count says nothing about it.
+      const keepsStreak = neutral || countsUnits(task) || isEndingVacationWeekly(task);
       const nextStreak = keepsStreak ? task.streakCount : 0;
       closed.push({
         ...task,
@@ -6216,6 +6233,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         completionCalendarEventId: null,
         completionCalendarEventExternalId: null,
       });
+      if (endingVacation && spawned.length > spawnedBefore && isEndingVacationWeekly(task)) {
+        const row = spawned[spawned.length - 1];
+        const week = quotaWeekStart(getTaskDayStart(new Date(row.dueDate!), dayResetTime), weekStartsOn);
+        const away = vacationDaysInWeek(week, getTaskDayStart(new Date(endingVacation.startedAt), dayResetTime), todayStart);
+        const patch = away > 0 ? partWeekPatch(row, 7 - away, todayStart) : null;
+        if (patch) spawned[spawned.length - 1] = { ...row, ...patch };
+      }
     }
 
     // One WAL transaction for the whole rollover rather than one per row:
@@ -6236,6 +6260,43 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({
       tasks: withSpawnedTasks(s.tasks.map(t => closedById.get(t.id) ?? t), spawned),
     }));
+  },
+
+  // What a vacation ending owes weekly targets: scaled to the days of the week
+  // that weren't vacation, the way a target set up midweek is scaled to the
+  // days left (partWeekPatch, the same patch). Run before vacation mode is
+  // switched off, as forgivVacationStreaks is, because it reads which rows
+  // vacation was hiding and `startedAt` is cleared with the mode.
+  //
+  // Two cases. A row still in the week it was left in has its count scaled
+  // here. A row from an earlier week is closed and replaced by
+  // rolloverQuotas, which scales the replacement. Counted from the first day
+  // back, so a 3-a-week target on a Thursday return is 2, paced from Thursday.
+  // A row already scaled is left alone, and so is one whose count has already
+  // reached the scaled target, which would otherwise sit full and unfinished.
+  prorateQuotasForVacationEnd(startedAt) {
+    if (!startedAt) return;
+    get().rolloverQuotas({ startedAt });
+    const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
+    const todayStart = getCurrentDayStart();
+    const week = quotaWeekStart(todayStart, weekStartsOn);
+    const away = vacationDaysInWeek(week, getTaskDayStart(new Date(startedAt), dayResetTime), todayStart);
+    if (away === 0) return;
+    const scaled: Task[] = [];
+    for (const t of get().tasks) {
+      if (
+        t.completed || t.archived || t.quotaPeriod !== 'week' || t.recurrenceType === 'none' ||
+        t.dueDate === null || !isHiddenForVacation(t) || isInPausedProject(t) || proratedFrom(t) !== null ||
+        +quotaWeekStart(getTaskDayStart(new Date(t.dueDate), dayResetTime), weekStartsOn) !== +week
+      ) continue;
+      const patch = partWeekPatch(t, 7 - away, todayStart);
+      if (!patch || patch.targetCount == null || t.progressCount >= patch.targetCount) continue;
+      scaled.push({ ...t, ...patch });
+    }
+    if (scaled.length === 0) return;
+    dbTransaction(() => scaled.forEach(dbUpdateTask));
+    const byId = new Map(scaled.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
   },
 
   // Folded into one loop rather than split into a sibling function: both
@@ -11762,10 +11823,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // lost its streak at the end of every vacation. Both callers run this
     // before switching vacation mode off, which is what the check reads.
     const forgiven = forgiveVacationStreaks(get().tasks, getCurrentDayStart().toISOString(), isHiddenForVacation);
-    if (forgiven.length === 0) return;
-    forgiven.forEach(t => dbUpdateTask(t));
-    const byId = new Map(forgiven.map(t => [t.id, t]));
-    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+    if (forgiven.length > 0) {
+      forgiven.forEach(t => dbUpdateTask(t));
+      const byId = new Map(forgiven.map(t => [t.id, t]));
+      set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+    }
+    // The other thing every path that ends vacation owes, and for the same
+    // reason it runs before the mode is off: weekly targets, scaled to the days
+    // that weren't vacation.
+    get().prorateQuotasForVacationEnd(useSettingsStore.getState().vacationStart);
   },
 
   forgivePausedProjectStreaks(endedOn) {

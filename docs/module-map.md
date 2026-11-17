@@ -475,7 +475,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quickEventSave.ts` — splitNotesAndLink, QuickEventSaveInput, quickEventSaveFields, alertMinutesFromOffset, describeAlert, ALERT_CHOICES, quickEventFromLine
 - `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch
 - `src/utils/quotaRamp.ts` — QUOTA_RAMP_MAX_TARGET, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_EVERY, canRampQuota, hasQuotaRamp, quotaRampAtGoal, QuotaRampResult, advanceQuotaRamp, describeQuotaRamp
-- `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, proratedFrom, weekDaysLeft, proratedWeeklyTarget, quotaProrationPatch, firstWeekAnchor, +5 more
+- `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, proratedFrom, weekDaysLeft, proratedWeeklyTarget, quotaProrationPatch, firstWeekAnchor, +7 more
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
 - `src/utils/rainUnits.ts` — RainUnit, rainUnitFor, formatRain
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring, MatchExcerpt, matchExcerpt
