@@ -2689,10 +2689,11 @@ function registerWriteTools(
 
   server.tool(
     'set_vacation_mode',
-    'Turn vacation mode on or off, as the switch in Settings does. On, it hides every task marked for vacation pause and every category set to hide on vacation, everywhere, and protects their streaks; nothing else moves. Off, it brings them back, forgives the protected streaks and scales weekly targets to the days of the week that were not vacation, as the app does. With on: true, until (YYYY-MM-DD, after today) is the day it turns itself off; with the mode already on, until only moves that day, and null clears it. The result says what it hides. get_overview reports the mode and, when a trip switched it on, which one: turning it off during that trip counts as declining it for the trip.',
+    'Turn vacation mode on or off, as the switch in Settings does. On, it hides every task marked for vacation pause and every category set to hide on vacation, everywhere, and protects their streaks; nothing else moves. Off, it brings them back, forgives the protected streaks and scales weekly targets to the days of the week that were not vacation, as the app does. With on: true, until (YYYY-MM-DD, after today) is the day it turns itself off; with the mode already on, until only moves that day, and null clears it. With on: true and from (YYYY-MM-DD, after today), it plans the vacation instead, as Settings\' Start date does: the mode turns itself on that day (and off on until, which must be after from), and nothing is hidden before then. With a vacation planned and the mode off, on: false cancels the plan. The result says what it hides. get_overview reports the mode, a planned vacation, and, when a trip switched it on, which one: turning it off during that trip counts as declining it for the trip.',
     {
       on: z.boolean(),
-      until: dayKey.nullable().optional().describe('With on: true. The day it turns itself off, YYYY-MM-DD, after today. null clears an end date already set. Leave out to keep it on until it is turned off.'),
+      until: dayKey.nullable().optional().describe('With on: true. The day it turns itself off, YYYY-MM-DD, after today (after from, when from is given). null clears an end date already set. Leave out to keep it on until it is turned off.'),
+      from: dayKey.optional().describe('With on: true, while the mode is off. The day it turns itself on, YYYY-MM-DD, after today. Leave out to turn it on now.'),
     },
     async input => {
       try {

@@ -60,10 +60,9 @@ const NOT_DECIDED: string[] = [
   'weightGoal', 'proteinPerWeight', 'activeEnergyBoost', 'waterExerciseBoost', 'tag_registry',
   'grocery_aisle_order', 'grocery_aisle_hidden', 'grocery_aisle_overrides', 'grocery_aisle_nonfood',
   'medication_archived', 'medication_registered', 'medication_settings', 'savedEvents', 'sunLocation',
-  'vacationScheduledStart',
 ];
 /** Lower it when you take one off `NOT_DECIDED`; never raise it. */
-const NOT_DECIDED_MAX = 34;
+const NOT_DECIDED_MAX = 33;
 
 const ALL_LISTED = [...Object.values(NOT_EXPOSED).flat(), ...NOT_DECIDED];
 
