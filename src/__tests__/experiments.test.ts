@@ -15,6 +15,8 @@ import {
   experimentSummary,
   overlappingChanges,
   roundedSeverity,
+  averageSeverityValue,
+  severityAverageLine,
   sortExperimentsForList,
   symptomRate,
 } from '../utils/experiments';
@@ -301,6 +303,30 @@ describe('roundedSeverity', () => {
     expect(roundedSeverity(1.4)).toBe(1);
     expect(roundedSeverity(2.5)).toBe(3);
     expect(roundedSeverity(0.2)).toBe(1);
+  });
+});
+
+describe('severityAverageLine', () => {
+  const side = (averageSeverity: number | null) => ({ loggedDays: 14, daysWith: averageSeverity === null ? 0 : 5, averageSeverity });
+
+  it('shows one decimal, so a rise inside one word is still visible', () => {
+    // 1.6 and 2.4 both round to "moderate".
+    expect(roundedSeverity(1.6)).toBe(roundedSeverity(2.4));
+    expect(severityAverageLine(side(1.6), side(2.4))).toBe('Average 1.6 before, 2.4 during (1 mild, 3 severe)');
+  });
+
+  it('keeps a whole number to one decimal', () => {
+    expect(severityAverageLine(side(2), side(1.25))).toBe('Average 2.0 before, 1.3 during (1 mild, 3 severe)');
+  });
+
+  it('is null unless both sides have a day with the symptom', () => {
+    expect(severityAverageLine(side(null), side(2))).toBeNull();
+    expect(severityAverageLine(side(2), side(null))).toBeNull();
+  });
+
+  it('rounds the number to a tenth', () => {
+    expect(averageSeverityValue(1.64)).toBe(1.6);
+    expect(averageSeverityValue(2)).toBe(2);
   });
 });
 

@@ -407,6 +407,22 @@ export function roundedSeverity(average: number): SymptomSeverity {
   return Math.min(3, Math.max(1, Math.round(average))) as SymptomSeverity;
 }
 
+/** A mean severity to one decimal, as a number (1.6), for the MCP and `severityAverageLine`. */
+export function averageSeverityValue(average: number): number {
+  return Math.round(average * 10) / 10;
+}
+
+/**
+ * "Average 1.6 before, 2.4 during (1 mild, 3 severe)", or null when either side
+ * has no day with the symptom. The words round to the nearest level, so 1.6 and
+ * 2.4 both read "moderate" and hide a real rise; the numbers don't.
+ */
+export function severityAverageLine(before: SymptomSide, during: SymptomSide): string | null {
+  if (before.averageSeverity === null || during.averageSeverity === null) return null;
+  return `Average ${averageSeverityValue(before.averageSeverity).toFixed(1)} before, `
+    + `${averageSeverityValue(during.averageSeverity).toFixed(1)} during (1 mild, 3 severe)`;
+}
+
 /** Experiments in the order the Mood screen lists them: running, then upcoming, then planned, then finished most recent first. */
 export function sortExperimentsForList(experiments: readonly Experiment[], todayKey: string): Experiment[] {
   const rank: Record<ExperimentStatus, number> = { running: 0, upcoming: 1, planned: 2, finished: 3 };

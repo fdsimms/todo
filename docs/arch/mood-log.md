@@ -1225,8 +1225,9 @@ either side; mood needs days with a mood. Nothing is compared below
 symptom is counted only from the first day it was ever logged, as
 `contrastsFor` does: the days before that are days it wasn't being recorded,
 not days without it. A symptom is read as the share of logged days it was on,
-at each day's worst severity (`daySymptoms`' rule), with the usual severity in
-words beside it.
+at each day's worst severity (`daySymptoms`' rule), with the mean severity on
+those days beside it to one decimal (`severityAverageLine`), not as a word: the
+words round to a level, so 1.6 and 2.4 both read "moderate" and hide a real rise.
 
 **Symptoms picked in advance are shown apart from the rest, and that split is
 the point.** Comparing a dozen symptoms after the fact will turn up one that

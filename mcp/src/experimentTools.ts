@@ -23,6 +23,7 @@ import {
   experimentStatus,
   overlappingChanges,
   roundedSeverity,
+  averageSeverityValue,
   type ExperimentSymptomRead,
 } from '../../src/utils/experiments';
 import { severityLabel } from '../../src/utils/moodLog';
@@ -40,8 +41,8 @@ function round(n: number): number {
 
 interface SymptomRow {
   name: string;
-  before?: { daysWith: number; daysLogged: number; usually?: string };
-  during?: { daysWith: number; daysLogged: number; usually?: string };
+  before?: { daysWith: number; daysLogged: number; usually?: string; averageSeverity?: number };
+  during?: { daysWith: number; daysLogged: number; usually?: string; averageSeverity?: number };
   note?: string;
 }
 
@@ -55,7 +56,13 @@ function symptomRow(r: ExperimentSymptomRead): SymptomRow {
   const side = (s: ExperimentSymptomRead['before']) => ({
     daysWith: s.daysWith,
     daysLogged: s.loggedDays,
-    ...(s.averageSeverity !== null ? { usually: severityLabel(roundedSeverity(s.averageSeverity)).toLowerCase() } : {}),
+    ...(s.averageSeverity !== null
+      ? {
+        usually: severityLabel(roundedSeverity(s.averageSeverity)).toLowerCase(),
+        // 1 (mild) to 3 (severe), one decimal: the word above rounds 1.6 and 2.4 alike.
+        averageSeverity: averageSeverityValue(s.averageSeverity),
+      }
+      : {}),
   });
   return { name: r.name, before: side(r.before), during: side(r.during) };
 }
