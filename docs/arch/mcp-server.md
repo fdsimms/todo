@@ -1536,7 +1536,7 @@ shape of thing: an agent's request that the phone answers. Two things use the st
   so approving is only moving the row to `pending` and the writer drains it as it always did; Skip is
   `cancelled`. It is turned on the first time a device is chosen to write, and left off for a writer
   that existed before the switch, so nothing changes under anyone.
-- **Task suggestions** (`propose_task_device_action`, `kind: 'task_deadline' | 'task_alarm'`, with
+- **Task suggestions** (`propose_task_device_action`, `kind: 'task_deadline' | 'task_alarm'` (and `new_alarm` below), with
   `taskId` and a `payload`). These are the two device effects on a task an agent can't write over MCP
   (`deadlineOnCalendar`, an alarm `reminderKind`, both in `taskFieldCoverage`'s not-exposed list). They
   are **always** a card, never queued, because the effect is the phone's. The tap applies them on
@@ -1546,6 +1546,15 @@ shape of thing: an agent's request that the phone answers. Two things use the st
   first. An alarm falls back to a plain notification where AlarmKit is missing, and the card already
   says "Reminder" instead of "Alarm" there. A time block is deliberately not offered: it can only be
   made through the system event sheet, which has to be the person's.
+
+- **New alarms** (`propose_alarm`, kind `new_alarm`, no `taskId`; the payload carries the alarm and
+  optionally a saved focus session). Alarms and saved focus sessions are device-only
+  (`docs/arch/focus-sessions.md`, "Starting one from an alarm"), so the server can't read or link
+  them: it can only propose a new alarm whole. The tap makes both on the phone that was tapped
+  (`applyNewAlarmSuggestion`), through the stores the alarm editor writes, and reuses a saved
+  session the person already has under that name rather than making a second. It fails with its
+  reason where AlarmKit is missing, since an alarm that can't ring is not what was asked for. It
+  never expires by its time (a time of day, not a moment), only by the month's wait.
 
 A task kind's start and end sit at the epoch, like a change row's, so a build that predates the kinds
 expires one instead of writing an event. A proposal for a moment that has gone (an event already over,

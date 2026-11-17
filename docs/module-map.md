@@ -28,7 +28,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/agentPantryRevert.ts` — PANTRY_ITEM_REVERT_FIELDS, LEFTOVER_REVERT_FIELDS, PantryItemSnapshot, LeftoverSnapshot, pantrySnapshot, leftoverSnapshot, pantryRevertOf, PantryRecordState, PantryRecordPlan, pantryRecordPlan
 - `src/utils/agentRecordRevert.ts` — PROJECT_REVERT_FIELDS, RecordLogSubject, RuleListName, RULE_LIST_NAMES, RecordState, DeletedProjectSnapshot, DeletedStackSnapshot, DeletedPersonSnapshot, deletedPersonRevert, deletedProjectRevert, +4 more
 - `src/utils/agentRevert.ts` — DeletedTaskSnapshot, deletedTaskRevert, AgentRevertPlan, agentRevertPlan, agentRevertLabel
-- `src/utils/agentSuggestionActions.ts` — ApplyOutcome, skipSuggestion, approveEventSuggestion, applyTaskSuggestion
+- `src/utils/agentSuggestionActions.ts` — ApplyOutcome, skipSuggestion, approveEventSuggestion, applyTaskSuggestion, NEW_ALARM_NEEDS_ALARMKIT_REASON, NEW_ALARM_LIST_FULL_REASON
 - `src/utils/agentSuggestions.ts` — liveSuggestions, SuggestionCardModel, SuggestionContext, eventWhen, describeSuggestion, TaskSuggestionContext, TaskSuggestionPlan, SUGGESTION_TASK_GONE_REASON, SUGGESTION_TASK_DONE_REASON, SUGGESTION_NO_DEADLINE_REASON, +2 more
 - `src/utils/agentUndo.ts` — AgentUndo, AgentUndoAction, AgentUndoReaders, agentUndoPlan, agentUndoLabel, BatchRevertResult, revertableInBatch, revertBatch
 - `src/utils/agentUndoRun.ts` — agentUndoReaders, applyAgentUndo
@@ -552,7 +552,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedDefaults.ts` — SavedDefaultRow, savedDefaultRows
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +11 more
-- `src/utils/savedFocus.ts` — SAVED_FOCUS_SETTING, MAX_SAVED_FOCUS, normalizeWindow, normalizeSavedFocus, parseSavedFocusSessions, savedFocusNameKey, savedFocusNameTaken, describeFilter, matchesFilter, savedFocusQueue, +2 more
+- `src/utils/savedFocus.ts` — SAVED_FOCUS_SETTING, MAX_SAVED_FOCUS, normalizeWindow, normalizeSavedFocus, parseSavedFocusSessions, savedFocusNameKey, savedFocusNameTaken, describeFilter, matchesFilter, focusOfferFor, +1 more
+- `src/utils/savedFocusQueue.ts` — savedFocusQueue
 - `src/utils/savedLinks.ts` — SAVED_LINKS_KEY, SAVED_LINKS_LIMIT, SavedLink, savedLinkKey, parseSavedLinks, isChipUrl, canSaveLink, suggestLinkName, addSavedLink, renameSavedLink, +7 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, withoutMultipleLead, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, +8 more
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, savedPlaceNameTaken, +8 more

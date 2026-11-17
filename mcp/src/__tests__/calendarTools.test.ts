@@ -1,6 +1,6 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, parseCalendarRequest, proposeTaskDeviceAction, requestCalendarEvent } from '../calendarTools';
+import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, parseCalendarRequest, proposeAlarm, proposeTaskDeviceAction, requestCalendarEvent } from '../calendarTools';
 import { withAgentLedger, type AgentLedgerEntry } from '../agentLedger';
 import { describeEffects } from '../confirmWrites';
 
@@ -266,6 +266,56 @@ describe('propose_task_device_action', () => {
     const { request } = proposeTaskDeviceAction(logged, { taskId: task.id, action: 'deadline_on_calendar' }, new Date());
     expect(entries[0]).toMatchObject({ action: 'created', subject: 'event', title: 'Call', recordId: request.id });
     expect(entries[0].note).toMatch(/Suggest.*Inbox/);
+    expect(cancelCalendarRequest(replica, { id: request.id }).cancelled.status).toBe('cancelled');
+  });
+});
+
+describe('propose_alarm', () => {
+  it('suggests a plain alarm as a taskless proposal an old build would expire', () => {
+    const { request, note } = proposeAlarm(replica, { time: '06:30', days: ['mon', 'fri'], label: ' Wake up ' });
+    expect(request).toMatchObject({ status: 'proposed', title: 'Wake up', newAlarm: { time: '06:30', days: ['mon', 'fri'] } });
+    expect(note).toMatch(/suggested, not set/);
+    const row = replica.calendarRequests().find(r => r.id === request.id)!;
+    expect(row).toMatchObject({ kind: 'new_alarm', taskId: null });
+    expect(row.payload).toEqual({ alarm: { label: 'Wake up', hour: 6, minute: 30, repeatDays: [1, 5] } });
+    expect(new Date(row.endAt).getTime()).toBe(0);
+  });
+
+  it('carries a saved focus session, resolving a project by its title to its id', () => {
+    const project = replica.createProjectPlan({ title: 'Thesis', steps: [] } as never).project;
+    const { request } = proposeAlarm(replica, {
+      time: '9:00', days: ['tue', 'mon', 'mon'], focusName: ' Deep work ', focusTasksFrom: 'project', focusValue: 'thesis', focusMinutes: 90,
+    });
+    expect(request.newAlarm).toEqual({ time: '09:00', days: ['mon', 'tue'], focusSession: 'Deep work' });
+    const row = replica.calendarRequests().find(r => r.id === request.id)!;
+    expect(row.title).toBe('Deep work');
+    expect(row.payload?.savedFocus).toEqual({ name: 'Deep work', filter: { kind: 'project', value: project.id }, windowMinutes: 90 });
+  });
+
+  it('refuses what the phone would only refuse later', () => {
+    expect(() => proposeAlarm(replica, { time: '25:00' })).toThrow(/not a time/);
+    expect(() => proposeAlarm(replica, { time: 'soon' })).toThrow(/not a time/);
+    expect(() => proposeAlarm(replica, { time: '07:00', focusName: '  ' })).toThrow(/focusName is empty/);
+    expect(() => proposeAlarm(replica, { time: '07:00', focusTasksFrom: 'tag', focusValue: 'x' })).toThrow(/need focusName/);
+    expect(() => proposeAlarm(replica, { time: '07:00', focusName: 'A', focusTasksFrom: 'tag' })).toThrow(/needs focusValue/);
+    expect(() => proposeAlarm(replica, { time: '07:00', focusName: 'A', focusValue: 'x' })).toThrow(/needs focusTasksFrom/);
+    expect(() => proposeAlarm(replica, { time: '07:00', focusName: 'A', focusTasksFrom: 'project', focusValue: 'Nope' })).toThrow(/No project/);
+    expect(() => proposeAlarm(replica, { time: '07:00', focusName: 'A', focusTasksFrom: 'category', focusValue: 'Nope' })).toThrow(/No category/);
+    expect(() => proposeAlarm(replica, { time: '07:00', focusName: 'A', focusMinutes: 5 })).toThrow(/15 to 480/);
+  });
+
+  it('refuses a second identical suggestion while the first waits', () => {
+    proposeAlarm(replica, { time: '07:00', days: ['mon'], focusName: 'Deep work' });
+    expect(() => proposeAlarm(replica, { time: '07:00', days: ['mon'], focusName: 'Deep work' })).toThrow(/already suggested/);
+    expect(proposeAlarm(replica, { time: '07:05', days: ['mon'], focusName: 'Deep work' }).request.status).toBe('proposed');
+  });
+
+  it('records the suggestion in the Activity ledger, and cancelling takes the card back', () => {
+    const entries: AgentLedgerEntry[] = [];
+    const logged = withAgentLedger(replica, e => entries.push(...e));
+    const { request } = proposeAlarm(logged, { time: '07:00', focusName: 'Deep work' });
+    expect(entries[0]).toMatchObject({ action: 'created', subject: 'event', title: 'Deep work', recordId: request.id });
+    expect(entries[0].note).toMatch(/Suggest.*Inbox.*Deep work/);
     expect(cancelCalendarRequest(replica, { id: request.id }).cancelled.status).toBe('cancelled');
   });
 });

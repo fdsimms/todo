@@ -3870,7 +3870,7 @@ function seedCookware(): void {
 
 /**
  * The Inbox's "Suggested by Claude" cards: an event, a deadline for a task that
- * has one, and an alarm for another. Through the store's insert, so a seeded
+ * has one, an alarm for another, and a new alarm that offers a focus session. Through the store's insert, so a seeded
  * row has the shape an agent's request has once it syncs in. The two task
  * kinds carry the epoch start and end an agent's rows do.
  */
@@ -3895,6 +3895,13 @@ function seedSuggestions(today: Date): void {
     at.setHours(8, 0, 0, 0);
     insert({ ...base, id: 'demo-suggestion-alarm', title: bill.title, startAt: epoch, endAt: epoch, kind: 'task_alarm', taskId: bill.id, payload: { alarmAt: at.toISOString(), ringKind: 'alarm' } });
   }
+  insert({
+    ...base, id: 'demo-suggestion-new-alarm', title: 'Focus block', startAt: epoch, endAt: epoch, kind: 'new_alarm', taskId: null,
+    payload: {
+      alarm: { label: 'Focus block', hour: 14, minute: 0, repeatDays: [1, 2, 3, 4, 5] },
+      savedFocus: { name: 'Afternoon focus', filter: { kind: 'all' }, windowMinutes: 60 },
+    },
+  });
 }
 
 function seedMilestone(today: Date): void {

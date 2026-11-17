@@ -105,7 +105,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { createCategory, deleteCategory, updateCategory } from './categoryTools';
 import { REORDER_KINDS, reorder } from './reorderTools';
-import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, proposeTaskDeviceAction, requestCalendarEvent } from './calendarTools';
+import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, proposeAlarm, proposeTaskDeviceAction, requestCalendarEvent, WEEKDAYS } from './calendarTools';
 import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, pastAtFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logRecipe, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { storageReport } from './storageTools';
@@ -2339,6 +2339,27 @@ function registerWriteTools(
     async input => {
       try {
         return json(await withWrite(() => proposeTaskDeviceAction(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not suggest that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'propose_alarm',
+    'Suggest, never set, a new alarm that offers a saved focus session when they turn it off: a sheet then shows the tasks picked at that moment and they tap Start. Alarms and saved focus sessions live only on their phone, so this puts a card in their Inbox and nothing exists until they tap it; say it is suggested, not set. It cannot change an alarm they already have. time is HH:MM, 24-hour, in their time zone; days repeats it (omit to ring once). focusName names the session: one they already have under that name is used as it is, otherwise a new one is made from focusTasksFrom (category, project or tag) with focusValue, and focusMinutes (15 to 480, omit for no limit). Omit focusName for a plain alarm. It rings as a system alarm only on phones that support it, and the card fails with that reason otherwise. Ask before suggesting one the person did not mention.',
+    {
+      time: z.string().describe('HH:MM, 24-hour, in their time zone.'),
+      days: z.array(z.enum(WEEKDAYS)).optional().describe('Weekdays it repeats on. Omit to ring once.'),
+      label: z.string().optional().describe('The alarm\'s name, e.g. "Start work".'),
+      focusName: z.string().optional().describe('The saved focus session to offer, e.g. "Deep work". Reused as it is if they have one by this name.'),
+      focusTasksFrom: z.enum(['category', 'project', 'tag']).optional().describe('Only for a new session: what it draws tasks from. Omit for any task.'),
+      focusValue: z.string().optional().describe('With focusTasksFrom: the category name, project title or id, or tag.'),
+      focusMinutes: z.number().optional().describe('Only for a new session: time available, 15 to 480. Omit for no limit.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => proposeAlarm(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not suggest that.' });
       }

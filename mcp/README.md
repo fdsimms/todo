@@ -199,6 +199,7 @@ only the fallback until the first sync.
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
 | `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. With Ask before adding on, the event is a card in the Inbox until the person taps it. The server never touches the calendar itself. |
 | `propose_task_device_action` | **Write.** Suggests, as an Inbox card, putting a task's deadline on the calendar or ringing an alarm for it. Nothing changes until the person taps; neither is writable through `update_task`. |
+| `propose_alarm` | **Write.** Suggests, as an Inbox card, a new alarm that offers a saved focus session when it is turned off (the session is reused by name, or made from a category, project or tag). Alarms and saved sessions live only on the phone, so nothing exists until the person taps, and it cannot change an alarm they already have. |
 | `change_calendar_event` | **Write.** Asks the phone to move, edit or delete an event an earlier `request_calendar_event` wrote. Events the person made are out of reach. |
 | `list_calendar_requests` | Those requests and suggestions and what became of each: proposed, pending, written, failed (with why) or cancelled. |
 | `update_medication_log` | **Write.** Corrects a recorded dose. |

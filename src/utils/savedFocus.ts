@@ -1,5 +1,4 @@
 import type { Alarm, SavedFocusFilter, SavedFocusSession, Task } from '../types';
-import { suggestFocusTasks, type FocusContext } from './focusSuggest';
 import { FOCUS_WINDOW_MAX, FOCUS_WINDOW_MIN } from './focusSettings';
 
 /**
@@ -101,21 +100,6 @@ export function matchesFilter(task: Pick<Task, 'category' | 'projectId' | 'tags'
     case 'tag':
       return task.tags.includes(filter.value);
   }
-}
-
-/**
- * The task ids a saved session would start with: the tasks its rule matches,
- * ranked and fitted to its window by the suggester. `ctx` carries the clock
- * and the rest rules (`buildFocusContext`), so the caller decides what "now"
- * is; the saved window replaces the one the context was built with.
- */
-export function savedFocusQueue(
-  saved: Pick<SavedFocusSession, 'filter' | 'windowMinutes'>,
-  tasks: readonly Task[],
-  ctx: FocusContext,
-): string[] {
-  const pool = tasks.filter(t => matchesFilter(t, saved.filter));
-  return suggestFocusTasks(pool, { ...ctx, windowMinutes: saved.windowMinutes });
 }
 
 /**
