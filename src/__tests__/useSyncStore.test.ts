@@ -590,6 +590,12 @@ describe('syncNow', () => {
     useSyncStore.setState({ problem: describeImageProblem('Cannot create new type RecipeImage in production schema <CKRecord: 0xABC>') });
     expect(selectSyncBannerProblem(useSyncStore.getState())).toBeNull();
 
+    // So does a photo that didn't send, whatever CloudKit said about it this time.
+    useSyncStore.setState({ problem: describeImageProblem('Payload too large <CKRecordID: 0x1>'), dismissedProblem: null });
+    useSyncStore.getState().dismissProblem();
+    useSyncStore.setState({ problem: describeImageProblem('Payload too large <CKRecordID: 0x2>') });
+    expect(selectSyncBannerProblem(useSyncStore.getState())).toBeNull();
+
     // A different problem shows again after an earlier one was dismissed.
     useSyncStore.setState({ problem: 'Couldn’t check your iCloud account.' });
     expect(selectSyncBannerProblem(useSyncStore.getState())).toBe('Couldn’t check your iCloud account.');
@@ -601,9 +607,9 @@ describe('syncNow', () => {
     const result = await useSyncStore.getState().syncNow();
     expect(result?.ok).toBe(true);
     expect(dbSetSetting).toHaveBeenCalledWith('syncLastSyncedAt', expect.any(String));
-    expect(useSyncStore.getState().problem).toBe(
-      "Some recipe photos didn’t send (cloudkit: Payload too large). They’ll retry on the next sync."
-    );
+    // CloudKit's own error goes to the error log, not the sentence: it would
+    // change every sync and bring a dismissed banner back.
+    expect(useSyncStore.getState().problem).toBe('Some recipe photos didn’t send. They’ll retry on the next sync.');
   });
 
   it('records a failure reason and leaves lastSyncedAt untouched', async () => {
