@@ -550,7 +550,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           activeOpacity={interaction.activeOpacity}
           onLongPress={drag}
           delayLongPress={interaction.delayLongPress}
-          hitSlop={8}
+          hitSlop={{ top: 8, bottom: 8, left: 8 }}
           style={styles.dragHandle}
           accessibilityRole="button"
           accessibilityLabel={`Reorder ${task.title}`}
@@ -1119,8 +1119,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignSelf: 'stretch',
     justifyContent: 'center',
   },
+  // Extra right padding keeps the handle clear of the list's scroll indicator,
+  // which sits on the edge and takes the touch first.
   dragHandle: {
-    paddingHorizontal: spacing.sm,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.md,
     paddingVertical: spacing.smd,
     alignSelf: 'stretch',
     justifyContent: 'center',
