@@ -558,6 +558,20 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     if (patch.note !== undefined) next.note = patch.note?.trim() || null;
     dbUpdateMedicationLog(next);
     set({ logs: get().logs.map(l => (l.id === id ? next : l)) });
+    // The dose sheet is the only caller, so every edit is a person's: file the
+    // undo here. Only the fields a patch may touch are put back.
+    const fields = (l: MedicationLog): MedicationLogPatch => ({
+      name: l.name, amount: l.amount, unit: l.unit, asNeeded: l.asNeeded, note: l.note,
+    });
+    const before = fields(existing);
+    const after = fields(next);
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      get().setLastAction({
+        label: `Edited ${existing.name} dose`,
+        undo: () => get().updateLog(id, before),
+        redo: () => get().updateLog(id, after),
+      });
+    }
     runEffect(fx => fx.updated(existing, next));
   },
 

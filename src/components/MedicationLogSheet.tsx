@@ -21,7 +21,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { defaultUsualDose, prefsFor } from '../utils/medicationSettings';
 import { getLogicalToday } from '../utils/dateUtils';
 import { DOSE_UNITS, formatDose, medicationKey, medicationVocabulary } from '../utils/medicationLog';
-import { confirmWithinLimit, recordDose, syncOkAgainNotification, unrecordDose } from '../utils/doseRecording';
+import { confirmWithinLimit, recordDose, deleteDose, syncOkAgainNotification } from '../utils/doseRecording';
 import { TextField } from './TextField';
 import { defaultWaitMinutes } from '../utils/checkIns';
 import { CheckInFields } from './CheckInFields';
@@ -286,7 +286,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
     if (!log) { onClose(); return; }
     confirmDelete({
       title: 'Delete this dose?',
-      onConfirm: () => { unrecordDose(log); onDeleted?.(log); onClose(); },
+      onConfirm: () => { deleteDose(log); onDeleted?.(log); onClose(); },
     });
   };
 

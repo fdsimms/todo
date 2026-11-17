@@ -130,7 +130,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const addLog = useMoodStore(s => s.addLog);
   const updateLog = useMoodStore(s => s.updateLog);
   const registerLogUndo = useMoodStore(s => s.registerLogUndo);
-  const removeLog = useMoodStore(s => s.removeLog);
+  const deleteLog = useMoodStore(s => s.deleteLog);
   const renameContextTag = useMoodStore(s => s.renameContextTag);
   // What this offers a suggestion from — see docs/arch/mood-log.md. Other data
   // the app already has (a missed-heavy day, and so on) can follow the same
@@ -446,7 +446,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       onConfirm: () => {
         haptics.warning();
         onClose();
-        holdUntilDismissed(() => { animateLayout(); removeLog(id); });
+        holdUntilDismissed(() => { animateLayout(); deleteLog(id); });
       },
     });
   };

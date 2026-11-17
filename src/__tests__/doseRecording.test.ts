@@ -1,5 +1,5 @@
 import { useMedicationStore } from '../store/useMedicationStore';
-import { recordDose, unrecordDose } from '../utils/doseRecording';
+import { deleteDose, recordDose, restoreDose, unrecordDose } from '../utils/doseRecording';
 
 jest.mock('react-native', () => ({ Alert: { alert: jest.fn() }, Platform: { OS: 'ios' } }));
 jest.mock('../utils/notifications', () => ({ requestNotificationPermissions: jest.fn() }));
@@ -54,5 +54,35 @@ describe('recordDose and shake-to-undo', () => {
     unrecordDose(log);
     expect(() => state().undoLastAction()).not.toThrow();
     expect(state().logs).toHaveLength(0);
+  });
+});
+
+describe('deleting and editing a dose and shake-to-undo', () => {
+  it('deleteDose files an undo that brings the dose back, once', () => {
+    const log = recordDose({ name: 'Ibuprofen', amount: 200, unit: 'mg', asNeeded: true }, { undoable: false })!;
+    deleteDose(log);
+    expect(state().logs).toHaveLength(0);
+    expect(state().undoStack).toHaveLength(1);
+
+    state().undoLastAction();
+    expect(state().logs.map(l => l.id)).toEqual([log.id]);
+    state().redoLastUndone();
+    expect(state().logs).toHaveLength(0);
+  });
+
+  it('a stale delete entry does nothing once the sheet\'s own Undo restored the dose', () => {
+    const log = recordDose({ name: 'Ibuprofen', amount: 200, unit: 'mg', asNeeded: true }, { undoable: false })!;
+    deleteDose(log);
+    restoreDose(log);
+    state().undoLastAction();
+    expect(state().logs).toHaveLength(1);
+  });
+
+  it('an edit files an undo that puts the old fields back', () => {
+    const log = recordDose({ name: 'Ibuprofen', amount: 200, unit: 'mg', asNeeded: true }, { undoable: false })!;
+    state().updateLog(log.id, { amount: 400 });
+    expect(state().undoStack).toHaveLength(1);
+    state().undoLastAction();
+    expect(state().logs[0].amount).toBe(200);
   });
 });

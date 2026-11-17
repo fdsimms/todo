@@ -188,11 +188,27 @@ export function unrecordDose(log: MedicationLog): void {
 }
 
 /**
+ * A person deleting a dose: `unrecordDose` plus a shake-to-undo that puts it
+ * back. Not folded into `unrecordDose`, which the quick-record Undo, search
+ * receipts and undo closures call, none of which is a delete to offer undoing.
+ */
+export function deleteDose(log: MedicationLog): void {
+  unrecordDose(log);
+  useMedicationStore.getState().setLastAction({
+    label: `Deleted ${log.name} dose`,
+    undo: () => restoreDose(log),
+    redo: () => unrecordDose(log),
+  });
+}
+
+/**
  * Put back a dose `unrecordDose` took away, for an undo. Spends the one
  * `unrecordDose` returned to its task's supply, under the same conditions, so
  * delete then undo leaves the count where it started.
  */
 export function restoreDose(log: MedicationLog): void {
+  // Already back (the sheet's own Undo came first): the supply must not be spent twice.
+  if (useMedicationStore.getState().logs.some(l => l.id === log.id)) return;
   useMedicationStore.getState().restoreLog(log);
   syncOkAgainNotification(log.name);
   if (log.taskId !== null || log.dayKey !== dayKeyOf(getCurrentDayStart())) return;

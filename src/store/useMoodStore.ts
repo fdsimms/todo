@@ -73,6 +73,8 @@ interface MoodStore extends UndoHistoryActions {
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
+  /** `removeLog` for a person deleting an entry: files shake-to-undo, which puts it back. */
+  deleteLog: (id: string) => void;
   /** Writes a removed entry back under its own id, for redo. Already present: left alone. */
   restoreLog: (log: MoodLog) => void;
   /**
@@ -148,11 +150,36 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     // on the Mood screen, silently.
     dbUpdateMoodLog(next);
     set({ logs: get().logs.map(l => (l.id === id ? next : l)) });
+    // The edit sheet is the only caller, so every edit is a person's: file the
+    // undo here. Only the fields a patch may touch are put back.
+    const fields = (l: MoodLog): MoodLogPatch => ({
+      mood: l.mood, symptoms: l.symptoms, contextTags: l.contextTags, change: l.change, note: l.note,
+    });
+    const before = fields(existing);
+    const after = fields(next);
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      get().setLastAction({
+        label: 'Edited a mood entry',
+        undo: () => get().updateLog(id, before),
+        redo: () => get().updateLog(id, after),
+      });
+    }
   },
 
   removeLog(id) {
     dbDeleteMoodLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
+  },
+
+  deleteLog(id) {
+    const log = get().logs.find(l => l.id === id);
+    if (!log) return;
+    get().removeLog(id);
+    get().setLastAction({
+      label: 'Deleted a mood entry',
+      undo: () => get().restoreLog(log),
+      redo: () => get().removeLog(id),
+    });
   },
 
   restoreLog(log) {
