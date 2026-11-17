@@ -9,7 +9,7 @@ import {
 import type { Alarm } from '../types';
 import { alarmAlertTitle, alarmNativeUuid, atTime, isRepeating, nextFireAt } from './alarms';
 import { isOverrideSpent, overrideAt, overrideDay } from './morningAlarm';
-import { missionKeyForAlarm, nativeMission } from './missions';
+import { missionKeyForAlarm, nativeAlarmHold } from './missions';
 import { isDemoModeActive } from './demoState';
 import { soundFileForAlarm } from './alarmSoundDevice';
 
@@ -37,7 +37,7 @@ export async function syncAlarmToDevice(alarm: Alarm, now: Date = new Date()): P
   if (!alarm.enabled || nextFireAt(alarm, now) === null) return false;
   await ensureAuthorized();
   const title = alarmAlertTitle(alarm);
-  const mission = nativeMission(missionKeyForAlarm(alarm.id), alarm.mission, title);
+  const mission = nativeAlarmHold(alarm, title);
   const sound = await soundFileForAlarm(alarm.sound);
   if (!isRepeating(alarm)) return scheduleNativeAlarm(id, nextFireAt(alarm, now)!, title, mission, sound);
 

@@ -37,6 +37,8 @@ export interface AlarmSetup {
 /** What the alarm editor saves. A sound left out is the default. */
 export interface AlarmInput extends Partial<AlarmSetup> {
   mission: AlarmMission | null;
+  /** The saved focus session to offer once it is turned off. Absent keeps an edited alarm's, null clears it. */
+  savedFocusId?: string | null;
   /** Set to edit an existing alarm; absent to add one. */
   id?: string;
   label: string;
@@ -137,6 +139,8 @@ interface AlarmStore {
   clearSpentOverrides: (now?: Date) => void;
   /** A one-off alarm at `at` that deletes itself once it has rung, like a quick alarm. */
   addOneOffAlarm: (at: Date, setup: AlarmSetup, now?: Date) => Alarm;
+  /** Stops every alarm offering saved focus session `id`, after it is deleted. */
+  unlinkSavedFocus: (id: string) => void;
   /** Puts every alarm on the device again, after launch or the demo ending. */
   syncAllToDevice: () => Promise<void>;
 }
@@ -168,6 +172,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       ...scheduleFields(input.hour, input.minute, input.repeatDays, now),
       enabled: true,
       mission: setup.mission,
+      savedFocusId: input.savedFocusId === undefined ? existing?.savedFocusId ?? null : input.savedFocusId,
       ...soundFields(setup, now),
       quick: false,
       armedAt: now.toISOString(),
@@ -190,6 +195,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       ...quickAlarmFields(minutes, now),
       enabled: true,
       mission: normalized.mission,
+      savedFocusId: null,
       ...soundFields(normalized, now),
       armedAt: now.toISOString(),
       missionDoneAt: null,
@@ -329,7 +335,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       fireAt: ring.toISOString(),
       quick: true,
       enabled: true,
-      ...(() => { const n = normalizeSetup(setup); return { mission: n.mission, ...soundFields(n, now) }; })(),
+      ...(() => { const n = normalizeSetup(setup); return { mission: n.mission, savedFocusId: null, ...soundFields(n, now) }; })(),
       armedAt: now.toISOString(),
       missionDoneAt: null,
       missionGaveUp: false,
@@ -339,6 +345,14 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
     write(alarm);
     set({ alarms: [...get().alarms, alarm] });
     return alarm;
+  },
+
+  unlinkSavedFocus(id) {
+    const linked = get().alarms.filter(a => a.savedFocusId === id);
+    if (linked.length === 0) return;
+    const cleared = new Map(linked.map(a => [a.id, { ...a, savedFocusId: null } as Alarm]));
+    for (const alarm of cleared.values()) write(alarm);
+    set({ alarms: get().alarms.map(a => cleared.get(a.id) ?? a) });
   },
 
   async syncAllToDevice() {

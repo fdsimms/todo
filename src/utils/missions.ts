@@ -124,15 +124,45 @@ export function nativeMission(key: MissionKey, mission: AlarmMission | null | un
   return { key, kind: m.kind, count: m.count, title, buttonLabel: missionButtonLabel(m) };
 }
 
+/** The label on an alarm's own button when all it holds back is a focus session. */
+export const FOCUS_HOLD_BUTTON_LABEL = 'Focus';
+
+/**
+ * What the native side holds an alarm for: its mission, or, with none, a focus
+ * session to offer once it is turned off. The focus case reuses the mission
+ * loop (Stop brings the alarm back until the app has answered), with kind
+ * `focus` and a count the native side never reads. Null when it holds nothing.
+ */
+export function nativeAlarmHold(
+  alarm: { id: string; mission: AlarmMission | null; savedFocusId?: string | null },
+  title: string,
+): NativeMission | null {
+  const key = missionKeyForAlarm(alarm.id);
+  const mission = nativeMission(key, alarm.mission, title);
+  if (mission) return mission;
+  if (!alarm.savedFocusId) return null;
+  return { key, kind: 'focus', count: 0, title, buttonLabel: FOCUS_HOLD_BUTTON_LABEL };
+}
+
 /** A task's alarm mission, titled the way its reminder is. */
 export function nativeMissionForTask(task: Pick<Task, 'id' | 'title' | 'mission'>): NativeMission | null {
   return nativeMission(missionKeyForTask(task.id), task.mission, task.title);
 }
 
+/** What the native side holds for an owed entry: a task's or an alarm's mission, or an alarm's focus offer. */
+export function nativeHoldForOwed(o: Pick<OwedMission, 'key' | 'mission' | 'savedFocusId' | 'source' | 'id' | 'title'>): NativeMission | null {
+  return o.source === 'alarm'
+    ? nativeAlarmHold({ id: o.id, mission: o.mission, savedFocusId: o.savedFocusId }, o.title)
+    : nativeMission(o.key, o.mission, o.title);
+}
+
 /** A mission the app owes the person: one to open when it comes forward. */
 export interface OwedMission {
   key: MissionKey;
-  mission: AlarmMission;
+  /** Null for an alarm held back only to offer its focus session. */
+  mission: AlarmMission | null;
+  /** The saved focus session an alarm offers once it is done with, or null. */
+  savedFocusId: string | null;
   /** What it is for: the task's or the alarm's title. */
   title: string;
   source: 'task' | 'alarm';
@@ -170,7 +200,7 @@ interface PendingInput {
 export function owedMissions(input: {
   pending: readonly PendingInput[];
   taskById: (id: string) => Pick<Task, 'id' | 'title' | 'completed' | 'archived' | 'mission'> | undefined;
-  alarmById: (id: string) => { id: string; label: string; mission: AlarmMission | null } | undefined;
+  alarmById: (id: string) => { id: string; label: string; mission: AlarmMission | null; savedFocusId?: string | null } | undefined;
   /** Alarms whose ring passed with the mission undone. */
   missedRingAlarmIds: readonly string[];
   /** Missions just done or given up, still being cleared natively. */
@@ -199,22 +229,23 @@ export function owedMissions(input: {
         stale.push(p.key);
         continue;
       }
-      add({ key: missionKeyForTask(task.id), mission, title: task.title, source: 'task', id: task.id });
+      add({ key: missionKeyForTask(task.id), mission, savedFocusId: null, title: task.title, source: 'task', id: task.id });
     } else {
       const alarm = input.alarmById(target.id);
       const mission = alarm ? normalizeMission(alarm.mission) : null;
-      if (!alarm || !mission) {
+      const savedFocusId = alarm?.savedFocusId || null;
+      if (!alarm || (!mission && !savedFocusId)) {
         stale.push(p.key);
         continue;
       }
-      add({ key: missionKeyForAlarm(alarm.id), mission, title: p.title, source: 'alarm', id: alarm.id });
+      add({ key: missionKeyForAlarm(alarm.id), mission, savedFocusId, title: p.title, source: 'alarm', id: alarm.id });
     }
   }
   for (const id of input.missedRingAlarmIds) {
     const alarm = input.alarmById(id);
     const mission = alarm ? normalizeMission(alarm.mission) : null;
     if (!alarm || !mission) continue;
-    add({ key: missionKeyForAlarm(alarm.id), mission, title: alarm.label.trim() || 'Alarm', source: 'alarm', id: alarm.id });
+    add({ key: missionKeyForAlarm(alarm.id), mission, savedFocusId: alarm.savedFocusId || null, title: alarm.label.trim() || 'Alarm', source: 'alarm', id: alarm.id });
   }
   return { owed, stale };
 }

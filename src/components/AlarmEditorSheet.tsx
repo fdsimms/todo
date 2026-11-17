@@ -2,17 +2,23 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import type { Alarm, AlarmMission } from '../types';
+import { InlineAction } from './InlineAction';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { MissionPicker } from './MissionPicker';
+import { SavedFocusEditorSheet } from './SavedFocusEditorSheet';
+import { PillGroup, type PillGroupOption } from './PillGroup';
+import { HelpText } from './HelpText';
 import { AlarmSoundRows } from './AlarmSoundRows';
 import { RingtonePickerSheet } from './RingtonePickerSheet';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useAlarmStore } from '../store/useAlarmStore';
+import { useSavedFocusStore } from '../store/useSavedFocusStore';
+import { describeFilter } from '../utils/savedFocus';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { describeRepeat } from '../utils/alarms';
 import { soundChoiceFrom } from '../utils/alarmSounds';
@@ -39,6 +45,7 @@ interface Draft {
   label: string;
   repeatDays: number[];
   mission: AlarmMission | null;
+  savedFocusId: string | null;
   sound: string | null;
   soundPool: string[];
 }
@@ -47,10 +54,10 @@ function draftFor(alarm: Alarm | null): Draft {
   if (alarm) {
     return {
       hour: alarm.hour, minute: alarm.minute, label: alarm.label, repeatDays: alarm.repeatDays,
-      mission: alarm.mission, sound: alarm.sound, soundPool: alarm.soundPool,
+      mission: alarm.mission, savedFocusId: alarm.savedFocusId, sound: alarm.sound, soundPool: alarm.soundPool,
     };
   }
-  return { hour: 7, minute: 0, label: '', repeatDays: [], mission: null, sound: null, soundPool: [] };
+  return { hour: 7, minute: 0, label: '', repeatDays: [], mission: null, savedFocusId: null, sound: null, soundPool: [] };
 }
 
 /** What differs between two drafts, in the editor's own words. Empty when nothing does. */
@@ -59,6 +66,7 @@ const changedDraft = (a: Draft, b: Draft) => changedList([
   ['label', a.label.trim() !== b.label.trim()],
   ['repeat days', [...a.repeatDays].sort().join() !== [...b.repeatDays].sort().join()],
   ['mission', JSON.stringify(a.mission) !== JSON.stringify(b.mission)],
+  ['focus session', a.savedFocusId !== b.savedFocusId],
   ['sound', a.sound !== b.sound || a.soundPool.join() !== b.soundPool.join()],
 ]);
 
@@ -76,6 +84,9 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
   const [draft, setDraft] = useState<Draft>(() => draftFor(alarm));
   const [opened, setOpened] = useState<Draft>(() => draftFor(alarm));
   const [ringtonesOpen, setRingtonesOpen] = useState(false);
+  const savedSessions = useSavedFocusStore(s => s.sessions);
+  // The saved session being edited from here: undefined closed, null a new one.
+  const [editingSaved, setEditingSaved] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!visible) return;
@@ -83,7 +94,19 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
     setDraft(start);
     setOpened(start);
     setRingtonesOpen(false);
+    setEditingSaved(undefined);
   }, [visible, alarm]);
+
+  const focusOptions: PillGroupOption[] = [
+    { key: 'none', label: 'None', pinned: true, selected: draft.savedFocusId === null, onPress: () => { haptics.tap(); patch({ savedFocusId: null }); } },
+    ...savedSessions.map(s => ({
+      key: s.id,
+      label: s.name,
+      suffix: describeFilter(s.filter),
+      selected: draft.savedFocusId === s.id,
+      onPress: () => { haptics.tap(); patch({ savedFocusId: s.id }); },
+    })),
+  ];
 
   const patch = (next: Partial<Draft>) => setDraft(d => ({ ...d, ...next }));
   const time = new Date(2000, 0, 1, draft.hour, draft.minute);
@@ -192,6 +215,24 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
             <MissionPicker value={draft.mission} onChange={mission => patch({ mission })} />
           </View>
 
+          <Text style={styles.label}>When it stops</Text>
+          <View style={styles.card}>
+            <PillGroup
+              noun="focus session"
+              options={focusOptions}
+              onCreate={undefined}
+            />
+            <View style={styles.focusActions}>
+              <InlineAction label="New focus session" icon="add" onPress={() => setEditingSaved(null)} />
+              {draft.savedFocusId !== null && savedSessions.some(s => s.id === draft.savedFocusId) && (
+                <InlineAction label="Edit" variant="neutral" onPress={() => setEditingSaved(draft.savedFocusId)} />
+              )}
+            </View>
+            <HelpText style={styles.hint}>
+              Turning this alarm off opens a sheet to start the focus session you pick. With a mission, it opens once the mission is done.
+            </HelpText>
+          </View>
+
           <Text style={styles.label}>Sound</Text>
           <View style={styles.rowsCard}>
             <AlarmSoundRows
@@ -220,6 +261,12 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
         values={draft.soundPool.length > 0 ? draft.soundPool : draft.sound === null ? [] : [draft.sound]}
         onChangeValues={sounds => patch(soundChoiceFrom(sounds))}
         onClose={() => setRingtonesOpen(false)}
+      />
+      <SavedFocusEditorSheet
+        visible={visible && editingSaved !== undefined}
+        session={savedSessions.find(s => s.id === editingSaved) ?? null}
+        onSaved={id => patch({ savedFocusId: id })}
+        onClose={() => setEditingSaved(undefined)}
       />
     </SheetModal>
   );
@@ -260,6 +307,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dayOn: { backgroundColor: colors.accentFill },
   dayText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   dayTextOn: { color: colors.onAccent },
+  focusActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
   hint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.smd },
   rowsCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   delete: { marginTop: spacing.lg, alignItems: 'center' },

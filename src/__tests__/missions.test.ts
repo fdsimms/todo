@@ -2,6 +2,7 @@ import {
   describeMission,
   hasMission,
   missionKeyForAlarm,
+  nativeAlarmHold,
   missionKeyForTask,
   normalizeMission,
   owedMissions,
@@ -83,6 +84,24 @@ describe('owedMissions', () => {
     expect(stale).toEqual([]);
   });
 
+  it('owes an alarm held only for a focus session, with no mission', () => {
+    const { owed, stale } = owedMissions({
+      pending: [pending('alarm:a1')], taskById: () => undefined,
+      alarmById: () => alarm({ mission: null, savedFocusId: 's1' }), missedRingAlarmIds: [],
+    });
+    expect(owed.map(o => [o.key, o.mission, o.savedFocusId])).toEqual([['alarm:a1', null, 's1']]);
+    expect(stale).toEqual([]);
+  });
+
+  it('lets go of an alarm that has neither a mission nor a focus session now', () => {
+    const { owed, stale } = owedMissions({
+      pending: [pending('alarm:a1')], taskById: () => undefined,
+      alarmById: () => alarm({ mission: null, savedFocusId: null }), missedRingAlarmIds: [],
+    });
+    expect(owed).toEqual([]);
+    expect(stale).toEqual(['alarm:a1']);
+  });
+
   it('lets go of a pending mission whose task is done, gone or no longer asks', () => {
     for (const t of [task({ completed: true }), task({ archived: true }), task({ mission: null }), undefined]) {
       const { owed, stale } = owedMissions({
@@ -121,5 +140,24 @@ describe('owedMissions', () => {
     });
     expect(owed.map(o => o.key)).toEqual(['task:t1']);
     expect(stale).toEqual([]);
+  });
+});
+
+describe('nativeAlarmHold', () => {
+  const pushups = { kind: 'pushups' as const, count: 20 };
+
+  it('holds an alarm for its mission, whether or not it also offers a focus session', () => {
+    expect(nativeAlarmHold({ id: 'a1', mission: pushups, savedFocusId: 's1' }, 'Wake up'))
+      .toMatchObject({ key: 'alarm:a1', kind: 'pushups', count: 20, buttonLabel: 'Pushups' });
+  });
+
+  it('holds an alarm with only a focus session as a focus hold', () => {
+    expect(nativeAlarmHold({ id: 'a1', mission: null, savedFocusId: 's1' }, 'Wake up'))
+      .toEqual({ key: 'alarm:a1', kind: 'focus', count: 0, title: 'Wake up', buttonLabel: 'Focus' });
+  });
+
+  it('holds nothing for an alarm with neither', () => {
+    expect(nativeAlarmHold({ id: 'a1', mission: null, savedFocusId: null }, 'Wake up')).toBeNull();
+    expect(nativeAlarmHold({ id: 'a1', mission: null }, 'Wake up')).toBeNull();
   });
 });

@@ -29,7 +29,7 @@ const NOW = new Date(2026, 9, 14, 10, 0);
 function alarm(over: Partial<Alarm> = {}): Alarm {
   return {
     id: 'a1', label: 'Wake up', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], fireAt: null, enabled: true,
-    mission: { kind: 'pushups', count: 20 }, quick: false, armedAt: NOW.toISOString(), missionDoneAt: null,
+    mission: { kind: 'pushups', count: 20 }, savedFocusId: null, quick: false, armedAt: NOW.toISOString(), missionDoneAt: null,
     missionGaveUp: false, sound: null, soundPool: [], soundRolledAt: null, override: null,
     createdAt: NOW.toISOString(), ...over,
   };

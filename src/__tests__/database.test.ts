@@ -972,7 +972,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
   it('round-trips an alarm, and deletes it', () => {
     const alarm = {
       id: 'al1', label: 'Wake up', hour: 7, minute: 30, repeatDays: [1, 3, 5], fireAt: null, enabled: true,
-      mission: { kind: 'pushups' as const, count: 15 }, quick: false, armedAt: '2026-10-14T07:00:00.000Z',
+      mission: { kind: 'pushups' as const, count: 15 }, savedFocusId: 'fs1', quick: false, armedAt: '2026-10-14T07:00:00.000Z',
       missionDoneAt: null, missionGaveUp: false, sound: 'custom:snd1',
       soundPool: ['custom:snd1', 'chime'], soundRolledAt: '2026-10-14T07:00:00.000Z',
       override: { date: '2026-10-26', hour: 6, minute: 30 },

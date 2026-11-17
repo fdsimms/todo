@@ -12,6 +12,7 @@ import { FirstRunHost } from './src/components/FirstRunSheet';
 import { FlagCopyHost } from './src/components/FlagCopyHost';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useAlarmStore } from './src/store/useAlarmStore';
+import { useSavedFocusStore } from './src/store/useSavedFocusStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { runAfterPaint } from './src/utils/afterPaint';
@@ -183,6 +184,7 @@ function AppGate() {
       // scheduled, but a one-off switched back on, or a reinstall, needs it.
       runStartupStep('load alarms', () => {
         useAlarmStore.getState().initialize();
+        useSavedFocusStore.getState().initialize();
         void useAlarmStore.getState().syncAllToDevice();
       });
       runStartupStep('load sync state', () => useSyncStore.getState().initialize());

@@ -133,6 +133,7 @@ import { generateId } from './id';
 import { writeAgentNotes } from './agentNotes';
 import { containerPanelFromAmounts } from './leftoverFigures';
 import { useAlarmStore } from '../store/useAlarmStore';
+import { useSavedFocusStore } from '../store/useSavedFocusStore';
 
 // Seeds a whole plausible-looking task list into whatever database is
 // currently active. Demo mode points the db at a throwaway file first (see
@@ -1293,6 +1294,17 @@ export function seedDemoData(): void {
     sound: 'chime',
     soundPool: ['chime', 'rise'],
   });
+
+  // A saved focus session, offered by a weekday alarm once it is turned off
+  // (utils/savedFocus.ts), so the alarm editor's "When it stops" row has one.
+  const deepWork = useSavedFocusStore.getState().save({
+    name: 'Deep work', filter: { kind: 'all' }, windowMinutes: 90,
+  });
+  if (deepWork) {
+    useAlarmStore.getState().saveAlarm({
+      label: 'Start work', hour: 9, minute: 0, repeatDays: [1, 2, 3, 4, 5], mission: null, savedFocusId: deepWork.id,
+    });
+  }
 
   // --- A task given several dates (a series) -------------------------------
   // Three rows sharing one seriesId, each an ordinary one-off on its own day

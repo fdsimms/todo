@@ -356,7 +356,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/metricKit.ts` — DeviceMetricSummary, DEVICE_METRIC_LIMIT, Bucket, histogramBuckets, bucketTotal, bucketMedianMs, parseMetricPayload, parseSummaries, mergeSummaries, collectSummaries, +1 more
 - `src/utils/mirroringDefault.ts` — shouldDefaultMirroringOn
 - `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed
-- `src/utils/missions.ts` — MISSION_REARM_SECONDS, MISSION_COUNTING_GRACE_SECONDS, MISSION_HEARTBEAT_MS, MISSION_GIVE_UP_HOLD_MS, MISSION_KINDS, DEFAULT_MISSION, PRACTICE_MISSION, normalizeMission, parseMission, hasMission, +10 more
+- `src/utils/missions.ts` — MISSION_REARM_SECONDS, MISSION_COUNTING_GRACE_SECONDS, MISSION_HEARTBEAT_MS, MISSION_GIVE_UP_HOLD_MS, MISSION_KINDS, DEFAULT_MISSION, PRACTICE_MISSION, normalizeMission, parseMission, hasMission, +13 more
 - `src/utils/moodContextSources.ts` — MoodContextSources, NO_MOOD_CONTEXT_SOURCES, MOOD_CONTEXT_SOURCE_KEYS, EXERCISED_MINUTES, OUTSIDE_MINUTES, RAIN_TAG_MM, parseMoodContextSources, MoodEventTag, MOOD_EVENT_TAG_MAX_LENGTH, parseMoodEventTags
 - `src/utils/moodDayContext.ts` — MoodDayInputs, DayRain, rainForDay, moodDayOffers
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
@@ -552,6 +552,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedDefaults.ts` — SavedDefaultRow, savedDefaultRows
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +11 more
+- `src/utils/savedFocus.ts` — SAVED_FOCUS_SETTING, MAX_SAVED_FOCUS, normalizeWindow, normalizeSavedFocus, parseSavedFocusSessions, savedFocusNameKey, savedFocusNameTaken, describeFilter, matchesFilter, savedFocusQueue, +2 more
 - `src/utils/savedLinks.ts` — SAVED_LINKS_KEY, SAVED_LINKS_LIMIT, SavedLink, savedLinkKey, parseSavedLinks, isChipUrl, canSaveLink, suggestLinkName, addSavedLink, renameSavedLink, +7 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, withoutMultipleLead, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, +8 more
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, savedPlaceNameTaken, +8 more
@@ -817,6 +818,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useReminderRemovalStore.ts` — useReminderRemovalStore
 - `src/store/useRewardStore.ts` — COIN_BURST_MS, RewardDetails, registerGoalSourceLookup, useRewardStore
 - `src/store/useRowCursorStore.ts` — useRowCursorStore
+- `src/store/useSavedFocusStore.ts` — SavedFocusInput, useSavedFocusStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MapsApp, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore

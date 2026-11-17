@@ -230,4 +230,29 @@ describe('useAlarmStore', () => {
     expect(once).toMatchObject({ quick: true, hour: 9, minute: 0, repeatDays: [], fireAt: new Date(2026, 9, 17, 9, 0).toISOString(), mission: pushups, sound: 'chime' });
     expect(mockSync).toHaveBeenCalledWith(once);
   });
+
+  it('keeps the saved focus session an alarm offers when it is edited without naming one, and clears it on null', () => {
+    const base = { label: 'Work', hour: 9, minute: 0, repeatDays: [1], mission: null };
+    const alarm = useAlarmStore.getState().saveAlarm({ ...base, savedFocusId: 's1' }, NOW);
+    expect(alarm.savedFocusId).toBe('s1');
+    expect(useAlarmStore.getState().saveAlarm({ ...base, id: alarm.id, hour: 10 }, NOW).savedFocusId).toBe('s1');
+    expect(useAlarmStore.getState().saveAlarm({ ...base, id: alarm.id, savedFocusId: null }, NOW).savedFocusId).toBeNull();
+  });
+
+  it('stops only the alarms that offered a deleted focus session, and puts them on the device again', () => {
+    const base = { label: '', hour: 9, minute: 0, repeatDays: [1], mission: null };
+    const a = useAlarmStore.getState().saveAlarm({ ...base, savedFocusId: 's1' }, NOW);
+    const b = useAlarmStore.getState().saveAlarm({ ...base, savedFocusId: 's2' }, NOW);
+    mockSync.mockClear();
+    useAlarmStore.getState().unlinkSavedFocus('s1');
+    const byId = new Map(useAlarmStore.getState().alarms.map(x => [x.id, x]));
+    expect(byId.get(a.id)?.savedFocusId).toBeNull();
+    expect(byId.get(b.id)?.savedFocusId).toBe('s2');
+    expect(mockSync).toHaveBeenCalledTimes(1);
+    expect(mockRows.get(a.id)?.savedFocusId).toBeNull();
+  });
+
+  it('gives a quick or one-off alarm no focus session', () => {
+    expect(useAlarmStore.getState().addQuickAlarm(20, { mission: null, sound: null }, NOW).savedFocusId).toBeNull();
+  });
 });
