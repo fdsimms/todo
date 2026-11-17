@@ -6299,7 +6299,11 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   //
   // Milk has a price recorded at Trader Joe's, so the item's price history is
   // not empty. Bananas is left unpriced.
+  // A finished trip clears a typed quantity, so the gallon this price is for is
+  // set again for the price to pair with, then cleared like any bought row.
+  setQuantity(itemNamed('Milk').id, '2 gal');
   setItemPrice(itemNamed('Milk').id, 349, traderJoes.id);
+  setQuantity(itemNamed('Milk').id, null);
 
   // Stated per 100g with no portions and no serving weight — a real barcode
   // source's ordinary way of labelling a drink, and exactly the panel that

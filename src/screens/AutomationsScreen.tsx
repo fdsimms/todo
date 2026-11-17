@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { View, ScrollView, StyleSheet, Text } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -91,6 +91,15 @@ export function AutomationsScreen() {
     scrollRef.current = node;
     keyboardScroll.ref.current = node;
   }, [scrollRef, keyboardScroll.ref]);
+
+  // A jump to a specific row (a task's sparkle button, a Settings search) has to
+  // find it, and a search left in the field here from an earlier visit can filter
+  // that row out of the list. Every jump carries a new `focusStamp`, so clear the
+  // field when one arrives. `clear` is stable, so it stays out of the deps.
+  const clearSearch = searchFilter.clear;
+  useEffect(() => {
+    if (focusStamp !== undefined) clearSearch();
+  }, [focusStamp, clearSearch]);
 
   // A tab keeps its params, so a row found by search would otherwise count as
   // "the one you searched for" on every later visit from the menu. Cleared on

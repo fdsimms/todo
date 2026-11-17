@@ -565,6 +565,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'groceryImportTwoWay', groupId: 'capture', label: 'Two-way sync', section: 'Apple Reminders',
     keywords: ['both ways', 'mirror', 'shopping', 'shared list', 'write back', 'duplicate'],
     kitchen: true },
+  { id: 'groceryImportAutoBought', groupId: 'capture', label: 'Count cleared items as bought', section: 'Apple Reminders',
+    keywords: ['trip', 'shopping', 'pantry', 'checked', 'purchase', 'finish trip'], kitchen: true },
   { id: 'groceryImportDelete', groupId: 'capture', label: 'Delete after adding to Groceries', section: 'Apple Reminders',
     keywords: ['remove', 'keep', 'leave', 'duplicate', 'shopping', 'mirror'], kitchen: true },
   { id: 'reminderCaptures', groupId: 'capture', label: 'Capture lists', section: 'Apple Reminders',

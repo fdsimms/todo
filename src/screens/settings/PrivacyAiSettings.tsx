@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Animated, View, Alert, AppState, type ScrollView } from 'react-native';
+import { Animated, View, Alert, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { dbClearGtinLookups, dbCountGtinLookups } from '../../db/database';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -24,11 +24,6 @@ import { BUTTON_LABEL } from '../../copy/shared';
 import { WaniKaniTokenRows } from './WaniKaniTokenRows';
 import { FrankiTokenRows } from './FrankiTokenRows';
 
-interface Props {
-  /** The host screen's scroll view, so focusing the key field can reveal it. */
-  scrollRef?: React.RefObject<ScrollView | null>;
-}
-
 const GRACE_OPTIONS: SegmentOption<number>[] =
   APP_LOCK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
@@ -47,7 +42,7 @@ function AiFeatureBlock({ entryId, children }: { entryId: string; children: Reac
   );
 }
 
-export function PrivacyAiSettings({ scrollRef }: Props) {
+export function PrivacyAiSettings() {
   const appLockEnabled = useSettingsStore(s => s.appLockEnabled);
   const setAppLockEnabled = useSettingsStore(s => s.setAppLockEnabled);
   const appLockGraceSeconds = useSettingsStore(s => s.appLockGraceSeconds);
@@ -296,9 +291,6 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
             value={apiKeyDraft}
             onChangeText={setApiKeyDraft}
-            onFocus={() => {
-              setTimeout(() => scrollRef?.current?.scrollToEnd({ animated: true }), 100);
-            }}
             onBlur={() => setAnthropicApiKey(apiKeyDraft.trim())}
             placeholder="e.g. sk-ant-..."
             placeholderTextColor={colors.textTertiary}

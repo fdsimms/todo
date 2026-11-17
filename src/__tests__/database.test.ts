@@ -3126,6 +3126,15 @@ describe('grocery items', () => {
     expect(link.priceHistory[0].quantity).toBeNull();
   });
 
+  it('clears a typed quantity once the item is bought, so a later plain add starts blank', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Pasta', onList: true, checked: true, quantity: '1 lb' });
+    insertListedGroceryItem(item);
+
+    dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', null, {}, {});
+
+    expect(dbGetAllGroceryItems()[0].quantity).toBeNull();
+  });
+
   it('appends each trip to the window, newest first', () => {
     const item = makeGroceryItem({ id: 'g1', name: 'Olive oil', onList: true, checked: true });
     insertListedGroceryItem(item);

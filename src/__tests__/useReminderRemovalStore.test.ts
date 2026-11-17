@@ -80,6 +80,51 @@ describe('record', () => {
   });
 });
 
+describe('record with autoBought', () => {
+  const pass = [
+    { itemId: 'milk', checked: true },
+    { itemId: 'foil', checked: false },
+  ];
+
+  it('records the rows that were in the cart and leaves the rest for the card', () => {
+    mockItems = [
+      { id: 'milk', onList: false, lastPurchasedAt: null },
+      { id: 'foil', onList: false, lastPurchasedAt: null },
+    ];
+    mockFinish.mockReturnValue(1);
+    useReminderRemovalStore.getState().record(pass, undefined, true);
+    expect(mockFinish).toHaveBeenCalledTimes(1);
+    expect(mockFinish.mock.calls[0][5]).toEqual({ itemIds: ['milk'] });
+    // The unchecked row is still held for the card to ask about.
+    expect(useReminderRemovalStore.getState().removals.map(r => r.itemId)).toEqual(['milk', 'foil']);
+  });
+
+  it('records nothing when none of the removed rows were in the cart', () => {
+    mockItems = [{ id: 'foil', onList: false, lastPurchasedAt: null }];
+    useReminderRemovalStore.getState().record([{ itemId: 'foil', checked: false }], undefined, true);
+    expect(mockFinish).not.toHaveBeenCalled();
+  });
+
+  it('only holds the removals for the card when it is off', () => {
+    mockItems = [{ id: 'milk', onList: false, lastPurchasedAt: null }];
+    useReminderRemovalStore.getState().record([{ itemId: 'milk', checked: true }]);
+    expect(mockFinish).not.toHaveBeenCalled();
+  });
+
+  it('leaves an older held row alone, even one that was in the cart', () => {
+    mockItems = [
+      { id: 'old', onList: false, lastPurchasedAt: null },
+      { id: 'foil', onList: false, lastPurchasedAt: null },
+    ];
+    useReminderRemovalStore.setState({
+      hydrated: true,
+      removals: [{ itemId: 'old', inCart: true, removedAt: recent(5) }],
+    });
+    useReminderRemovalStore.getState().record([{ itemId: 'foil', checked: false }], undefined, true);
+    expect(mockFinish).not.toHaveBeenCalled();
+  });
+});
+
 describe('answer', () => {
   it('records the bought rows as a purchase at the time they came off, and forgets the rest', () => {
     // Two times on today's date, so they're one shop whatever the hour.

@@ -55,6 +55,8 @@ export function RemindersCaptureSettings() {
   const setGroceryImportDelete = useSettingsStore(s => s.setGroceryImportDelete);
   const groceryImportTwoWay = useSettingsStore(s => s.groceryImportTwoWay);
   const setGroceryImportTwoWay = useSettingsStore(s => s.setGroceryImportTwoWay);
+  const groceryImportAutoBought = useSettingsStore(s => s.groceryImportAutoBought);
+  const setGroceryImportAutoBought = useSettingsStore(s => s.setGroceryImportAutoBought);
   const reminderCaptures = useSettingsStore(s => s.reminderCaptures);
 
   const colors = useColors();
@@ -587,6 +589,23 @@ export function RemindersCaptureSettings() {
             onPress={onToggleTwoWay}
             accessibilityLabel="Keep the grocery list and this Reminders list the same in both directions"
           />
+          {groceryImportTwoWay && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="groceryImportAutoBought"
+                icon="cart-outline"
+                iconColor={groceryImportAutoBought ? colors.accent : undefined}
+                label="Count cleared items as bought"
+                hint={groceryImportAutoBought
+                  ? 'An item you checked off in Reminders and then cleared is recorded as bought, as if you had finished a trip. Items cleared without being checked are still asked about.'
+                  : 'After you clear checked items in Reminders, Groceries asks which ones you bought. Turn this on to record the checked ones without asking.'}
+                toggle={groceryImportAutoBought}
+                onPress={() => setGroceryImportAutoBought(!groceryImportAutoBought)}
+                accessibilityLabel="Record items checked off and cleared in Reminders as bought without asking"
+              />
+            </>
+          )}
         </>
       )}
 

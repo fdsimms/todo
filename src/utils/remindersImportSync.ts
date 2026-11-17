@@ -674,7 +674,11 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         // Kept for the person to say which were bought: a list cleared in
         // Reminders after a shop is otherwise a shop the pantry never hears
         // about. See reminderRemovals.ts.
-        useReminderRemovalStore.getState().record(plan.removeItems);
+        useReminderRemovalStore.getState().record(
+          plan.removeItems,
+          undefined,
+          useSettingsStore.getState().groceryImportAutoBought
+        );
       }
 
       for (const create of plan.createReminders) {
