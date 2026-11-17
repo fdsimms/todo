@@ -1647,6 +1647,14 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   the app's own `experimentResult`, so `list_experiments` says what the phone's experiment page
   says, under the same gates, with the unpicked symptoms apart and every milestone or experiment
   in the same days named. Titled by kind ("Experiment") in Activity, for the milestone's reason.
+  A planned one (`add_experiment` with `planned: true`, or `plan_experiment`, which also makes the
+  task that starts it) is listed apart under `planned` and read as nothing. `start_experiment`
+  goes through `useExperimentStore.startExperiment` and, unless told not to, checks off the open
+  tasks whose `experimentId` names it, as tapping Start on their row does; a start day in the
+  future is refused, since a day that has not happened has nothing to anchor a baseline to.
+  `experimentId` is a core task field (create_task, update_task, project steps), checked against
+  the experiments the replica holds. Experiments reach the server only with health logs on, so
+  an `experimentId` can name one the server cannot see: the task then reads `deleted: true`.
 - **Cookware goes through `useCookwareStore`'s own actions** (`cookwareTools.ts`), so a blank name
   or a weight at or below zero is refused as the sheet refuses it. It is a convenience for typing a
   dish's weight and nothing points at it: `cookedWeightG` and a leftover's weight are the food

@@ -244,10 +244,23 @@ export interface Experiment {
   id: string;
   /** What is being tried, in your own words — "No caffeine after noon". */
   label: string;
-  /** The first day of it. Noon on the picked day, as `Milestone.date` is anchored. */
-  startDate: string;
-  /** The last day of it, inclusive, never before `startDate`. Noon-anchored the same way. */
-  endDate: string;
+  /**
+   * The first day of it. Noon on the picked day, as `Milestone.date` is anchored.
+   * Null while it is planned: defined (what, which symptoms) but not begun, so
+   * nothing is compared. Starting it sets this.
+   */
+  startDate: string | null;
+  /**
+   * The last day of it, inclusive, never before `startDate`. Noon-anchored the
+   * same way. Null while planned, and null on a started one with no set end,
+   * which runs until it is stopped (the read then ends at today).
+   */
+  endDate: string | null;
+  /**
+   * The planned length in days, used to place `endDate` when it is started.
+   * Null for an open-ended one. Not read once `endDate` is set.
+   */
+  days: number | null;
   /** Symptom names picked to watch, as typed; matched by `symptomKey`. Empty means mood only. */
   symptoms: string[];
   /** What you expect it to change, or null. */

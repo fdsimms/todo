@@ -2428,6 +2428,12 @@ export interface Task {
   // syncs; a deleted template leaves the id in place and the row says so
   // instead of hiding the button. Null = none. See src/utils/templateLink.ts.
   templateId?: string | null;
+  // A planned experiment to start from this task: the row shows "Start
+  // <experiment>", and tapping it starts the experiment today and checks the
+  // task off. A plain check-off does not start it silently (it asks). The id
+  // is an experiment's, which syncs with the health logs only, so a phone
+  // without it reads the link as missing. See src/utils/experimentLink.ts.
+  experimentId?: string | null;
 
   // Optional freeform text explaining what the completion timer reminder is
   // for — "Don't eat for 2 hours" — shown as the notification body instead of

@@ -3941,6 +3941,25 @@ function seedExperiment(today: Date): void {
     symptoms: ['Poor sleep'],
     note: null,
   });
+  // A planned one, with no first day, and the task that starts it: its row
+  // reads "Start Magnesium glycinate", and the Mood list offers Start today.
+  // Planned so nothing is compared until the person starts it (a doctor's
+  // plan whose first day waits on a prescription).
+  const magnesium = addExperiment({
+    label: 'Magnesium glycinate',
+    startDate: null,
+    endDate: null,
+    days: 28,
+    symptoms: ['Poor sleep'],
+    note: 'Falling asleep sooner.',
+  });
+  if (magnesium) {
+    useTaskStore.getState().addTask({
+      title: 'Start magnesium when the pharmacy has it',
+      category: 'Health',
+      experimentId: magnesium.id,
+    });
+  }
 }
 
 /**

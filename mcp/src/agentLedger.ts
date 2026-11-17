@@ -1488,21 +1488,38 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     // title is the kind, as a milestone's is. The preview names it.
     addExperiment(draft) {
       const experiment = replica.addExperiment(draft);
-      log({ action: 'created', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: `Start the experiment "${experiment.label}", ${replica.logicalDayKeyOf(experiment.startDate)} to ${replica.logicalDayKeyOf(experiment.endDate)}` });
+      const when = experiment.startDate
+        ? `${replica.logicalDayKeyOf(experiment.startDate)} ${experiment.endDate ? `to ${replica.logicalDayKeyOf(experiment.endDate)}` : 'with no end'}`
+        : `planned, no start day yet${experiment.days ? ` (${experiment.days} days)` : ''}`;
+      log({ action: 'created', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: `${experiment.startDate ? 'Start' : 'Plan'} the experiment "${experiment.label}", ${when}` });
+      return experiment;
+    },
+
+    startExperiment(id, start) {
+      const experiment = replica.startExperiment(id, start);
+      log({ action: 'edited', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: `Start the planned experiment "${experiment.label}" on ${replica.logicalDayKeyOf(experiment.startDate!)}, ${experiment.endDate ? `ending ${replica.logicalDayKeyOf(experiment.endDate)}` : 'with no end until it is stopped'}` });
+      return experiment;
+    },
+
+    stopExperiment(id, endDate) {
+      const experiment = replica.stopExperiment(id, endDate);
+      log({ action: 'edited', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: `Stop the experiment "${experiment.label}" on ${replica.logicalDayKeyOf(experiment.endDate!)}` });
       return experiment;
     },
 
     updateExperiment(id, patch) {
       const before = replica.experiments().find(e => e.id === id);
       const experiment = replica.updateExperiment(id, patch);
+      const day = (iso: string | null) => (iso ? replica.logicalDayKeyOf(iso) : 'none');
       const changes = [
         ...(before && before.label !== experiment.label ? [`name from "${before.label}" to "${experiment.label}"`] : []),
-        ...(before && before.startDate !== experiment.startDate ? [`first day from ${replica.logicalDayKeyOf(before.startDate)} to ${replica.logicalDayKeyOf(experiment.startDate)}`] : []),
-        ...(before && before.endDate !== experiment.endDate ? [`last day from ${replica.logicalDayKeyOf(before.endDate)} to ${replica.logicalDayKeyOf(experiment.endDate)}`] : []),
+        ...(before && before.startDate !== experiment.startDate ? [`first day from ${day(before.startDate)} to ${day(experiment.startDate)}`] : []),
+        ...(before && before.endDate !== experiment.endDate ? [`last day from ${day(before.endDate)} to ${day(experiment.endDate)}`] : []),
+        ...(before && before.days !== experiment.days ? [`planned length from ${before.days ?? 'none'} to ${experiment.days ?? 'none'} days`] : []),
         ...(before && before.symptoms.join('\n') !== experiment.symptoms.join('\n') ? [`symptoms to watch to ${experiment.symptoms.length ? experiment.symptoms.join(', ') : 'none'}`] : []),
         ...(before && before.note !== experiment.note ? ['what is expected'] : []),
       ];
-      log({ action: 'edited', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: changes.length ? `Change the experiment "${before!.label}": ${changes.join('; ')}` : `Leave the experiment "${experiment.label}" as it is` });
+      log({ action: 'edited', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: changes.length ? `Change the experiment "${before!.label}": ${changes.join('; ')}` : `Leave the experiment "${experiment.label}" as it is` })
       return experiment;
     },
 

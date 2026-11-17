@@ -6,6 +6,8 @@ import { addDays } from 'date-fns/addDays';
 import type { Experiment } from '../types';
 import { useExperimentStore } from '../store/useExperimentStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { useTaskStore } from '../store/useTaskStore';
+import { linkedExperimentTaskCounts, linkedExperimentTasksNote } from '../utils/experimentLink';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
 import { SheetHeader } from './SheetHeader';
@@ -87,14 +89,24 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
   const [symptoms, setSymptoms] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
+  // Planned: no first day yet, begun later from its page, the Mood list or a task.
+  const [startLater, setStartLater] = useState(false);
+  // No last day: it runs until it is stopped.
+  const [openEnded, setOpenEnded] = useState(false);
+  // The length a planned one gets when it is started.
+  const [plannedDays, setPlannedDays] = useState(DEFAULT_EXPERIMENT_DAYS);
   const labelInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!visible) return;
     if (experiment) {
       setLabel(experiment.label);
-      setStart(new Date(experiment.startDate));
-      setEnd(new Date(experiment.endDate));
+      const today = noonOfToday();
+      setStart(experiment.startDate ? new Date(experiment.startDate) : today);
+      setEnd(experiment.endDate ? new Date(experiment.endDate) : endFor(today, experiment.days ?? DEFAULT_EXPERIMENT_DAYS));
+      setStartLater(!experiment.startDate);
+      setOpenEnded(experiment.startDate ? !experiment.endDate : experiment.days === null);
+      setPlannedDays(experiment.days ?? DEFAULT_EXPERIMENT_DAYS);
       setSymptoms(experiment.symptoms);
       setNote(experiment.note ?? '');
     } else {
@@ -102,18 +114,31 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
       setLabel('');
       setStart(today);
       setEnd(endFor(today, DEFAULT_EXPERIMENT_DAYS));
+      setStartLater(false);
+      setOpenEnded(false);
+      setPlannedDays(DEFAULT_EXPERIMENT_DAYS);
       setSymptoms([]);
       setNote('');
     }
     setPicker(null);
   }, [visible, experiment]);
 
-  const lengthDays = experimentSpan({ startDate: start.toISOString(), endDate: end.toISOString() }).lengthDays;
+  const todayKey = dayKeyOf(getLogicalToday());
+  const datedLength = experimentSpan({ startDate: start.toISOString(), endDate: end.toISOString() }, todayKey)!.lengthDays;
+  // The length the presets show: the planned one while planned, else the dates'.
+  const lengthDays = startLater ? plannedDays : datedLength;
   // Only for one already running, and only while its last day is still ahead:
   // a new one ending today is a length, not an early end.
-  const showEndToday = experiment !== null
-    && canEndToday({ startDate: start.toISOString(), endDate: end.toISOString() }, dayKeyOf(getLogicalToday()));
-  const refusal = experimentRefusal({ label, startDate: start, endDate: end });
+  const showEndToday = experiment !== null && !startLater && !openEnded
+    && canEndToday({ startDate: start.toISOString(), endDate: end.toISOString() }, todayKey);
+  const refusal = experimentRefusal({
+    label,
+    startDate: startLater ? null : start,
+    endDate: startLater || openEnded ? null : end,
+    days: startLater && !openEnded ? plannedDays : null,
+  });
+  // New or still planned: it can be dated now or left for later.
+  const canPickWhen = !experiment || !experiment.startDate;
   // A new experiment nobody named is not one to warn about: closing just
   // doesn't make it, the way an unnamed milestone isn't made.
   const blankNew = !experiment && !label.trim();
@@ -122,8 +147,9 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
 
   const draft = () => ({
     label,
-    startDate: start,
-    endDate: end,
+    startDate: startLater ? null : start,
+    endDate: startLater || openEnded ? null : end,
+    ...(startLater ? { days: openEnded ? null : plannedDays } : openEnded ? { days: null } : {}),
     symptoms: cleanExperimentSymptoms(symptoms),
     note: note.trim() ? note : null,
   });
@@ -156,7 +182,10 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
     if (!experiment) { onClose(); return; }
     confirmDelete({
       title: 'Delete this experiment?',
-      message: 'Your mood and symptom entries stay as they are.',
+      message: `Your mood and symptom entries stay as they are.${(() => {
+        const note = linkedExperimentTasksNote(linkedExperimentTaskCounts(useTaskStore.getState().tasks, [experiment.id]).get(experiment.id) ?? 0);
+        return note ? ` ${note}` : '';
+      })()}`,
       // Held until the sheet has dismissed: the host's "experiment is gone"
       // guard would otherwise replace its tree under the presented sheet.
       onConfirm: () => { onClose(); holdUntilDismissed(() => removeExperiment(experiment.id)); },
@@ -167,7 +196,7 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
   // a week is still 4 weeks rather than suddenly 3.
   const pickStart = (picked: Date) => {
     setStart(picked);
-    setEnd(endFor(picked, lengthDays));
+    setEnd(endFor(picked, datedLength));
   };
 
   // Every symptom ever logged, plus any picked that hasn't been logged yet
@@ -251,27 +280,51 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
 
       <Text style={styles.groupLabel}>WHEN</Text>
       <View style={styles.card}>
-        <EditorRow
-          icon="calendar-outline"
-          label="Starts"
-          value={format(start, 'EEE, MMM d, yyyy')}
-          onPress={() => { haptics.tap(); setPicker('start'); }}
-        />
-        <View style={styles.separator} />
-        <EditorRow
-          icon="flag-outline"
-          label="Ends"
-          value={`${format(end, 'EEE, MMM d')} · ${describeLength(lengthDays)}`}
-          onPress={() => { haptics.tap(); setPicker('end'); }}
-        />
+        {canPickWhen && (
+          <View style={styles.lengths}>
+            <SegmentedControl
+              label="First day"
+              options={[{ value: 'dated', label: 'Pick dates' }, { value: 'later', label: 'Start later' }]}
+              value={startLater ? 'later' : 'dated'}
+              onChange={value => setStartLater(value === 'later')}
+            />
+          </View>
+        )}
+        {!startLater && (
+          <>
+            <EditorRow
+              icon="calendar-outline"
+              label="Starts"
+              value={format(start, 'EEE, MMM d, yyyy')}
+              onPress={() => { haptics.tap(); setPicker('start'); }}
+            />
+            <View style={styles.separator} />
+            <EditorRow
+              icon="flag-outline"
+              label="Ends"
+              value={openEnded ? 'When you stop it' : `${format(end, 'EEE, MMM d')} · ${describeLength(datedLength)}`}
+              onPress={() => { if (openEnded) return; haptics.tap(); setPicker('end'); }}
+            />
+          </>
+        )}
         <View style={styles.lengths}>
           <SegmentedControl
-            label="Length"
-            options={EXPERIMENT_LENGTH_PRESETS.map(p => ({ value: p.days, label: p.label }))}
-            value={presetValue}
-            onChange={days => setEnd(endFor(start, days))}
+            label="Ends"
+            options={[{ value: 'length', label: 'After a length' }, { value: 'open', label: 'When I stop it' }]}
+            value={openEnded ? 'open' : 'length'}
+            onChange={value => setOpenEnded(value === 'open')}
           />
         </View>
+        {!openEnded && (
+          <View style={styles.lengths}>
+            <SegmentedControl
+              label="Length"
+              options={EXPERIMENT_LENGTH_PRESETS.map(p => ({ value: p.days, label: p.label }))}
+              value={presetValue}
+              onChange={days => { if (startLater) setPlannedDays(days); else setEnd(endFor(start, days)); }}
+            />
+          </View>
+        )}
       </View>
       {showEndToday && (
         <View style={styles.endToday}>
@@ -285,7 +338,11 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
       )}
       {datesRefused && <FieldError style={styles.error}>{refusal}</FieldError>}
       <HelpText style={styles.hint}>
-        Compared with the same number of days just before it starts.
+        {startLater
+          ? 'You pick the first day when you start it, from its page, the Mood list or a task. Nothing is compared until then.'
+          : openEnded
+            ? 'Compared with as many days before it as it has run so far. Stopping it fixes that.'
+            : 'Compared with the same number of days just before it starts.'}
       </HelpText>
 
       <Text style={styles.groupLabel}>SYMPTOMS TO WATCH</Text>

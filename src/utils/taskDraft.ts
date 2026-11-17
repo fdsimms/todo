@@ -435,6 +435,7 @@ export function newTaskFromDraft(
     alarmLink: draft.alarmLink ?? null,
     alarmLinkLeavesOpen: draft.alarmLinkLeavesOpen ?? false,
     templateId: draft.templateId ?? null,
+    experimentId: draft.experimentId ?? null,
     logHealthMetric: draft.logHealthMetric ?? null,
     logHealthAmount: draft.logHealthAmount ?? null,
     medicationName: draft.medicationName ?? null,

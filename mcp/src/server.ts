@@ -111,7 +111,7 @@ import { listErrors, MAX_ERRORS } from './errorTools';
 import { storageReport } from './storageTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
-import { addExperiment, deleteExperiment, listExperiments, updateExperiment } from './experimentTools';
+import { addExperiment, deleteExperiment, listExperiments, planExperiment, startExperiment, stopExperiment, updateExperiment } from './experimentTools';
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { DEFAULT_FAST_LIMIT, MAX_FAST_LIMIT, listFasts } from './fastTools';
@@ -1794,6 +1794,8 @@ const taskFieldsShape = {
     .describe('If the day is full: true lets the phone hold this task until a day that is not busy (at least one waiting task still shows every day, longest wait first, never more than the slotInMaxWaitDays setting (3 days by default), and never past its deadline); false keeps its date even when its category says wait; null follows the category. Only for a dated task that is not a daily repeat, a daily target, an every-N-hours task, a meter or weather wait, or one with a reminder at a set time.'),
   templateId: z.string().nullable().optional()
     .describe('A template id (list_templates) the task row offers to run, as "Run <name>". Use it for a template whose questions cannot be answered yet (a packing list before the trip is decided): the person answers them on the phone when they tap it, and running it checks the task off. Nothing is created until then. null removes the link. A deleted template leaves the row showing "Template deleted".'),
+  experimentId: z.string().nullable().optional()
+    .describe('A planned experiment id (list_experiments, planned). The task row then offers "Start <label>": tapping it starts the experiment today and checks the task off, while a plain check-off asks first and never starts it silently. The task can be undated, deferred or dated, and can wait on other tasks (waitsOn) so trials start one at a time. If the experiment is already running or finished the row offers "View experiment". Deleting the experiment leaves the link and the row reads "Experiment not found". null removes the link. add_experiment with planned: true makes the experiment, or plan_experiment makes it with this task in one step.'),
   workoutRoutineId: z.string().nullable().optional()
     .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link. Setting it clears workoutProgramId.'),
   workoutProgramId: z.string().nullable().optional()
@@ -2579,12 +2581,13 @@ function registerWriteTools(
 
   server.tool(
     'add_experiment',
-    'Start an experiment: a change the person will try for a set stretch of days, which the mood log compares with the same number of days just before it. Only what they tell you, in their words. Give endDate or days (default 28); startDate defaults to today. symptoms are the ones they expect it to change; use the names they already log (list_mood_logs shows them).',
+    'Start an experiment: a change the person will try for a set stretch of days, which the mood log compares with the same number of days just before it. Only what they tell you, in their words. Give endDate or days (default 28); startDate defaults to today. When they do not know the start day yet (a prescription still to arrive, a referral to wait for), pass planned: true with no dates: it waits as "planned", compared with nothing, until start_experiment. symptoms are the ones they expect it to change; use the names they already log (list_mood_logs shows them).',
     {
       label: z.string().min(1).max(200).describe('What they are trying, in a few words.'),
       startDate: dayKey.optional().describe('The first day, YYYY-MM-DD. Default today.'),
       endDate: dayKey.optional().describe('The last day, YYYY-MM-DD, included.'),
-      days: z.number().int().min(1).max(365).optional().describe('How many days it lasts, counting the first. Used when endDate is not given. Default 28.'),
+      days: z.number().int().min(1).max(365).optional().describe('How many days it lasts, counting the first. Used when endDate is not given. Default 28. For a planned one, the length it gets when started.'),
+      planned: z.boolean().optional().describe('No dates yet: it waits as "planned" and is compared with nothing until start_experiment. Leave startDate and endDate out.'),
       symptoms: z.array(z.string().min(1).max(60)).max(20).optional().describe('Symptoms to watch, as the person names them.'),
       expected: z.string().min(1).max(300).optional().describe('What they expect it to change, in their words.'),
     },
@@ -2599,7 +2602,7 @@ function registerWriteTools(
 
   server.tool(
     'update_experiment',
-    'Change an experiment by its id from list_experiments: its name, first or last day, the symptoms it watches (the list given replaces the old one) or what is expected (null clears it). Only what you name changes. To end one early, set endDate to today.',
+    'Change an experiment by its id from list_experiments: its name, first or last day, the symptoms it watches (the list given replaces the old one) or what is expected (null clears it), or the planned length (days) of one not started. Only what you name changes. To end one early, set endDate to today, or stop_experiment. A planned one is started with start_experiment, not by giving it a startDate.',
     {
       id: z.string().min(1),
       label: z.string().min(1).max(200).optional(),
@@ -2607,12 +2610,67 @@ function registerWriteTools(
       endDate: dayKey.optional().describe('YYYY-MM-DD, the last day, included.'),
       symptoms: z.array(z.string().min(1).max(60)).max(20).optional(),
       expected: z.string().max(300).nullable().optional(),
+      days: z.number().int().min(1).max(365).optional().describe('The planned length of one not started yet.'),
     },
     async ({ id, ...patch }) => {
       try {
         return json(await withWrite(() => updateExperiment(replica, id, patch)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the experiment.' });
+      }
+    }
+  );
+
+  server.tool(
+    'start_experiment',
+    'Start a planned experiment (add_experiment with planned: true): sets its first day to today, or to an earlier startDate for "I actually started 3 days ago", and begins the comparison against the same number of days before that real start. Its length is the planned one unless you give days; days: null runs it with no end until stop_experiment. Open tasks that start it (experimentId) are checked off too, as tapping Start on their row does; pass completeStartTasks: false to leave them. A start day in the future is refused: leave it planned until the day it really begins.',
+    {
+      id: z.string().min(1).describe('From list_experiments, a planned one.'),
+      startDate: dayKey.optional().describe('The first day, YYYY-MM-DD, today or earlier. Default today.'),
+      days: z.number().int().min(1).max(365).nullable().optional().describe('Length for this run, counting the first day. Default the planned length. null: no end, until stop_experiment.'),
+      completeStartTasks: z.boolean().optional().describe('Check off the open tasks that start it. Default true.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => startExperiment(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not start the experiment.' });
+      }
+    }
+  );
+
+  server.tool(
+    'stop_experiment',
+    'End a started experiment: its last day becomes endDate (default today). For one with no end it fixes the comparison window at the days it actually ran, which the minimum-days rules then judge like any other, so one stopped after a few days may show no comparison. Not for a planned one, which has nothing to stop.',
+    {
+      id: z.string().min(1).describe('From list_experiments.'),
+      endDate: dayKey.optional().describe('The last day, YYYY-MM-DD, included. Default today.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => stopExperiment(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not stop the experiment.' });
+      }
+    }
+  );
+
+  server.tool(
+    'plan_experiment',
+    'Plan an experiment and the task that starts it, in one step: a planned experiment (no dates, compared with nothing) and a top-level task with "Start <label>" on its row, linked by experimentId. Use it after a visit, when they know what they will try and which symptoms to watch but not yet when each will begin (prescriptions, deliveries, referrals). The task takes create_task\'s fields (a category is required), can be undated, deferred or dated, and can wait on other tasks (waitsOn), so a project with one such step per change starts them one at a time. title defaults to "Start <label>". Tapping Start on the phone starts the experiment today and checks the task off; a plain check-off never starts it.',
+    {
+      label: z.string().min(1).max(200).describe('What they will try, in a few words.'),
+      days: z.number().int().min(1).max(365).optional().describe('How long it will run, counting the first day. Default 28.'),
+      symptoms: z.array(z.string().min(1).max(60)).max(20).optional().describe('Symptoms to watch, as the person names them.'),
+      expected: z.string().min(1).max(300).optional().describe('What they expect it to change, in their words.'),
+      task: z.object({ title: z.string().min(1).optional(), ...coreTaskFieldsShape }).strict()
+        .describe('The start task: category, and optionally projectId, dueDate or deferUntil, waitsOn, notes, tags. experimentId is set for you.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => planExperiment(replica, input as Parameters<typeof planExperiment>[1])));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not plan the experiment.' });
       }
     }
   );

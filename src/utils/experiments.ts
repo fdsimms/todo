@@ -34,7 +34,15 @@ export const DEFAULT_EXPERIMENT_DAYS = 28;
 
 export const EXPERIMENT_LABEL_MAX_LENGTH = 80;
 
-export type ExperimentStatus = 'upcoming' | 'running' | 'finished';
+/**
+ * `planned` has no start day yet and is read against nothing; `upcoming` has a
+ * start still ahead; `running` has begun and has no last day yet or one still
+ * ahead; `finished` is past its last day.
+ */
+export type ExperimentStatus = 'planned' | 'upcoming' | 'running' | 'finished';
+
+/** The days an experiment is dated over, or the none it has while planned. */
+type Dated = Pick<Experiment, 'startDate' | 'endDate'>;
 
 // `dayKeyOf`/`dayKeyToDate`'s arithmetic, written out here because importing
 // dateUtils pulls in the settings store (and SQLite), which this pure module
@@ -72,9 +80,15 @@ export interface ExperimentSpan {
   baselineToKey: string;
 }
 
-export function experimentSpan(experiment: Pick<Experiment, 'startDate' | 'endDate'>): ExperimentSpan {
+/**
+ * The days an experiment covers, or null while it is planned. One with no last
+ * day (open-ended) reads to `todayKey`, so its baseline is as long as it has
+ * run so far and grows with it; stopping it sets the last day and fixes both.
+ */
+export function experimentSpan(experiment: Dated, todayKey: string): ExperimentSpan | null {
+  if (!experiment.startDate) return null;
   const startKey = experimentDayKey(experiment.startDate);
-  const endKey = experimentDayKey(experiment.endDate);
+  const endKey = experiment.endDate ? experimentDayKey(experiment.endDate) : (todayKey > startKey ? todayKey : startKey);
   const lengthDays = Math.max(1, daysFrom(startKey, endKey) + 1);
   return {
     startKey,
@@ -85,24 +99,34 @@ export function experimentSpan(experiment: Pick<Experiment, 'startDate' | 'endDa
   };
 }
 
-export function experimentStatus(
-  experiment: Pick<Experiment, 'startDate' | 'endDate'>,
-  todayKey: string,
-): ExperimentStatus {
-  const { startKey, endKey } = experimentSpan(experiment);
-  if (todayKey < startKey) return 'upcoming';
-  if (todayKey > endKey) return 'finished';
+export function experimentStatus(experiment: Dated, todayKey: string): ExperimentStatus {
+  const span = experimentSpan(experiment, todayKey);
+  if (!span) return 'planned';
+  if (todayKey < span.startKey) return 'upcoming';
+  if (experiment.endDate && todayKey > span.endKey) return 'finished';
   return 'running';
+}
+
+/** Running with no set last day: it goes on until it is stopped. */
+export function isOpenEnded(experiment: Dated): boolean {
+  return !!experiment.startDate && !experiment.endDate;
 }
 
 /** Which day of it today is ("day 12 of 28"), clamped to the experiment's own days. */
 export function experimentProgress(
-  experiment: Pick<Experiment, 'startDate' | 'endDate'>,
+  experiment: Pick<Experiment, 'startDate' | 'endDate' | 'days'>,
   todayKey: string,
-): { day: number; of: number } {
-  const { startKey, lengthDays } = experimentSpan(experiment);
-  const day = Math.min(lengthDays, Math.max(0, daysFrom(startKey, todayKey) + 1));
-  return { day, of: lengthDays };
+): { day: number; of: number | null } {
+  const span = experimentSpan(experiment, todayKey);
+  if (!span) return { day: 0, of: experiment.days };
+  const day = Math.min(span.lengthDays, Math.max(0, daysFrom(span.startKey, todayKey) + 1));
+  // An open-ended one has no length to be "of".
+  return { day, of: isOpenEnded(experiment) ? null : span.lengthDays };
+}
+
+/** "12 of 28", or "12" for an open-ended one that has no length to be of. */
+export function describeProgress(progress: { day: number; of: number | null }): string {
+  return progress.of === null ? `${progress.day}` : `${progress.day} of ${progress.of}`;
 }
 
 /** Symptom names cleaned for storing: trimmed, blanks dropped, one per `symptomKey`, first spelling kept. */
@@ -124,10 +148,28 @@ export function cleanExperimentSymptoms(names: readonly string[]): string[] {
  * store refuses on exactly this, and the sheet shows it under the field, so
  * the two can't disagree.
  */
-export function experimentRefusal(draft: { label: string; startDate: Date; endDate: Date }): string | null {
+export function experimentRefusal(draft: {
+  label: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  days?: number | null;
+}): string | null {
   if (!draft.label.trim()) return 'Give it a name: what you’re trying, in a few words.';
-  if (dayKeyOf(draft.endDate) < dayKeyOf(draft.startDate)) return 'It can’t end before it starts.';
+  if (!draft.startDate && draft.endDate) return 'Give it a first day too, or leave both days out to plan it for later.';
+  if (draft.startDate && draft.endDate && dayKeyOf(draft.endDate) < dayKeyOf(draft.startDate)) return 'It can’t end before it starts.';
+  if (draft.days !== undefined && draft.days !== null && (!Number.isInteger(draft.days) || draft.days < 1 || draft.days > MAX_EXPERIMENT_DAYS)) {
+    return `Its length is 1 to ${MAX_EXPERIMENT_DAYS} days.`;
+  }
   return null;
+}
+
+export const MAX_EXPERIMENT_DAYS = 365;
+
+/** The last day of one `days` long that starts on `start`, inclusive. */
+export function endOfLength(start: Date, days: number): Date {
+  const end = new Date(start);
+  end.setDate(end.getDate() + days - 1);
+  return end;
 }
 
 /** Average mood over the baseline and over the days of the experiment so far. */
@@ -166,7 +208,8 @@ export interface ExperimentSymptomRead {
 
 export interface ExperimentResult {
   status: ExperimentStatus;
-  span: ExperimentSpan;
+  /** Null while planned: it has no days to read. */
+  span: ExperimentSpan | null;
   /** The last day read: the end, or today while it's running. Null before it starts. */
   readToKey: string | null;
   /** Days with any entry in each stretch, for the captions. */
@@ -252,8 +295,11 @@ export function experimentResult(
   logs: readonly MoodLog[],
   todayKey: string,
 ): ExperimentResult {
-  const span = experimentSpan(experiment);
+  const span = experimentSpan(experiment, todayKey);
   const status = experimentStatus(experiment, todayKey);
+  if (!span) {
+    return { status, span: null, readToKey: null, loggedDaysBefore: 0, loggedDaysDuring: 0, mood: null, picked: [], others: [] };
+  }
   const readToKey = status === 'upcoming' ? null : (status === 'finished' ? span.endKey : todayKey);
   const { loggedDays, worst, firstLogged, lastName } = indexLogs(logs);
 
@@ -335,8 +381,10 @@ export function overlappingChanges(
   experiment: Experiment,
   milestones: readonly Milestone[],
   experiments: readonly Experiment[],
+  todayKey: string,
 ): OverlappingChange[] {
-  const span = experimentSpan(experiment);
+  const span = experimentSpan(experiment, todayKey);
+  if (!span) return [];
   const from = span.baselineFromKey;
   const to = span.endKey;
   const out: OverlappingChange[] = [];
@@ -346,8 +394,8 @@ export function overlappingChanges(
   }
   for (const other of experiments) {
     if (other.id === experiment.id) continue;
-    const o = experimentSpan(other);
-    if (o.startKey <= to && o.endKey >= from) {
+    const o = experimentSpan(other, todayKey);
+    if (o && o.startKey <= to && o.endKey >= from) {
       out.push({ kind: 'experiment', id: other.id, label: other.label, dayKey: o.startKey });
     }
   }
@@ -359,15 +407,16 @@ export function roundedSeverity(average: number): SymptomSeverity {
   return Math.min(3, Math.max(1, Math.round(average))) as SymptomSeverity;
 }
 
-/** Experiments in the order the Mood screen lists them: running, then upcoming, then finished most recent first. */
+/** Experiments in the order the Mood screen lists them: running, then upcoming, then planned, then finished most recent first. */
 export function sortExperimentsForList(experiments: readonly Experiment[], todayKey: string): Experiment[] {
-  const rank: Record<ExperimentStatus, number> = { running: 0, upcoming: 1, finished: 2 };
+  const rank: Record<ExperimentStatus, number> = { running: 0, upcoming: 1, planned: 2, finished: 3 };
   return [...experiments].sort((a, b) => {
     const sa = experimentStatus(a, todayKey);
     const sb = experimentStatus(b, todayKey);
     if (sa !== sb) return rank[sa] - rank[sb];
-    if (sa === 'finished') return b.endDate.localeCompare(a.endDate);
-    return a.startDate.localeCompare(b.startDate);
+    if (sa === 'finished') return (b.endDate ?? '').localeCompare(a.endDate ?? '');
+    if (sa === 'planned') return a.createdAt.localeCompare(b.createdAt);
+    return (a.startDate ?? '').localeCompare(b.startDate ?? '');
   });
 }
 
@@ -403,16 +452,24 @@ export function experimentSummary(result: ExperimentResult): string | null {
  * Whether "End today" applies: it is running and its last day is still ahead.
  * On its last day it already ends today, so there is nothing to offer.
  */
-export function canEndToday(
-  experiment: Pick<Experiment, 'startDate' | 'endDate'>,
-  todayKey: string,
-): boolean {
-  return experimentStatus(experiment, todayKey) === 'running' && experimentSpan(experiment).endKey > todayKey;
+export function canEndToday(experiment: Dated, todayKey: string): boolean {
+  const span = experimentSpan(experiment, todayKey);
+  return !!span && !!experiment.endDate && experimentStatus(experiment, todayKey) === 'running' && span.endKey > todayKey;
 }
 
-/** The day its finish notice is for: the morning after the last day, when the whole stretch can be read. */
-export function experimentNoticeDayKey(experiment: Pick<Experiment, 'startDate' | 'endDate'>): string {
-  return shiftKey(experimentSpan(experiment).endKey, 1);
+/** Whether "Stop" applies: it is running with no last day, so it will not end by itself. */
+export function canStop(experiment: Dated, todayKey: string): boolean {
+  return isOpenEnded(experiment) && experimentStatus(experiment, todayKey) === 'running';
+}
+
+/**
+ * The day its finish notice is for: the morning after the last day, when the
+ * whole stretch can be read. Null for one with no last day yet (planned or
+ * open-ended), which has nothing to announce until it is stopped.
+ */
+export function experimentNoticeDayKey(experiment: Dated): string | null {
+  if (!experiment.endDate) return null;
+  return shiftKey(experimentDayKey(experiment.endDate), 1);
 }
 
 /** The finish notice's words. Says where to look rather than a result, which keeps changing as late entries come in. */

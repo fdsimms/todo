@@ -1,6 +1,8 @@
 import type { Experiment, Milestone, MoodLog, LoggedSymptom } from '../types';
 import {
   canEndToday,
+  canStop,
+  isOpenEnded,
   cleanExperimentSymptoms,
   describeLength,
   experimentProgress,
@@ -39,6 +41,7 @@ function experiment(over: Partial<Experiment> & { start?: string; end?: string }
     label: over.label ?? 'No caffeine after noon',
     startDate: over.startDate ?? noon(over.start ?? '2026-11-01'),
     endDate: over.endDate ?? noon(over.end ?? '2026-11-14'),
+    days: over.days ?? null,
     symptoms: over.symptoms ?? [],
     note: over.note ?? null,
     createdAt: over.createdAt ?? '2026-10-01T09:00:00',
@@ -75,7 +78,7 @@ function run(
 
 describe('experimentSpan', () => {
   it('reads a baseline of the same length ending the day before it starts', () => {
-    const span = experimentSpan(experiment({ start: '2026-11-01', end: '2026-11-14' }));
+    const span = experimentSpan(experiment({ start: '2026-11-01', end: '2026-11-14' }), '2026-11-05');
     expect(span).toEqual({
       startKey: '2026-11-01',
       endKey: '2026-11-14',
@@ -87,12 +90,12 @@ describe('experimentSpan', () => {
 
   it('counts a DST change inside it as whole days', () => {
     // Clocks change in early November in North America and late October in Europe.
-    const span = experimentSpan(experiment({ start: '2026-10-20', end: '2026-11-16' }));
-    expect(span.lengthDays).toBe(28);
+    const span = experimentSpan(experiment({ start: '2026-10-20', end: '2026-11-16' }), '2026-11-20');
+    expect(span!.lengthDays).toBe(28);
   });
 
   it('is one day long when it starts and ends on the same day', () => {
-    expect(experimentSpan(experiment({ start: '2026-11-01', end: '2026-11-01' })).lengthDays).toBe(1);
+    expect(experimentSpan(experiment({ start: '2026-11-01', end: '2026-11-01' }), '2026-11-01')!.lengthDays).toBe(1);
   });
 });
 
@@ -277,6 +280,7 @@ describe('overlappingChanges', () => {
         experiment({ id: 'other', label: 'Earlier bedtime', start: '2026-11-10', end: '2026-11-30' }),
         experiment({ id: 'apart', label: 'Apart', start: '2026-12-01', end: '2026-12-05' }),
       ],
+      '2026-11-12',
     );
     expect(changes.map(c => `${c.kind}:${c.label}`)).toEqual([
       'milestone:baseline', 'milestone:during', 'experiment:Earlier bedtime',
@@ -356,5 +360,81 @@ describe('the finish notice', () => {
   it('is for the day after the last day, and names the experiment', () => {
     expect(experimentNoticeDayKey(experiment({ start: '2026-11-01', end: '2026-11-30' }))).toBe('2026-12-01');
     expect(experimentNoticeContent('No dairy').body).toMatch(/^No dairy is over\./);
+  });
+});
+
+describe('planned and open-ended experiments', () => {
+  const planned = (over: Partial<Experiment> = {}): Experiment => ({
+    ...experiment(), startDate: null, endDate: null, days: 28, ...over,
+  });
+
+  it('is planned with no start, has no span and reads nothing', () => {
+    const e = planned();
+    expect(experimentStatus(e, '2026-11-10')).toBe('planned');
+    expect(experimentSpan(e, '2026-11-10')).toBeNull();
+    const result = experimentResult(e, [], '2026-11-10');
+    expect(result.status).toBe('planned');
+    expect(result.span).toBeNull();
+    expect(result.mood).toBeNull();
+    expect(result.picked).toEqual([]);
+    expect(experimentProgress(e, '2026-11-10')).toEqual({ day: 0, of: 28 });
+  });
+
+  it('is left out of overlapping changes, both as the one read and as another', () => {
+    const running = experiment({ id: 'r', start: '2026-11-01', end: '2026-11-14' });
+    expect(overlappingChanges(planned(), [], [running], '2026-11-10')).toEqual([]);
+    expect(overlappingChanges(running, [], [running, planned({ id: 'p' })], '2026-11-10')).toEqual([]);
+  });
+
+  it('reads an open-ended one to today, so its baseline is as long as it has run', () => {
+    const e = planned({ startDate: noon('2026-11-01'), days: null });
+    expect(isOpenEnded(e)).toBe(true);
+    expect(experimentStatus(e, '2026-11-10')).toBe('running');
+    const span = experimentSpan(e, '2026-11-10')!;
+    expect(span.endKey).toBe('2026-11-10');
+    expect(span.lengthDays).toBe(10);
+    expect(span.baselineFromKey).toBe('2026-10-22');
+    expect(span.baselineToKey).toBe('2026-10-31');
+    expect(experimentProgress(e, '2026-11-10')).toEqual({ day: 10, of: null });
+    expect(canStop(e, '2026-11-10')).toBe(true);
+    expect(canEndToday(e, '2026-11-10')).toBe(false);
+  });
+
+  it('fixes an open-ended one once it is stopped, and then it finishes', () => {
+    const e = planned({ startDate: noon('2026-11-01'), endDate: noon('2026-11-10'), days: null });
+    expect(isOpenEnded(e)).toBe(false);
+    expect(experimentStatus(e, '2026-11-12')).toBe('finished');
+    expect(experimentSpan(e, '2026-11-12')!.lengthDays).toBe(10);
+    expect(canStop(e, '2026-11-12')).toBe(false);
+  });
+
+  it('applies the same minimum-days rule to one stopped early', () => {
+    const e = planned({ startDate: noon('2026-11-01'), endDate: noon('2026-11-02'), days: 28 });
+    const result = experimentResult(e, [], '2026-11-05');
+    expect(result.status).toBe('finished');
+    expect(result.mood).toBeNull();
+  });
+
+  it('has no finish notice day until it has a last day', () => {
+    expect(experimentNoticeDayKey(planned())).toBeNull();
+    expect(experimentNoticeDayKey(planned({ startDate: noon('2026-11-01') }))).toBeNull();
+    expect(experimentNoticeDayKey(experiment({ start: '2026-11-01', end: '2026-11-14' }))).toBe('2026-11-15');
+  });
+
+  it('lists planned ones after upcoming ones and before finished ones', () => {
+    const list = sortExperimentsForList([
+      experiment({ id: 'done', start: '2026-10-01', end: '2026-10-10' }),
+      planned({ id: 'plan' }),
+      experiment({ id: 'soon', start: '2026-11-20', end: '2026-11-30' }),
+      experiment({ id: 'now', start: '2026-11-01', end: '2026-11-30' }),
+    ], '2026-11-10');
+    expect(list.map(e => e.id)).toEqual(['now', 'soon', 'plan', 'done']);
+  });
+
+  it('refuses an end with no start, and a length out of range', () => {
+    expect(experimentRefusal({ label: 'x', startDate: null, endDate: new Date('2026-11-05T12:00:00') })).not.toBeNull();
+    expect(experimentRefusal({ label: 'x', startDate: null, endDate: null, days: 0 })).not.toBeNull();
+    expect(experimentRefusal({ label: 'x', startDate: null, endDate: null, days: 366 })).not.toBeNull();
+    expect(experimentRefusal({ label: 'x', startDate: null, endDate: null, days: 28 })).toBeNull();
   });
 });

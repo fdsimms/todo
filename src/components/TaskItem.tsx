@@ -47,7 +47,7 @@ import { AnimatedNumber } from './AnimatedNumber';
 import { useProjectLockStore } from '../store/useProjectLockStore';
 import { isProjectLockedAway } from '../utils/projectLock';
 import { CoinIcon } from './CoinIcon';
-import type { Alarm, Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
+import type { Alarm, Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem, Experiment } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTrayRaised } from './TaskGroupTray';
@@ -192,6 +192,10 @@ import { TomorrowAlarmSheet } from './TomorrowAlarmSheet';
 import { ApplyTemplateSheet } from './ApplyTemplateSheet';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { anchorsForRun, runTemplateLabel, templateLinkState } from '../utils/templateLink';
+import { useExperimentStore } from '../store/useExperimentStore';
+import { experimentLinkState, experimentStartedMessage, startExperimentLabel, VIEW_EXPERIMENT_LABEL, MISSING_EXPERIMENT_LABEL } from '../utils/experimentLink';
+import { startPlannedExperiment } from '../utils/experimentStart';
+import { resetToExperiment } from '../navigation/navigationRef';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { morningAlarmFor, morningChipLabel } from '../utils/morningAlarm';
 import { useSheetSubject } from '../hooks/useSheetSubject';
@@ -285,6 +289,7 @@ const EMPTY_BUSY_EVENTS: BusyEvent[] = [];
 const EMPTY_GROCERY_ITEMS: GroceryItem[] = [];
 const EMPTY_ITEM_SUBS: ItemSubLink[] = [];
 const NO_ALARMS: Alarm[] = [];
+const NO_EXPERIMENTS: Experiment[] = [];
 const EMPTY_RECIPES: Recipe[] = [];
 const EMPTY_ITEM_PRODUCTS: ItemProduct[] = [];
 
@@ -812,6 +817,12 @@ const TaskItemRow = React.memo(function TaskItem({
   const templateLink = templateLinkState(task, linkedTemplate ? [linkedTemplate] : []);
   const templateRunProject = useProjectStore(s => task.templateId && task.projectId ? s.getProjectById(task.projectId) : null);
   const [showTemplateRun, setShowTemplateRun] = useState(false);
+  // The experiment this task starts (Task.experimentId): "Start <label>" while
+  // it is planned, "View experiment" once begun, and a note when it is gone.
+  const linkedExperiments = useExperimentStore(s => (task.experimentId ? s.experiments : NO_EXPERIMENTS));
+  const experimentLink = experimentLinkState(task, linkedExperiments, getLogicalDayKey(getCurrentDayStart()));
+  // Set while the check-off prompt's "Just check off" re-enters handleComplete.
+  const experimentAskedRef = useRef(false);
   const alarmSettledRef = useRef(false);
   useEffect(() => {
     alarmSettledRef.current = false;
@@ -2769,6 +2780,42 @@ const TaskItemRow = React.memo(function TaskItem({
     );
   };
 
+  // Tapping Start (or answering the check-off prompt with "Start it") begins
+  // the experiment today and checks this task off. The other tasks that start
+  // it are checked off by `startPlannedExperiment`; this row runs its own
+  // completion, with its own animation.
+  const startLinkedExperiment = async () => {
+    const started = startPlannedExperiment(task.experimentId!, { exceptTaskId: task.id });
+    if (!started) {
+      Alert.alert('Couldn’t start the experiment', 'It may have been started or deleted on another phone. Open it from the Mood screen to check.');
+      return;
+    }
+    setAutoNote(experimentStartedMessage(started));
+    experimentAskedRef.current = true;
+    try { await handleComplete(); } finally { experimentAskedRef.current = false; }
+  };
+
+  const handleExperimentLink = () => {
+    haptics.tap();
+    if (experimentLink.kind === 'start') {
+      void startLinkedExperiment();
+      return;
+    }
+    if (experimentLink.kind === 'view') {
+      resetToExperiment(experimentLink.experiment.id);
+      return;
+    }
+    Alert.alert(
+      MISSING_EXPERIMENT_LABEL,
+      'The experiment this task starts was deleted, or it is not on this phone (experiments only sync with the health logs). Remove the link, or open the task to keep it.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Open task', onPress: () => onEdit?.(task.id) },
+        { text: 'Remove link', style: 'destructive', onPress: () => updateTask(task.id, { experimentId: null }) },
+      ],
+    );
+  };
+
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
@@ -2844,6 +2891,27 @@ const TaskItemRow = React.memo(function TaskItem({
     // counted it calls back in here to carry on from this point.
     // Tomorrow's alarm is checked before the task is: the tick opens the
     // card, and keeping or changing the alarm there comes back through here.
+    // A plain check-off never starts the experiment silently: the start day is
+    // what its comparison hangs on, so starting is asked, not assumed.
+    if (experimentLink.kind === 'start' && !experimentAskedRef.current) {
+      haptics.tap();
+      Alert.alert(
+        'Also start the experiment?',
+        `“${experimentLink.experiment.label}” has not started. Starting it begins the comparison today.`,
+        [
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+          {
+            text: 'Just check off',
+            onPress: () => {
+              experimentAskedRef.current = true;
+              void handleComplete().finally(() => { experimentAskedRef.current = false; });
+            },
+          },
+          { text: 'Start it', onPress: () => { void startLinkedExperiment(); } },
+        ],
+      );
+      return;
+    }
     if (alarmLink && !task.alarmLinkLeavesOpen && !task.completed && !alarmSettledRef.current) {
       haptics.tap();
       setShowAlarmCard(true);
@@ -3922,6 +3990,28 @@ const TaskItemRow = React.memo(function TaskItem({
               numberOfLines={1}
             >
               {templateLink.kind === 'ready' ? runTemplateLabel(templateLink.template) : 'Template deleted'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {experimentLink.kind !== 'none' && !selectionMode && showActions && !nutrientRow && !isEditingTitle && (
+          <TouchableOpacity
+            onPress={handleExperimentLink}
+            activeOpacity={interaction.activeOpacity}
+            hitSlop={8}
+            style={[styles.templateRun, experimentLink.kind !== 'start' && styles.templateRunMissing]}
+            accessibilityRole="button"
+            accessibilityLabel={`${experimentLink.kind === 'start' ? startExperimentLabel(experimentLink.experiment) : experimentLink.kind === 'view' ? VIEW_EXPERIMENT_LABEL : MISSING_EXPERIMENT_LABEL} for ${task.title}`}
+          >
+            <Ionicons
+              name={experimentLink.kind === 'start' ? 'flask-outline' : experimentLink.kind === 'view' ? 'eye-outline' : 'alert-circle-outline'}
+              size={iconSize.xs}
+              color={experimentLink.kind === 'start' ? colors.accent : experimentLink.kind === 'view' ? colors.textSecondary : colors.redText}
+            />
+            <Text
+              style={[styles.templateRunText, { color: experimentLink.kind === 'start' ? colors.accent : experimentLink.kind === 'view' ? colors.textSecondary : colors.redText }]}
+              numberOfLines={1}
+            >
+              {experimentLink.kind === 'start' ? startExperimentLabel(experimentLink.experiment) : experimentLink.kind === 'view' ? VIEW_EXPERIMENT_LABEL : MISSING_EXPERIMENT_LABEL}
             </Text>
           </TouchableOpacity>
         )}

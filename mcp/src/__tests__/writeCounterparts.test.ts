@@ -46,6 +46,8 @@ const COUNTERPARTS: Record<string, string[]> = {
   log_mood: ['update_mood_log', 'delete_mood_log'],
   add_milestone: ['update_milestone', 'delete_milestone'],
   add_experiment: ['update_experiment', 'delete_experiment'],
+  plan_experiment: ['update_experiment', 'delete_experiment', 'update_task'],
+  start_experiment: ['stop_experiment'],
   add_cookware: ['update_cookware', 'delete_cookware'],
   save_routine: ['save_routine', 'delete_routine'],
   save_routine_group: ['save_routine_group', 'delete_routine_group'],
