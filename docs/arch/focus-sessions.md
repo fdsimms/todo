@@ -524,3 +524,29 @@ the next event that takes time (`focusMeetingHeadsUp` in `focusWindow.ts`, sched
 `scheduleFocusMeetingHeadsUp` beside the step chime on every session write). It says so and
 nothing else: like the step chime, it never advances, pauses or ends the session. It is computed at
 the last session write, so a meeting booked mid-session is heard about from the next write onward.
+
+## Starting one from an alarm
+
+An alarm can offer a **saved focus session** (`Alarm.savedFocusId`, edited under "When it stops" in
+`AlarmEditorSheet`) once it is turned off. A saved session is a *rule*, not a task list
+(`SavedFocusSession` in `src/types/alarms.ts`, `src/utils/savedFocus.ts`): a name, a filter (any
+task, a category, a project or a tag) and a time window. The queue is picked when the alarm is
+turned off, through the same `suggestFocusTasks` the setup sheet runs over the matching tasks, so a
+finished task is never in it and a repeating morning alarm never runs out. Breaks, the work cap and
+the timers come from the Focus settings, as they do for a session started by hand.
+
+- **It rides the mission loop.** iOS gives no app a hook on an alarm's Stop except the alarm's own
+  intent, so an alarm with a saved session and no mission is held like a mission alarm
+  (`nativeAlarmHold`, kind `focus`, count 0 that the native side never reads): Stop brings the
+  alarm back until `AlarmMissionHost` has answered. For a focus-only alarm the answer is
+  immediate: the host ends the hold and opens `FocusAlarmSheet`. With a mission, the sheet opens
+  once the mission is *done*; Give up skips it.
+- **The sheet confirms, it doesn't start on its own.** Start runs `startSession` and lands on Today
+  (`resetToFocusSession`); Not now ends the hold and starts nothing. A queue that comes out empty
+  says so and offers no Start.
+- **Saved sessions are device-local**, in the `savedFocusSessions` setting (`useSavedFocusStore`),
+  because the alarms that point at them are (`alarms` is never synced or backed up). Deleting one
+  clears the link on every alarm that offered it (`unlinkSavedFocus`).
+- **Not verified on a device:** `MissionAlarm.swift` notes it is untried whether AlarmKit runs a
+  `LiveActivityIntent` on Stop with the app closed and honours `openAppWhenRun` from an alarm. A
+  focus-only alarm depends on both exactly as a mission alarm does.

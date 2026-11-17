@@ -2597,6 +2597,8 @@ function runInitDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN alarm_sound_pool TEXT',
     'ALTER TABLE alarms ADD COLUMN sound_pool TEXT',
     'ALTER TABLE alarms ADD COLUMN sound_rolled_at TEXT',
+    // Alarm.savedFocusId: NULL on every existing alarm, which starts no focus session.
+    'ALTER TABLE alarms ADD COLUMN saved_focus_id TEXT',
     // Task.alarmLink / alarmLinkLeavesOpen: NULL and 0 on every existing row,
     // which is no linked alarm.
     'ALTER TABLE tasks ADD COLUMN alarm_link TEXT',
@@ -5836,6 +5838,7 @@ function rowToAlarm(row: Record<string, unknown>): Alarm {
     fireAt: (row.fire_at as string | null) ?? null,
     enabled: Boolean(row.enabled),
     mission: parseMission(row.mission),
+    savedFocusId: typeof row.saved_focus_id === 'string' && row.saved_focus_id !== '' ? row.saved_focus_id : null,
     quick: Boolean(row.quick),
     armedAt: row.armed_at as string,
     missionDoneAt: (row.mission_done_at as string | null) ?? null,
@@ -5857,15 +5860,15 @@ export function dbSaveAlarm(alarm: Alarm): void {
   db.runSync(
     `INSERT OR REPLACE INTO alarms
       (id, label, hour, minute, repeat_days, fire_at, enabled, mission, quick, armed_at, mission_done_at, mission_gave_up,
-       sound, override, created_at, sound_pool, sound_rolled_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       sound, override, created_at, sound_pool, sound_rolled_at, saved_focus_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       alarm.id, alarm.label, alarm.hour, alarm.minute, JSON.stringify(alarm.repeatDays), alarm.fireAt,
       alarm.enabled ? 1 : 0, alarm.mission ? JSON.stringify(alarm.mission) : null, alarm.quick ? 1 : 0,
       alarm.armedAt, alarm.missionDoneAt, alarm.missionGaveUp ? 1 : 0,
       alarm.sound,
       alarm.override ? JSON.stringify(alarm.override) : null, alarm.createdAt,
-      alarm.soundPool.length > 0 ? JSON.stringify(alarm.soundPool) : null, alarm.soundRolledAt,
+      alarm.soundPool.length > 0 ? JSON.stringify(alarm.soundPool) : null, alarm.soundRolledAt, alarm.savedFocusId,
     ],
   );
 }

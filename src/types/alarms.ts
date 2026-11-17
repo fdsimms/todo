@@ -27,6 +27,12 @@ export interface Alarm {
   fireAt: string | null;
   enabled: boolean;
   mission: AlarmMission | null;
+  /**
+   * The saved focus session (`SavedFocusSession`) offered once this alarm is
+   * turned off, after its mission if it has one. Null for none. See
+   * src/utils/savedFocus.ts.
+   */
+  savedFocusId: string | null;
   /** A quick alarm ("in 30 minutes"), deleted once it has rung and its mission is done. */
   quick: boolean;
   /**
@@ -81,4 +87,25 @@ export interface AlarmSoundFile {
   /** What the picker lists it as: the file's name without its extension. */
   name: string;
   addedAt: string;
+}
+
+/** Which tasks a saved focus session draws from. `all` is every task the suggester would offer. */
+export type SavedFocusFilter =
+  | { kind: 'all' }
+  | { kind: 'category'; value: string }
+  | { kind: 'project'; value: string }
+  | { kind: 'tag'; value: string };
+
+/**
+ * A focus session kept by name, to start when an alarm is turned off. It holds
+ * a rule rather than tasks: the queue is picked when it starts, so a finished
+ * task never appears. Breaks follow the Focus settings. Device-local, like
+ * the alarms that point at it. See src/utils/savedFocus.ts.
+ */
+export interface SavedFocusSession {
+  id: string;
+  name: string;
+  filter: SavedFocusFilter;
+  /** The time available, in minutes. Null for no limit. */
+  windowMinutes: number | null;
 }

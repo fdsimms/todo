@@ -32,6 +32,7 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
     fireAt: null,
     enabled: true,
     mission: null,
+    savedFocusId: null,
     quick: false,
     armedAt: new Date(2026, 9, 1).toISOString(),
     missionDoneAt: null,

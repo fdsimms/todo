@@ -11,6 +11,8 @@ import { useAlarmStore } from '../store/useAlarmStore';
 import { useDemoStore } from '../store/useDemoStore';
 import { useMissionStore } from '../store/useMissionStore';
 import { MissionSheet } from './MissionSheet';
+import { FocusAlarmSheet } from './FocusAlarmSheet';
+import { useSavedFocusStore } from '../store/useSavedFocusStore';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { requestDismissAllSheets } from '../utils/sheetModal';
@@ -21,7 +23,7 @@ import {
   MISSION_COUNTING_GRACE_SECONDS,
   MISSION_HEARTBEAT_MS,
   MISSION_REARM_SECONDS,
-  nativeMission,
+  nativeHoldForOwed,
   owedMissions,
   type OwedMission,
 } from '../utils/missions';
@@ -66,6 +68,9 @@ export function AlarmMissionHost() {
   // read back without them (see `ending` in owedMissions).
   const ending = useRef(new Set<string>());
   const [promptTaskId, setPromptTaskId] = useState<string | null>(null);
+  // The saved focus session to offer, once the alarm that holds it is done with.
+  const [offerSessionId, setOfferSessionId] = useState<string | null>(null);
+  const savedSessions = useSavedFocusStore(s => s.sessions);
 
   const ready = tasksReady && alarmsReady && !demo;
 
@@ -128,6 +133,12 @@ export function AlarmMissionHost() {
     const now = Date.now();
     const next = owed.find(o => (quietUntil.current.get(o.key) ?? 0) <= now);
     if (!next) return;
+    // An alarm held only to offer a focus session has no mission to open: the
+    // offer is its answer, and the ring ends as soon as it is shown.
+    if (next.mission === null) {
+      finish(next, false);
+      return;
+    }
     requestDismissAllSheets();
     useMissionStore.getState().show(next.key);
   }, [owed, inFront, activeKey, promptTaskId, tick]);
@@ -143,7 +154,7 @@ export function AlarmMissionHost() {
   const currentKey = current?.key ?? null;
   useEffect(() => {
     if (!current) return;
-    const native = nativeMission(current.key, current.mission, current.title);
+    const native = nativeHoldForOwed(current);
     if (!native) return;
     void deferNativeMission(native, MISSION_COUNTING_GRACE_SECONDS);
     const timer = setInterval(() => void deferNativeMission(native, MISSION_COUNTING_GRACE_SECONDS), MISSION_HEARTBEAT_MS);
@@ -165,7 +176,10 @@ export function AlarmMissionHost() {
         setTick(t => t + 1);
       });
     if (o.source === 'alarm') {
-      useAlarmStore.getState().markMissionDone(o.id, gaveUp);
+      // A focus session is offered once a done mission has ended the ring;
+      // giving up skips it, and a focus-only alarm's answer is the offer itself.
+      if (!gaveUp && o.savedFocusId) setOfferSessionId(o.savedFocusId);
+      if (o.mission) useAlarmStore.getState().markMissionDone(o.id, gaveUp);
       return;
     }
     // Giving up stops the alarm and leaves the task as it was.
@@ -187,16 +201,19 @@ export function AlarmMissionHost() {
     if (useMissionStore.getState().activeKey !== o.key) return;
     useMissionStore.getState().hide();
     quietUntil.current.set(o.key, Date.now() + MISSION_REARM_SECONDS * 1000);
-    const native = nativeMission(o.key, o.mission, o.title);
+    const native = nativeHoldForOwed(o);
     if (native) void deferNativeMission(native, MISSION_REARM_SECONDS);
   };
+
+  const offered = offerSessionId ? savedSessions.find(s => s.id === offerSessionId) ?? null : null;
+  const shownOffer = useSheetSubject(offered);
 
   const promptTask = useTaskStore(s => (promptTaskId ? s.tasks.find(t => t.id === promptTaskId && !t.completed) ?? null : null));
   const shownPrompt = useSheetSubject(promptTask);
 
   return (
     <>
-      {shown && (
+      {shown && shown.mission && (
         <MissionSheet
           visible={current !== null}
           mission={shown.mission}
@@ -206,6 +223,13 @@ export function AlarmMissionHost() {
           onDone={() => finish(shown, false)}
           onClose={() => cancel(shown)}
           onGiveUp={() => finish(shown, true)}
+        />
+      )}
+      {shownOffer && (
+        <FocusAlarmSheet
+          visible={offered !== null}
+          session={shownOffer}
+          onDone={() => setOfferSessionId(null)}
         />
       )}
       {shownPrompt && (

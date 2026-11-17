@@ -62,7 +62,7 @@ export function AlarmsSection({ onEditAlarm, onQuickAlarm }: Props) {
         <View key={o.key} style={styles.banner}>
           <View style={styles.bannerText}>
             <Text style={styles.bannerTitle} numberOfLines={2}>{o.title}</Text>
-            <Text style={styles.bannerBody}>Rings until you do {describeMission(o.mission)}</Text>
+            <Text style={styles.bannerBody}>{o.mission ? `Rings until you do ${describeMission(o.mission)}` : 'Rings until you answer its focus session'}</Text>
           </View>
           <TouchableOpacity
             style={styles.bannerButton}

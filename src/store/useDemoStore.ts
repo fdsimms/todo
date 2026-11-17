@@ -16,6 +16,7 @@ import { useShieldReleaseStore } from './useShieldReleaseStore';
 import { useBlockTimerStore } from './useBlockTimerStore';
 import { useManualBlockStore } from './useManualBlockStore';
 import { useAlarmStore } from './useAlarmStore';
+import { useSavedFocusStore } from './useSavedFocusStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
@@ -123,6 +124,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // Alarms too. Nothing reaches the device while the demo runs (see
     // syncAlarmToDevice), so the real alarms keep ringing and the demo's never do.
     useAlarmStore.getState().reload();
+    useSavedFocusStore.getState().reload();
     // A real watch workout's "two at the same time" question must not be asked
     // about the demo's sessions, nor the demo's left for the real ones.
     useWatchClashStore.getState().reload();
@@ -165,6 +167,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     useManualBlockStore.getState().reload();
     useBlockTimerStore.getState().reload();
     useAlarmStore.getState().reload();
+    useSavedFocusStore.getState().reload();
     useWatchClashStore.getState().reload();
     useWatchHealthStore.getState().reload();
     // And the demo's own history leaves with the scratch database, rather than
