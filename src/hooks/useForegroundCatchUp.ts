@@ -132,6 +132,8 @@ export function useForegroundCatchUp(): void {
       // reads is kept current by useCalendarSync's own AppState listener
       // rather than anything here.
       useTaskStore.getState().checkCalendarReviewTasks();
+      // Beside it: an event that has started leaves its list by time alone.
+      useTaskStore.getState().checkEventDetailsTasks();
       // Beside it, same trigger — the reading this checks against is kept
       // current by useWeatherSync's own AppState listener.
       useTaskStore.getState().checkWeatherTasks();

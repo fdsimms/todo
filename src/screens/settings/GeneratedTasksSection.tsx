@@ -402,6 +402,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'mealThaw': return s.mealThawTaskCategory;
       case 'mealLogNudge': return s.mealLogNudgeTaskCategory;
       case 'calendarReview': return s.calendarReviewTaskCategory;
+      case 'eventDetails': return s.eventDetailsTaskCategory;
       case 'birthday': case 'personDate': return s.birthdayTaskCategory;
       case 'birthdayGift': return s.birthdayGiftTaskCategory;
       case 'supplyReorder': return s.supplyReorderTaskCategory;
@@ -452,6 +453,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'birthday': case 'personDate': s.setBirthdayTaskCategory(category); break;
       case 'birthdayGift': s.setBirthdayGiftTaskCategory(category); break;
       case 'calendarReview': s.setCalendarReviewTaskCategory(category); break;
+      case 'eventDetails': s.setEventDetailsTaskCategory(category); break;
       case 'reachOut': s.setReachOutTaskCategory(category); break;
       case 'waitingFollowUp': s.setWaitingFollowUpTaskCategory(category); break;
       case 'weather': s.setWeatherTaskCategory(category); break;

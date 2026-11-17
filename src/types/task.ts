@@ -539,6 +539,12 @@ export type GeneratedKind =
   // same "square on the calendar, not a row" position mealPlanNudge is in, and
   // for the same reason writeGeneratedOptOut has nothing to write for it.
   | 'calendarReview'
+  // A task offering to add who and where to upcoming events whose titles say
+  // ("Dinner with Kristen at Zatar") — see src/utils/eventDetailTasks.ts. Its
+  // source id is the day key it was written on, calendarReview's position: a
+  // square on the calendar, not a row, so writeGeneratedOptOut has nothing to
+  // write and `eventDetailsLastDayKey` is what keeps a swiped-away one gone.
+  | 'eventDetails'
   // A calendar event whose title matches a rule the user wrote — see
   // src/utils/eventTasks.ts. Its source id is `${eventId}|${eventStart}#${ruleId}`:
   // one *occurrence* of an event (EventKit shares one id across a whole

@@ -6500,6 +6500,173 @@ describe('checkCalendarReviewTasks', () => {
   });
 });
 
+// ─── checkEventDetailsTasks ─────────────────────────────────────────────────
+
+describe('checkEventDetailsTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useCalendarStore } = jest.requireMock('../store/useCalendarStore') as {
+    useCalendarStore: { getState: jest.Mock };
+  };
+
+  const NOW = new Date(2026, 10, 17, 9, 0, 0);
+  const setLastDayKey = jest.fn();
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    eventDetailsTasks: true,
+    calendarReadEnabled: true,
+    eventDetailsTaskCategory: 'Calendar Events',
+    eventDetailsLastDayKey: null as string | null,
+    eventDetailsSkipped: {},
+    setEventDetailsLastDayKey: setLastDayKey,
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+  const event = (overrides: Record<string, unknown> = {}) => ({
+    id: 'e-1',
+    title: 'Dinner with Kristen at Zatar',
+    start: new Date(2026, 10, 20, 19, 0, 0).toISOString(),
+    end: new Date(2026, 10, 20, 21, 0, 0).toISOString(),
+    allDay: false,
+    calendarId: 'cal-1',
+    location: null,
+    status: 'confirmed',
+    availability: 'busy',
+    ...overrides,
+  });
+  const kristen = {
+    id: 'kristen', name: 'Kristen Alvarez', kind: 'individual', nickname: '', archived: false,
+  } as unknown as Person;
+
+  const detailTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'eventDetails' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    setLastDayKey.mockClear();
+    useSettingsStore.getState.mockReturnValue(settings());
+    useCalendarStore.getState.mockReturnValue({ events: [event()], vacationReturnEvents: [], loaded: true });
+    usePersonStore.setState({ people: [kristen], initialized: true });
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: false });
+    usePersonStore.setState({ people: [] });
+  });
+
+  it('writes one task, titled with the count, for an event naming a person and a place', () => {
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(detailTasks()).toHaveLength(1);
+    expect(detailTasks()[0].title).toBe('Add details to 1 event');
+    expect(detailTasks()[0].generatedSourceId).toBe(getCurrentLogicalDayKey());
+    expect(setLastDayKey).toHaveBeenCalledWith(getCurrentLogicalDayKey());
+  });
+
+  it('writes nothing when no title names anyone or anywhere to add', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [event({ title: 'Dentist' })], vacationReturnEvents: [], loaded: true });
+
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(detailTasks()).toHaveLength(0);
+  });
+
+  it('writes nothing again the day a task was already decided on, so one swiped away stays gone', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ eventDetailsLastDayKey: getCurrentLogicalDayKey() }));
+
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(detailTasks()).toHaveLength(0);
+  });
+
+  it('reads an unread calendar window as nothing to decide, not as no events', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [], vacationReturnEvents: [], loaded: false });
+
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(setLastDayKey).not.toHaveBeenCalled();
+  });
+
+  it('retitles the row it keeps when the count changes', () => {
+    useTaskStore.getState().checkEventDetailsTasks();
+    useCalendarStore.getState.mockReturnValue({
+      events: [event(), event({ id: 'e-2', title: 'Drinks @ The Ten Bells' })],
+      vacationReturnEvents: [],
+      loaded: true,
+    });
+
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(detailTasks()).toHaveLength(1);
+    expect(detailTasks()[0].title).toBe('Add details to 2 events');
+  });
+
+  it('takes the row away once its events have started', () => {
+    useTaskStore.getState().checkEventDetailsTasks();
+    jest.setSystemTime(new Date(2026, 10, 20, 20, 0, 0));
+
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(detailTasks()).toHaveLength(0);
+  });
+
+  it('keeps a row the person deferred, and lets it go if its events pass before it comes back', () => {
+    useTaskStore.getState().checkEventDetailsTasks();
+    const id = detailTasks()[0].id;
+    useTaskStore.getState().updateTask(id, { deferUntil: new Date(2026, 10, 19, 0, 0, 0).toISOString() });
+
+    // The next day: yesterday's row is still deferred, so it stays and no
+    // second one is written.
+    jest.setSystemTime(new Date(2026, 10, 18, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings({ eventDetailsLastDayKey: '2026-11-17' }));
+    useTaskStore.getState().checkEventDetailsTasks();
+    expect(detailTasks().map(t => t.id)).toEqual([id]);
+
+    // Past the event: nothing left to ask, so it goes.
+    jest.setSystemTime(new Date(2026, 10, 21, 9, 0, 0));
+    useTaskStore.getState().checkEventDetailsTasks();
+    expect(detailTasks()).toHaveLength(0);
+  });
+
+  it('replaces yesterday’s row with today’s when it was not deferred', () => {
+    useTaskStore.getState().checkEventDetailsTasks();
+    const yesterdays = detailTasks()[0].id;
+
+    jest.setSystemTime(new Date(2026, 10, 18, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings({ eventDetailsLastDayKey: '2026-11-17' }));
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(detailTasks()).toHaveLength(1);
+    expect(detailTasks()[0].id).not.toBe(yesterdays);
+    expect(detailTasks()[0].generatedSourceId).toBe('2026-11-18');
+  });
+
+  it('leaves a ready row for its tick when nothing is left to ask', () => {
+    useTaskStore.getState().checkEventDetailsTasks();
+    const id = detailTasks()[0].id;
+    useTaskStore.getState().updateTask(id, { generatedReadyAt: NOW.toISOString() });
+    useCalendarStore.getState.mockReturnValue({ events: [event({ title: 'Dentist' })], vacationReturnEvents: [], loaded: true });
+
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(detailTasks().map(t => t.id)).toEqual([id]);
+  });
+
+  it('writes nothing while switched off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ eventDetailsTasks: false }));
+
+    useTaskStore.getState().checkEventDetailsTasks();
+
+    expect(detailTasks()).toHaveLength(0);
+  });
+});
+
 // ─── checkTravelTasks ───────────────────────────────────────────────────────
 
 describe('checkTravelTasks', () => {

@@ -153,6 +153,8 @@ import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedFo
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
+import { eventDetailsDayKey, eventDetailsTitle } from '../utils/eventDetailTasks';
+import { readEventDetailEntries } from './eventDetailActions';
 import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
 import { autoCompleteReason } from '../utils/autoComplete';
 import { autoCompleteRowsLive, canAutoComplete } from '../utils/autoCompleteScope';
@@ -2541,6 +2543,11 @@ interface TaskStore extends UndoHistoryActions {
    * actually has something on it. See src/utils/calendarReviewTasks.ts.
    */
   checkCalendarReviewTasks: () => void;
+  /**
+   * A task offering to add the people and place upcoming events' titles name,
+   * while any are waiting. See src/utils/eventDetailTasks.ts.
+   */
+  checkEventDetailsTasks: () => void;
   checkWeatherTasks: () => void;
   /**
    * Moves every one-off task that is waiting for a kind of day to the first
@@ -8132,6 +8139,82 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
+   * One task, while upcoming events' titles name a person or place to add.
+   *
+   * Day-keyed like `checkCalendarReviewTasks`, and with its mark
+   * (`eventDetailsLastDayKey`) spent before the events are looked at, so a
+   * task swiped away stays gone until tomorrow. Unlike that one the row asks
+   * about the events as they stand rather than about one day, so:
+   *
+   * - **A live row is kept while it still has something to ask**, and retitled
+   *   to the count. Yesterday's row is replaced by today's, except one the
+   *   person deferred: a defer is theirs, so it keeps its date, and when it
+   *   comes back it lists only events still ahead (`eventDetailEntries`).
+   * - **A row with nothing left to ask goes** (every event answered elsewhere,
+   *   or past), unless it is already marked ready: the panel marks it when the
+   *   person answers the last one, and the tick is theirs.
+   */
+  checkEventDetailsTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.eventDetailsTasks) return;
+    // calendarReview's three refusals, for its reasons: a demo's database must
+    // not hold claims about the real calendar, and an unread window is not an
+    // empty one.
+    if (isDemoModeActive()) return;
+    if (!settings.calendarReadEnabled) return;
+    const calendar = useCalendarStore.getState();
+    if (!calendar.loaded) return;
+
+    const now = new Date();
+    const entries = readEventDetailEntries(now);
+    const todayKey = getCurrentLogicalDayKey();
+
+    let kept = false;
+    for (const task of liveGeneratedTasksOfKind(get().tasks, 'eventDetails')) {
+      if (entries.length === 0) {
+        // A ready row waits for its tick; any other has nothing left to ask.
+        if (!task.generatedReadyAt) deleteGeneratedTaskQuietly(task.id);
+        continue;
+      }
+      const deferred = !!task.deferUntil && Date.parse(task.deferUntil) > now.getTime();
+      // One row at a time, and today's unless the person deferred it.
+      if (kept || (eventDetailsDayKey(task) !== todayKey && !deferred)) {
+        deleteGeneratedTaskQuietly(task.id);
+        continue;
+      }
+      kept = true;
+      const title = eventDetailsTitle(entries.length);
+      // A new event to ask about takes a ready mark back off (settleReadyMarks' rule).
+      const updates: Partial<Task> = {
+        ...(task.title !== title ? { title } : {}),
+        ...(task.generatedReadyAt ? { generatedReadyAt: null } : {}),
+      };
+      if (Object.keys(updates).length > 0) get().updateTask(task.id, updates, { skipPostponeCount: true });
+    }
+    if (kept) return;
+
+    // Spent before the entries are judged, whatever they say (see above).
+    if (settings.eventDetailsLastDayKey === todayKey) return;
+    settings.setEventDetailsLastDayKey(todayKey);
+    if (entries.length === 0) return;
+
+    const dueDate = getCurrentDayStart();
+    reconcileGeneratedTask({
+      kind: 'eventDetails',
+      sourceId: todayKey,
+      wanted: true,
+      // Retitled above, on the row this pass keeps.
+      drift: () => null,
+      draft: () => ({
+        title: eventDetailsTitle(entries.length),
+        dueDate: dueDate.toISOString(),
+        category: settings.eventDetailsTaskCategory,
+        ...generatedBy('eventDetails', todayKey),
+      }),
+    });
   },
 
   applySlotIns() {

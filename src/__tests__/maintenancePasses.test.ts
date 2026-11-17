@@ -58,6 +58,7 @@ describe('the three maintenance groups', () => {
       'check meal thaw tasks',
       'check meal log nudge tasks',
       'check calendar review tasks',
+      'check event details tasks',
       'check weather tasks',
       'apply weather waits',
       'check event tasks',

@@ -1784,6 +1784,19 @@ interface SettingsStore {
   // choice between parts of the day, the same shape NewTaskDefaults.timeSegment
   // already uses, not a set several can be true in at once.
   calendarReviewTimeSegment: TimeOfDay | null;
+  // Whether a task offers to add the people and place an upcoming event's
+  // title names (see src/utils/eventDetailTasks.ts). Defaults OFF for
+  // calendarReviewTasks' reason: it adds a surface nobody had before.
+  eventDetailsTasks: boolean;
+  eventDetailsTaskCategory: string | null;
+  // calendarReviewLastDayKey's job for this generator: the logical day key the
+  // check last decided about, spent before it looks at the events, so a task
+  // swiped away stays gone until the next day. State, not a preference.
+  eventDetailsLastDayKey: string | null;
+  // The occurrences the person tapped Skip on, keyed by `eventOccurrenceKey`
+  // and valued by the occurrence's end so it prunes itself, eventTaskHandled's
+  // shape. State, device-local like the other handled records.
+  eventDetailsSkipped: HandledEventTasks;
   // Whether a weather rule that matches today gets its task (see
   // src/utils/weatherTasks.ts). Defaults OFF for the same reason
   // calendarReviewTasks does: it adds a surface nobody had before, and it's
@@ -2572,6 +2585,10 @@ interface SettingsStore {
   setCalendarReviewTaskCategory: (category: string | null) => void;
   setCalendarReviewLastDayKey: (dayKey: string | null) => void;
   setCalendarReviewTimeSegment: (segment: TimeOfDay | null) => void;
+  setEventDetailsTasks: (on: boolean) => void;
+  setEventDetailsTaskCategory: (category: string | null) => void;
+  setEventDetailsLastDayKey: (dayKey: string | null) => void;
+  setEventDetailsSkipped: (skipped: HandledEventTasks) => void;
   setWeatherTasks: (on: boolean) => void;
   setWeatherTaskCategory: (category: string | null) => void;
   setWeatherRules: (rules: WeatherRule[]) => void;
@@ -3407,6 +3424,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   calendarReviewTaskCategory: null,
   calendarReviewLastDayKey: null,
   calendarReviewTimeSegment: null,
+  eventDetailsTasks: false,
+  eventDetailsTaskCategory: null,
+  eventDetailsLastDayKey: null,
+  eventDetailsSkipped: {},
   weatherTasks: false,
   weatherTaskCategory: null,
   weatherRules: [],
@@ -3973,6 +3994,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       storedCalendarReviewTimeSegment && NEW_TASK_TIME_SEGMENTS.includes(storedCalendarReviewTimeSegment as TimeOfDay)
         ? (storedCalendarReviewTimeSegment as TimeOfDay)
         : null;
+    // calendarReviewTasks' opt-in reading, for its reason.
+    const eventDetailsTasks = dbGetSetting('eventDetailsTasks') === 'true';
+    const eventDetailsTaskCategory = dbGetSetting('eventDetailsTaskCategory') || null;
+    const eventDetailsLastDayKey = dbGetSetting('eventDetailsLastDayKey') || null;
+    // Pruned on load for eventTaskHandled's reason.
+    const eventDetailsSkipped = pruneHandledEventTasks(
+      parseHandledEventTasks(dbGetSetting('eventDetailsSkipped')),
+      new Date(),
+    );
     const weatherTasks = dbGetSetting('weatherTasks') === 'true';
     const weatherTaskCategory = dbGetSetting('weatherTaskCategory') || null;
     // Falls back to the shipped defaults rather than an empty list, unlike
@@ -4363,6 +4393,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dreamLogTasks,
       dumbbellEntry,
       eveningStart,
+      eventDetailsLastDayKey,
+      eventDetailsSkipped,
+      eventDetailsTaskCategory,
+      eventDetailsTasks,
       eventRules,
       eventTaskCategory,
       eventTaskHandled,
@@ -5239,6 +5273,30 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setCalendarReviewTimeSegment(segment: TimeOfDay | null) {
     dbSetSetting('calendarReviewTimeSegment', segment ?? '');
     set({ calendarReviewTimeSegment: segment });
+  },
+
+  setEventDetailsTasks(on: boolean) {
+    dbSetSetting('eventDetailsTasks', on ? 'true' : 'false');
+    set({ eventDetailsTasks: on });
+  },
+
+  setEventDetailsTaskCategory(category: string | null) {
+    dbSetSetting('eventDetailsTaskCategory', category ?? '');
+    set({ eventDetailsTaskCategory: category });
+  },
+
+  // '' for "nothing decided yet", calendarReviewLastDayKey's reading.
+  setEventDetailsLastDayKey(dayKey: string | null) {
+    dbSetSetting('eventDetailsLastDayKey', dayKey ?? '');
+    set({ eventDetailsLastDayKey: dayKey });
+  },
+
+  // Written whole and pruned as it goes, so a Skip never keeps a finished
+  // occurrence around.
+  setEventDetailsSkipped(skipped: HandledEventTasks) {
+    const kept = pruneHandledEventTasks(skipped, new Date());
+    dbSetSetting('eventDetailsSkipped', JSON.stringify(kept));
+    set({ eventDetailsSkipped: kept });
   },
 
   setWeatherTasks(on: boolean) {

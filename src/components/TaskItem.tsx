@@ -138,6 +138,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
+import { EventDetailsCount, EventDetailsPanel } from './EventDetailsPanel';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { automationEntryIdFor, canPinTask, isNoticeTask } from '../utils/generatedTasks';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
@@ -2278,6 +2279,7 @@ const TaskItemRow = React.memo(function TaskItem({
     otherSeriesDates !== '' ||
     chainStepPreview !== null ||
     task.generatedKind === 'calendarReview' ||
+    task.generatedKind === 'eventDetails' ||
     timed ||
     healthTargeted ||
     task.actualMinutes != null;
@@ -3441,7 +3443,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
   const penaltyLabel = penaltyChipLabel(task, penaltyShieldEnabled);
-  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || frankiMinutes !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
+  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || frankiMinutes !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || task.generatedKind === 'eventDetails' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   // A task the app wrote by itself says so on its row, in a tab on the card's
   // top-left corner (see `autoTab` in the styles). Only a small sparkle inside
@@ -4196,6 +4198,14 @@ const TaskItemRow = React.memo(function TaskItem({
                     ? 'No events'
                     : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}
                 </Text>
+                <RotatingChevron open={expanded} size={9} color={colors.textSecondary} />
+              </View>
+            )}
+            {task.generatedKind === 'eventDetails' && (
+              // calendarReview's chip, for its reason: the panel is the task.
+              <View style={styles.metaChip} accessibilityLabel="Events to add details to, tap to expand">
+                <Ionicons name="calendar-outline" size={9} color={colors.textSecondary} />
+                <EventDetailsCount style={styles.subtaskBadgeText} />
                 <RotatingChevron open={expanded} size={9} color={colors.textSecondary} />
               </View>
             )}
@@ -5410,6 +5420,11 @@ const TaskItemRow = React.memo(function TaskItem({
                   </TouchableOpacity>
                 </View>
               )}
+
+              {/* The events with a person or place to add, each answered in
+                  place. A component of its own (EventDetailsPanel.tsx) so the
+                  calendar and people reads mount only on this one row. */}
+              {task.generatedKind === 'eventDetails' && <EventDetailsPanel taskId={task.id} />}
 
               {timed && (
                 <View style={styles.countdownRow}>
