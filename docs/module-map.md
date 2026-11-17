@@ -305,6 +305,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, PORTION_LABEL, KitchenEntry, KitchenSection, +5 more
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange
 - `src/utils/labelOcr.ts` — LabelColumn, LabelReading, readNutritionLabel, amountFromPrintedText, readLabelPhoto
+- `src/utils/lastTimeGym.ts` — LastTimeGym, lastTimeGym
 - `src/utils/lastTimeNotes.ts` — LastTimeNote, LastTimeNotes, lastTimeNotes
 - `src/utils/launchGuard.ts` — UNPROVEN_SCREEN_KEY, HEALTHY_AFTER_MS, screenToRestore, markScreenUnproven, readUnprovenScreen, clearUnprovenScreen
 - `src/utils/layoutAnimation.ts` — animateLayout

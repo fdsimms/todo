@@ -76,6 +76,7 @@ import { useGymStore } from '../store/useGymStore';
 import {
   describeLastLoad, exerciseIdsDoneAt, gymIncrementKg, gymSettingFor, gymSwapCandidates, unavailableExerciseIds, withGymBar,
 } from '../utils/gyms';
+import { lastTimeGym } from '../utils/lastTimeGym';
 import { lastTimeNotes } from '../utils/lastTimeNotes';
 import { parseSetCell, typedTickValues } from '../utils/workoutCell';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
@@ -1174,6 +1175,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const previousBySet = matchPreviousByPosition(viewed.sets, previous);
               // What was written on this exercise's sets last time, read before the first set.
               const lastNotes = lastTimeNotes(previous);
+              // Which gym those sets were at, named only when it isn't this workout's gym.
+              const lastGym = lastTimeGym(previous, sessionsList, gyms, session?.gymId ?? null);
               // The records this workout has set on the exercise so far, by the set holding each.
               const liveRecords = session && viewed.sets.some(s => s.completedAt !== null)
                 ? liveSetRecords(
@@ -1427,6 +1430,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
 
                 {!collapsed && (<>
+                {lastGym && (
+                  <View style={styles.lastGymLine} accessible accessibilityLabel={`Last time was at ${lastGym.name}, ${format(new Date(lastGym.at), 'MMM d')}`}>
+                    <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
+                    <Text style={styles.lastGymText} numberOfLines={1}>
+                      {`Last time · ${format(new Date(lastGym.at), 'MMM d')} · `}
+                      <Text style={styles.lastGymName}>{lastGym.name}</Text>
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.setHead} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                   <Text style={[styles.headCell, styles.colSet]}>Set</Text>
                   <Text style={[styles.headCell, styles.colPrev]}>Previous</Text>
@@ -2096,6 +2108,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8, marginBottom: spacing.xxs,
   },
   noteLabelLast: { color: colors.warningText },
+  lastGymLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.smd, paddingTop: spacing.sm },
+  lastGymText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
+  lastGymName: { color: colors.accentText, fontWeight: fontWeight.semibold },
   noteText: { color: colors.text, fontSize: font.sm },
   noteEditor: { padding: spacing.smd, gap: spacing.smd },
   noteField: { gap: spacing.xs },
