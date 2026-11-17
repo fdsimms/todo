@@ -1736,7 +1736,10 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   re-derived. `vacationDrivenBy` is left alone on the way off: `checkAwayVacation` reads "mode off
   while a trip still names it" as the person declining that trip, and clearing it from here would
   make the trip arm the mode again tomorrow. `get_overview`'s `vacation` carries the same state
-  (since, until, the driving trip, what it hides).
+  (since, until, the driving trip, what it hides). `from` plans one instead, writing
+  `vacationScheduledStart` as Settings' Start date row does (that day's start), so the phone's
+  `checkScheduledVacation` switches the mode on when it next opens on or after that day; while one
+  is planned `vacation.planned` reports it and `on: false` cancels it.
 
 ### The health logs have their own switch, and iCloud never gets them
 

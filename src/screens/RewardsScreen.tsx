@@ -38,6 +38,7 @@ import { isBalanceReset, useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useColors } from '../theme/ThemeContext';
 import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -93,6 +94,7 @@ import {
   signedAmount,
   suggestRewardCost,
 } from '../utils/rewards';
+import { listItemFinder } from '../utils/listMode';
 import type { CoinEntry, Reward, Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -230,7 +232,8 @@ export function RewardsScreen() {
   // and says how often each one comes round. Null with under a week of
   // history, and every reader treats that as "nothing to say".
   const tasks = useTaskStore(s => s.tasks);
-  const rate = useMemo(() => earnRatePerDay(tasks, new Date()), [tasks]);
+  const groups = useTaskGroupStore(s => s.groups);
+  const rate = useMemo(() => earnRatePerDay(tasks, new Date(), listItemFinder(groups, projects)), [tasks, groups, projects]);
   // Coins per dollar: a week of your earning over a week of what you'd spend
   // on rewards. Null until both exist, and dollar prices wait for it.
   const exchange = useMemo(() => coinsPerDollar(rate, budgetMinor), [rate, budgetMinor]);
@@ -340,8 +343,8 @@ export function RewardsScreen() {
   // With none posted, offer the tasks already being put off (the ones the
   // Stuck screen lists), most-moved first.
   const suggestedBounties = useMemo(
-    () => (bounties.length === 0 ? suggestedBountyTasks(driftingTaskList(tasks, driftThreshold)) : []),
-    [bounties.length, tasks, driftThreshold],
+    () => (bounties.length === 0 ? suggestedBountyTasks(driftingTaskList(tasks, driftThreshold), listItemFinder(groups, projects)) : []),
+    [bounties.length, tasks, driftThreshold, groups, projects],
   );
   // A bare title like "Pick dates" says nothing on its own, so name the
   // project it belongs to, or its category when it has no project.

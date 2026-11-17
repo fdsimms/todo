@@ -121,7 +121,8 @@ that several screens render. Trivial, and exempt, is a copy edit, a one-line spa
 swap, an icon swap, or anything with no visible result (logic, refactors, tests, tooling). When
 you can't tell which side a change is on, treat it as non-trivial. Don't skip the mock because the
 change "looks obvious" in the code: that is when a cramped gap or a dark-theme-only treatment
-ships.
+ships. The PR body says `Mock: <shown and approved>` or `Mock: exempt, <which trivial case>`, so a
+skipped mock is a stated decision rather than a quiet one.
 
 ## Navigation
 

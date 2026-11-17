@@ -570,8 +570,12 @@ import { reloadReaches, syncReloadScope, type ReloadPart, type SyncReloadScope }
  * projects: an item on a list (a packing list, a wish list) earns nothing.
  */
 function earnsCoins(task: Task): boolean {
-  const isListItem = listItemFinder(useTaskGroupStore.getState().groups, useProjectStore.getState().projects)(task);
-  return taskEarnsCoins(task, isListItem);
+  return taskEarnsCoins(task, isListItemNow(task));
+}
+
+/** Whether a task is on a list, read from the live stacks and projects. */
+function isListItemNow(task: Task): boolean {
+  return listItemFinder(useTaskGroupStore.getState().groups, useProjectStore.getState().projects)(task);
 }
 
 
@@ -3448,7 +3452,7 @@ export function captureFollowUpDrafts(ids: string[], scope: 'occurrence' | 'seri
  * rewards are off.
  */
 function payCleanDays(before: Task, patch: Partial<Task> | null, now: Date): void {
-  if (!taskEarnsCoins(before)) return;
+  if (!earnsCoins(before)) return;
   const days = cleanDaysCredited(before, patch);
   if (days.length === 0) return;
   const todayKey = dayKeyOf(getCurrentDayStart());
@@ -10045,7 +10049,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   postBounty(id) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task || !canPostBounty(task)) return 'not-allowed';
+    if (!task || !canPostBounty(task, isListItemNow(task))) return 'not-allowed';
     if (liveBountyCount(get().tasks) >= useSettingsStore.getState().bountyLimit) return 'full';
     get().updateTask(id, { bountyPushes: 0 }, SKIP_POSTPONE);
     return 'posted';

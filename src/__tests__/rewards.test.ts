@@ -150,8 +150,8 @@ describe('difficulty', () => {
 
   it('refuses a bounty on a trivial task, and frees the slot of one rated trivial later', () => {
     const open = { completed: false, archived: false, parentId: null, polarity: 'positive' as const, bountyPushes: null };
-    expect(canPostBounty({ ...open, difficulty: 'normal' })).toBe(true);
-    expect(canPostBounty({ ...open, difficulty: 'trivial' })).toBe(false);
+    expect(canPostBounty({ ...open, difficulty: 'normal' }, false)).toBe(true);
+    expect(canPostBounty({ ...open, difficulty: 'trivial' }, false)).toBe(false);
     expect(isBountyLive({ ...open, bountyPushes: 0, difficulty: 'hard' })).toBe(true);
     expect(isBountyLive({ ...open, bountyPushes: 0, difficulty: 'trivial' })).toBe(false);
   });
@@ -205,8 +205,8 @@ describe('coinsForCompletion and coinsForLoss', () => {
 
 describe('taskEarnsCoins', () => {
   it('leaves subtasks out', () => {
-    expect(taskEarnsCoins({ parentId: null })).toBe(true);
-    expect(taskEarnsCoins({ parentId: 'p' })).toBe(false);
+    expect(taskEarnsCoins({ parentId: null }, false)).toBe(true);
+    expect(taskEarnsCoins({ parentId: 'p' }, false)).toBe(false);
   });
 
   it('leaves list items out', () => {
@@ -319,7 +319,8 @@ describe('latestLossFor', () => {
 describe('earnRatePerDay', () => {
   const now = new Date(2026, 9, 3, 12);
   const daysAgo = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000).toISOString();
-  const done = (over: Partial<Parameters<typeof earnRatePerDay>[0][number]> = {}) => ({
+  const notListed = () => false;
+  const done = (over: Partial<Parameters<typeof earnRatePerDay>[0][number]> & { id?: string } = {}) => ({
     ...task(30),
     parentId: null,
     completed: true,
@@ -332,7 +333,7 @@ describe('earnRatePerDay', () => {
   it('averages coins over the history actually there', () => {
     // Ten days of history, 3 coins a day.
     const tasks = Array.from({ length: 10 }, (_, i) => done({ completedAt: daysAgo(i + 0.5) }));
-    expect(earnRatePerDay(tasks, now)).toBeCloseTo(30 / 9.5);
+    expect(earnRatePerDay(tasks, now, notListed)).toBeCloseTo(30 / 9.5);
   });
 
   it('takes misses off and leaves subtasks and open tasks out', () => {
@@ -342,7 +343,7 @@ describe('earnRatePerDay', () => {
       done({ completedAt: daysAgo(3), parentId: 'p' }),
       done({ completedAt: null, completed: false }),
     ];
-    expect(earnRatePerDay(tasks, now)).toBeCloseTo(0 / 10);
+    expect(earnRatePerDay(tasks, now, notListed)).toBeCloseTo(0 / 10);
   });
 
   it('leaves out a completion somebody else made, which paid nothing', () => {
@@ -350,12 +351,12 @@ describe('earnRatePerDay', () => {
       done({ completedAt: daysAgo(10) }),
       done({ completedAt: daysAgo(2), doneByOtherAt: daysAgo(2) }),
     ];
-    expect(earnRatePerDay(tasks, now)).toBeCloseTo(3 / 10);
+    expect(earnRatePerDay(tasks, now, notListed)).toBeCloseTo(3 / 10);
   });
 
   it('counts the streak bonus each completion was paid', () => {
     const tasks = [done({ completedAt: daysAgo(10), streakCount: 7 })];
-    expect(earnRatePerDay(tasks, now)).toBeCloseTo(4 / 10);
+    expect(earnRatePerDay(tasks, now, notListed)).toBeCloseTo(4 / 10);
   });
 
   it('ignores completions older than the window', () => {
@@ -363,12 +364,20 @@ describe('earnRatePerDay', () => {
       done({ completedAt: daysAgo(EARN_RATE_WINDOW_DAYS + 5) }),
       done({ completedAt: daysAgo(10) }),
     ];
-    expect(earnRatePerDay(tasks, now)).toBeCloseTo(3 / 10);
+    expect(earnRatePerDay(tasks, now, notListed)).toBeCloseTo(3 / 10);
+  });
+
+  it('leaves out list items, which paid nothing', () => {
+    const tasks = [
+      done({ completedAt: daysAgo(10) }),
+      done({ completedAt: daysAgo(2), id: 'packed' }),
+    ];
+    expect(earnRatePerDay(tasks, now, t => t.id === 'packed')).toBeCloseTo(3 / 10);
   });
 
   it('refuses to guess from less than a week of history', () => {
-    expect(earnRatePerDay([done({ completedAt: daysAgo(3) })], now)).toBeNull();
-    expect(earnRatePerDay([], now)).toBeNull();
+    expect(earnRatePerDay([done({ completedAt: daysAgo(3) })], now, notListed)).toBeNull();
+    expect(earnRatePerDay([], now, notListed)).toBeNull();
   });
 });
 
@@ -621,11 +630,15 @@ describe('bounties', () => {
   });
 
   it('refuses a repost on the same occurrence, a subtask and a negative habit', () => {
-    expect(canPostBounty(withBounty(30, null))).toBe(true);
-    expect(canPostBounty(withBounty(30, BOUNTY_WITHDRAWN))).toBe(false);
-    expect(canPostBounty({ ...withBounty(30, null), parentId: 'p' })).toBe(false);
-    expect(canPostBounty({ ...withBounty(30, null), polarity: 'negative' })).toBe(false);
-    expect(canPostBounty({ ...withBounty(30, null), completed: true })).toBe(false);
+    expect(canPostBounty(withBounty(30, null), false)).toBe(true);
+    expect(canPostBounty(withBounty(30, BOUNTY_WITHDRAWN), false)).toBe(false);
+    expect(canPostBounty({ ...withBounty(30, null), parentId: 'p' }, false)).toBe(false);
+    expect(canPostBounty({ ...withBounty(30, null), polarity: 'negative' }, false)).toBe(false);
+    expect(canPostBounty({ ...withBounty(30, null), completed: true }, false)).toBe(false);
+  });
+
+  it('refuses a list item, which earns nothing and so could never pay', () => {
+    expect(canPostBounty(withBounty(30, null), true)).toBe(false);
   });
 
   it('suggests only drifting tasks a bounty can go on, in the order given, up to the cap', () => {
@@ -638,9 +651,12 @@ describe('bounties', () => {
       t('e'),
       t('f'),
     ];
-    expect(suggestedBountyTasks(drifting).map(x => x.id)).toEqual(['a', 'd', 'e']);
-    expect(suggestedBountyTasks(drifting, 1).map(x => x.id)).toEqual(['a']);
-    expect(suggestedBountyTasks([])).toEqual([]);
+    const notListed = () => false;
+    expect(suggestedBountyTasks(drifting, notListed).map(x => x.id)).toEqual(['a', 'd', 'e']);
+    expect(suggestedBountyTasks(drifting, notListed, 1).map(x => x.id)).toEqual(['a']);
+    expect(suggestedBountyTasks([], notListed)).toEqual([]);
+    // A list item is skipped, and the next one takes its place.
+    expect(suggestedBountyTasks(drifting, x => x.id === 'd').map(x => x.id)).toEqual(['a', 'e', 'f']);
   });
 
   it('reads a stored limit back, clamped', () => {

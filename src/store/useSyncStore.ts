@@ -47,6 +47,7 @@ import {
   type SyncWithholding,
 } from '../utils/syncEngine';
 import { describeApply, type ApplyReport } from '../utils/syncMerge';
+import { logError } from '../utils/errorLog';
 
 const ENABLED_KEY = 'syncEnabled';
 const LAST_SYNCED_KEY = 'syncLastSyncedAt';
@@ -227,6 +228,9 @@ interface SyncState {
    * The `problem` text the person dismissed from Today's banner. In memory
    * only, so a problem that is still there after a relaunch is shown again,
    * and a different problem shows even in the same session (`selectSyncBannerProblem`).
+   * Matched on the whole text, so a problem's sentence must not carry detail
+   * that changes between syncs (a record id, a raw error): that goes to the
+   * error log instead (`describeImageProblem`).
    */
   dismissedProblem: string | null;
   /** Hides Today's banner for the current problem. Settings still shows it. */
@@ -643,20 +647,16 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 /**
  * The Today banner's text, or null when there is nothing to show: no problem,
  * or one the person already dismissed. Keyed on the text so a new problem
- * shows even after an earlier one was dismissed.
+ * shows even after an earlier one was dismissed, which is why a problem's
+ * sentence carries no detail that changes from one sync to the next.
  */
 export const selectSyncBannerProblem = (s: Pick<SyncState, 'problem' | 'dismissedProblem'>): string | null =>
-  s.problem !== null && problemKey(s.problem) !== problemKey(s.dismissedProblem) ? s.problem : null;
+  s.problem !== null && s.problem !== s.dismissedProblem ? s.problem : null;
 
-/**
- * What a dismissal is matched on. A recipe photo problem embeds CloudKit's own
- * error text, which carries record ids and changes on every sync, so comparing
- * the whole message brought the banner back after each dismissal. For those
- * messages only the part outside the parenthesized detail counts.
- */
-function problemKey(problem: string | null): string | null {
-  if (problem === null || !/^(Recipe photos can’t send|Some recipe photos didn’t send)/.test(problem)) return problem;
-  return problem.replace(/ \(.*\)(?=\. )/s, '');
+/** The photo problem's sentence, with CloudKit's own error kept in the error log, which the MCP's list_errors reads. */
+function imageProblemShown(detail: string): string {
+  logError('sync: recipe photos', detail);
+  return describeImageProblem(detail);
 }
 
 /**
@@ -666,12 +666,15 @@ function problemKey(problem: string | null): string | null {
  * docs/arch/recipes.md).
  */
 export function describeImageProblem(detail: string): string {
+  // The sentence never carries `detail` itself: CloudKit's error names record
+  // ids that change every sync, which would bring a dismissed banner back, and
+  // it means nothing to the person reading it. `imageProblemShown` logs it.
   if (/production schema/i.test(detail)) {
     // The raw CloudKit error is a record id and a zone name, which says nothing
     // the sentence doesn't, so it isn't repeated here.
     return 'Recipe photos aren’t syncing through iCloud. The RecipeImage record type hasn’t been deployed to Production yet, so retrying won’t help. Deploy it in the CloudKit Dashboard.';
   }
-  return `Some recipe photos didn’t send (${detail}). They’ll retry on the next sync.`;
+  return 'Some recipe photos didn’t send. They’ll retry on the next sync.';
 }
 
 /** Recomputes `serverHeld` from what is stored now. */
@@ -731,7 +734,7 @@ async function syncOnce(state: SyncConfig, claimId: number): Promise<SyncSummary
           ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null)
           // Last, and only when the rows went: a photo that didn't send is
           // retried on its own, so this names it without calling the sync failed.
-          ?? (summary.imageProblem ? describeImageProblem(summary.imageProblem) : null),
+          ?? (summary.imageProblem ? imageProblemShown(summary.imageProblem) : null),
         lastSummary: describeApply(summary.applied),
       });
     } else if (summary.problem !== null) {

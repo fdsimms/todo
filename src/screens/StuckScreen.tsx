@@ -9,6 +9,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { resolvePerson } from '../utils/peopleRegistry';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -37,6 +38,7 @@ import { resolveBlocker } from '../utils/blockerRegistry';
 import { describeBlockerWait } from '../utils/blockerStatus';
 import { asksOnCompletion } from '../utils/deliverables';
 import { bountyCoinsFor, canPostBounty, isBountyLive } from '../utils/rewards';
+import { listItemFinder } from '../utils/listMode';
 import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { DriftEntry } from '../utils/postpone';
@@ -164,6 +166,9 @@ export function StuckScreen() {
   const threshold = useSettingsStore(s => s.postponeCheckThreshold);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const projects = useProjectStore(useShallow(s => s.projects));
+  const groups = useTaskGroupStore(s => s.groups);
+  // A list item never earns coins, so no bounty is offered on one.
+  const isListItem = useMemo(() => listItemFinder(groups, projects), [groups, projects]);
   const projectTitlesById = useMemo(
     () => new Map(projects.map(p => [p.id, p.title])),
     [projects],
@@ -341,7 +346,7 @@ export function StuckScreen() {
       },
       // A bounty is aimed at exactly these tasks (see "Bounties" in
       // utils/rewards.ts), so it's offered here as well as in the editor.
-      ...(rewardsEnabled && canPostBounty(task)
+      ...(rewardsEnabled && canPostBounty(task, isListItem(task))
         ? [{
             key: 'bounty',
             label: `Post +${bountyCoinsFor({ ...task, bountyPushes: 0 })} bounty`,

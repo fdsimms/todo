@@ -78,8 +78,12 @@ export interface Overview {
   timeZone: string;
   /** The logical today: before `dayResetTime` it is still yesterday by the person's reckoning. */
   today: { date: string; weekday: string; dayStartsAt: string; weekStartsOn: string };
-  /** Present while vacation mode is on: since when, until when, the trip that switched it on if one did, and what it hides (`vacationTools.ts`). */
-  vacation?: VacationState & { on: true };
+  /**
+   * Present while vacation mode is on (since when, until when, the trip that
+   * switched it on if one did, and what it hides) or while one is planned
+   * (`planned`, with the mode still off). `vacationTools.ts`.
+   */
+  vacation?: VacationState;
   /**
    * Open top-level tasks in each of the app's lenses. The four lenses are
    * disjoint; `hidden` is the open tasks none of them shows (held back, hidden
@@ -188,7 +192,7 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
       dayStartsAt: settings.dayResetTime,
       weekStartsOn: WEEKDAYS[settings.weekStartsOn] ?? 'Sunday',
     },
-    vacation: settings.vacationMode ? (vacationState(replica) as VacationState & { on: true }) : undefined,
+    vacation: settings.vacationMode || settings.vacationScheduledStart ? vacationState(replica) : undefined,
     counts: {
       today: visible,
       later,

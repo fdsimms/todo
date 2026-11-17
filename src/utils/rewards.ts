@@ -242,16 +242,18 @@ export function liveBountyCount(tasks: readonly BountyState[]): number {
  * Whether a bounty can go up on this task at all, slots aside: an open,
  * top-level, ordinary task that has never had one on this occurrence. A
  * negative habit is never completed, so a bounty on one could never pay, and
- * neither could one on a trivial task.
+ * neither could one on a trivial task or a list item (`taskEarnsCoins`), so
+ * the caller says which it is.
  */
 export function canPostBounty(
   task: BountyState & Pick<Task, 'parentId' | 'polarity'>,
+  isListItem: boolean,
 ): boolean {
   return (
     !task.completed &&
     !task.archived &&
     task.difficulty !== 'trivial' &&
-    taskEarnsCoins(task) &&
+    taskEarnsCoins(task, isListItem) &&
     task.polarity !== 'negative' &&
     task.bountyPushes == null
   );
@@ -268,9 +270,10 @@ export const SUGGESTED_BOUNTY_COUNT = 3;
  */
 export function suggestedBountyTasks<T extends Parameters<typeof canPostBounty>[0]>(
   drifting: readonly T[],
+  isListItem: (task: T) => boolean,
   max: number = SUGGESTED_BOUNTY_COUNT,
 ): T[] {
-  return drifting.filter(canPostBounty).slice(0, max);
+  return drifting.filter(t => canPostBounty(t, isListItem(t))).slice(0, max);
 }
 
 /**
@@ -327,8 +330,11 @@ export function coinsForLoss(task: CoinSource): number {
  * listMode.ts, which the caller reads since it needs the stacks and projects):
  * ticking off a packed charger or a bought game is keeping a list, not doing
  * a task, and a 70-item packing list would otherwise pay more than a day's work.
+ * The flag is required rather than defaulted: a default let the bounty and
+ * earn-rate checks keep compiling without it, so a bounty was offered on a
+ * list item that could never pay it.
  */
-export function taskEarnsCoins(task: { parentId: string | null }, isListItem = false): boolean {
+export function taskEarnsCoins(task: { parentId: string | null }, isListItem: boolean): boolean {
   return !task.parentId && !isListItem;
 }
 
@@ -506,13 +512,17 @@ export type EarnHistoryTask = CoinSource & {
  * yours, since a stored row doesn't record which it was. Both make this an
  * estimate, which is all a suggested price needs.
  */
-export function earnRatePerDay(tasks: readonly EarnHistoryTask[], now: Date): number | null {
+export function earnRatePerDay<T extends EarnHistoryTask>(
+  tasks: readonly T[],
+  now: Date,
+  isListItem: (task: T) => boolean,
+): number | null {
   const nowMs = now.getTime();
   const from = nowMs - EARN_RATE_WINDOW_DAYS * DAY_MS;
   let total = 0;
   let oldest = nowMs;
   for (const t of tasks) {
-    if (!t.completed || !t.completedAt || !taskEarnsCoins(t) || t.doneByOtherAt) continue;
+    if (!t.completed || !t.completedAt || !taskEarnsCoins(t, isListItem(t)) || t.doneByOtherAt) continue;
     const at = Date.parse(t.completedAt);
     if (!Number.isFinite(at) || at < from || at > nowMs) continue;
     oldest = Math.min(oldest, at);

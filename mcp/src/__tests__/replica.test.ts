@@ -1802,6 +1802,12 @@ describe('the replica', () => {
       replica.withdrawBounty(b.id);
     });
 
+    it('refuses a bounty on a list item, which earns nothing and so could never pay', () => {
+      const wishes = replica.createProjectPlan({ title: 'Wish list for a bounty', list: true, steps: [{ fields: { title: 'Board game', category: 'Home' } }] } as never).project;
+      const item = replica.tasks().find(t => t.projectId === wishes.id && !t.completed)!;
+      expect(() => replica.postBounty(item.id)).toThrow(/item on a list/);
+    });
+
     it('marks a repeating occurrence missed, costs the coins, and reopens it with them back', () => {
       earn(90);
       const before = balance();

@@ -258,6 +258,8 @@ export interface ReplicaSettings {
   /** Stamped when the mode was switched on, so it records when they went and never when they are going. */
   vacationStart: string | null;
   vacationEnd: string | null;
+  /** The day a planned vacation turns the mode on by itself, or null. Only ever set while the mode is off. */
+  vacationScheduledStart: string | null;
   /** The project whose away dates switched vacation mode on, or null when a person did (docs/arch/away-dates.md). */
   vacationDrivenBy: string | null;
   /** The unit the person counts water in. Display only: `waterMl` is stored in millilitres whichever is picked. */
@@ -1495,6 +1497,14 @@ export interface Replica {
    * the mode again tomorrow.
    */
   setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome;
+  /**
+   * Set the day vacation mode turns itself on (`vacationScheduledStart`), or
+   * clear it with null, as Settings' Start date row does: stored as that day's
+   * start, which the phone's `checkScheduledVacation` compares against. With
+   * `until`, the end date too (null clears it). Refused while the mode is on,
+   * since there is then no start left to schedule.
+   */
+  scheduleVacation(from: Date | null, until?: Date | null): void;
   /** Every tag the person has, used or not. */
   tagRegistry(): string[];
   /**
@@ -4643,6 +4653,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         vacationMode: s.vacationMode,
         vacationStart: s.vacationStart,
         vacationEnd: s.vacationEnd,
+        vacationScheduledStart: s.vacationScheduledStart,
         vacationDrivenBy: s.vacationDrivenBy,
         waterUnit: s.waterUnit,
         standardDrinkGrams: s.standardDrinkGrams,
@@ -5163,6 +5174,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     focusHistory: () => db.dbGetFocusSessionLog(),
     errorLog: () => db.dbGetErrorLog(),
     storage: () => db.dbStorageStats(),
+    scheduleVacation(from: Date | null, until?: Date | null) {
+      const settings = useSettingsStore.getState();
+      if (from && settings.vacationMode) throw new Error('Vacation mode is already on, so there is no start to schedule.');
+      settings.setVacationScheduledStart(from ? dates.getTaskDayStart(from).toISOString() : null);
+      if (until !== undefined) settings.setVacationEnd(until ? dates.getTaskDayStart(until).toISOString() : null);
+    },
     setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const streaks = require('../../src/utils/vacationStreaks') as typeof import('../../src/utils/vacationStreaks');
@@ -8881,7 +8898,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (days <= 0) throw new Error('byDate must be after today.');
           by = planInput.byDate;
           if (sharePct === undefined) {
-            const rate = rewards.earnRatePerDay(tasks(), new Date());
+            const rate = rewards.earnRatePerDay(tasks(), new Date(), listItemFinder(useTaskGroupStore.getState().groups, projects()));
             const worked = savingsLib.shareForDate(reward.cost, have, rate, days);
             if (worked === null) throw new Error('There is under a week of history, so no share can be worked out from a date yet. Pass sharePct instead.');
             sharePct = worked;
@@ -9000,10 +9017,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       requireRewardsOn();
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
-      if (!rewards.canPostBounty(task)) {
+      const isListItem = listItemFinder(useTaskGroupStore.getState().groups, projects())(task);
+      if (!rewards.canPostBounty(task, isListItem)) {
         throw new Error(task.bountyPushes != null
           ? 'That task already had a bounty this occurrence, live or withdrawn. A repeating task can have another on its next occurrence.'
-          : 'A bounty needs an open, top-level task that is not a "don\'t do this" habit.');
+          : isListItem
+            ? 'That task is an item on a list, which earns no coins, so a bounty on it could never pay.'
+            : 'A bounty needs an open, top-level task that is not a "don\'t do this" habit.');
       }
       const { bountyLimit } = useSettingsStore.getState();
       if (rewards.liveBountyCount(tasks()) >= bountyLimit) {

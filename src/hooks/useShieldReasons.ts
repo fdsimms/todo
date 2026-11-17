@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
-import { liveSpeedBumpNow } from '../utils/appShieldReconcile';
+import { currentShieldReasons, liveSpeedBumpNow } from '../utils/appShieldReconcile';
 import type { LiveSpeedBump } from '../utils/speedBump';
 import { outstandingGates } from '../utils/appGate';
-import { shieldReasons, type AppShieldState, type ShieldReasonEntry } from '../utils/appShield';
-import { canLock } from '../utils/nfcKey';
+import type { ShieldReasonEntry } from '../utils/appShield';
 import { isTaskVisible } from '../utils/visibilityUtils';
-import { nextScheduleBoundary, resolvedGroups, withVacationPause } from '../utils/blockSchedule';
-import { expandGroupNow, resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
+import { nextScheduleBoundary, withVacationPause } from '../utils/blockSchedule';
+import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -18,7 +17,6 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useRewardStore } from '../store/useRewardStore';
 import { useUnlockStore } from '../store/useUnlockStore';
 import { lockedUnlockBlocksNow } from '../utils/unlockWorld';
-import type { UnlockBlock } from '../utils/unlockBlockText';
 
 /** Just under 24.8 days, the largest delay setTimeout stores without overflowing. */
 const MAX_TIMER_MS = 2_147_483_647;
@@ -26,9 +24,11 @@ const MAX_TIMER_MS = 2_147_483_647;
 /**
  * Why the apps are blocked right now, for the Screen Time page.
  *
- * The same answer `reconcileAppShield` gives the system shield, built from the
- * same stores and the same `shieldReasons` rule, so the page cannot say
- * something the shield is not doing. It reads only: nothing here writes the
+ * The answer is `currentShieldReasons`, built by the same `buildShieldState`
+ * the system shield reads, so the page cannot say something the shield is not
+ * doing. Never build the state here: a copy of it is how the page once said
+ * "Nothing is blocking your apps" during a speed bump. The subscriptions below
+ * only decide when to ask again. It reads only: nothing here writes the
  * shield, which stays `syncAppShield`'s alone.
  *
  * A penalty ends at an instant nothing writes anything at, so a timer
@@ -106,28 +106,10 @@ export function useShieldReasons(): ShieldReasonEntry[] {
     return () => clearTimeout(timer);
   }, [penaltyUntil, manualBlock, schedules, tick]);
 
-  return useMemo(() => {
-    const gateRows = JSON.parse(gateKey) as { title: string; own: string | null }[];
-    const settingGroup = resolvedAssignments().gate;
-    const state: AppShieldState = {
-      session,
-      focusEnabled,
-      penaltyUntil,
-      penaltyEnabled,
-      penaltyReason,
-      gateEnabled,
-      manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, resolveGroupNow).groupIds } : null,
-      speedBump,
-      keyLocked: locked && canLock(keys),
-      gateTitles: gateRows.map(g => g.title),
-      gateGroupIds: gateRows.map(g => (g.own ? resolveGroupNow(g.own) : settingGroup)),
-      unlockBlocks: JSON.parse(unlockKey) as UnlockBlock[],
-      pendingGate: null,
-      groups: resolvedAssignments(),
-      schedules,
-      resolveGroup: expandGroupNow,
-      now,
-    };
-    return shieldReasons(state);
-  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, unlockKey, manualBlock, speedBump, now, groups, assignments, schedules]);
+  // Every input buildShieldState reads, so the list is asked for again when one
+  // changes. None is read here: the answer comes from the stores themselves.
+  return useMemo(
+    () => currentShieldReasons(now),
+    [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, unlockKey, manualBlock, speedBump, now, groups, assignments, schedules],
+  );
 }

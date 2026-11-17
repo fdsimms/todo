@@ -1,7 +1,11 @@
 #!/usr/bin/env node
-// Rewrites docs/repo-stats.md, which holds the repo's own measurements — how
-// many test suites there are, and which files are big enough that reading one
-// end to end costs more than the task will.
+// Rewrites docs/repo-stats.md, which holds the repo's own measurements: which
+// files are big enough that reading one end to end costs more than the task
+// will.
+//
+// It doesn't count test files. That line changed in every PR that added a test,
+// identically, so two such PRs merged together left git a clean merge and main
+// one file short, with CI failing on a count neither PR had got wrong.
 //
 // It lived inside CLAUDE.md as a marked block until the numbers moved on every
 // branch at once and made CLAUDE.md conflict for every open PR. It is its own
@@ -112,7 +116,7 @@ const block = [
         '',
       ]
     : []),
-  `The suite is **${suites} test files**, and \`npm test\` runs all of them in about a minute.`,
+  '`npm test` runs the whole suite in about a minute.',
   '`npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists.',
   '',
 ].join('\n');

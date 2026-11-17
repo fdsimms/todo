@@ -12,7 +12,12 @@ on:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Each push to main gets a group of its own (its commit). Within one group
+  # GitHub cancels a run that is still waiting whenever a newer one queues,
+  # whatever `cancel-in-progress` says, so a shared `main` group went on
+  # cancelling every merge but the last of a burst after the line below was
+  # added.
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   # Only superseded PR pushes are worth cancelling. A run on main is the check
   # that says whether main itself is green, and merges land seconds apart, so
   # cancelling those meant a merge that broke main had its run killed by the

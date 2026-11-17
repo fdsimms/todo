@@ -32,10 +32,10 @@ describe('the vacation switch', () => {
   beforeEach(() => {
     mockRaw.runSync('DELETE FROM tasks');
     mockRaw.runSync('DELETE FROM categories');
-    mockRaw.runSync("DELETE FROM settings WHERE key IN ('vacationMode', 'vacationStart', 'vacationEnd', 'vacationDrivenBy')");
+    mockRaw.runSync("DELETE FROM settings WHERE key IN ('vacationMode', 'vacationStart', 'vacationEnd', 'vacationScheduledStart', 'vacationDrivenBy')");
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useSettingsStore } = require('../../../src/store/useSettingsStore');
-    useSettingsStore.setState({ vacationMode: false, vacationStart: null, vacationEnd: null, vacationDrivenBy: null });
+    useSettingsStore.setState({ vacationMode: false, vacationStart: null, vacationEnd: null, vacationScheduledStart: null, vacationDrivenBy: null });
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useCategoryStore } = require('../../../src/store/useCategoryStore');
     useCategoryStore.setState({ categories: [] });
@@ -131,5 +131,48 @@ describe('the vacation switch', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  describe('a planned vacation', () => {
+    /** The day key `n` days after `key`, on the local calendar. */
+    const dayAfter = (key: string, n: number) => {
+      const d = new Date(`${key}T12:00`);
+      d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    it('plans it for a later day, stored as Settings stores it, and hides nothing yet', () => {
+      const from = dayAfter(replica.todayKey(), 3);
+      const until = dayAfter(replica.todayKey(), 10);
+      const result = setVacationMode(replica, { on: true, from, until });
+      expect(result).toMatchObject({ on: false, planned: { from, until }, hiding: { tasks: 0 } });
+      expect(result.note).toMatch(new RegExp(`turns itself on on ${from} and off on ${until}`));
+      const settings = replica.settings();
+      expect(settings.vacationMode).toBe(false);
+      // The day's start, which the phone's checkScheduledVacation compares against.
+      expect(new Date(settings.vacationScheduledStart!).getHours()).toBe(0);
+      expect(replica.logicalDayKeyOf(settings.vacationScheduledStart!)).toBe(from);
+      expect(replica.isHiddenForVacation(replica.taskById(pausedId)!)).toBe(false);
+      expect(vacationState(replica).planned).toEqual({ from, until });
+    });
+
+    it('refuses a start that is not after today, an end not after the start, and a plan while the mode is on', () => {
+      const today = replica.todayKey();
+      expect(() => setVacationMode(replica, { on: true, from: today })).toThrow(/from: .* is not after today/);
+      expect(() => setVacationMode(replica, { on: true, from: dayAfter(today, 3), until: dayAfter(today, 3) })).toThrow(/until: .* is not after/);
+      expect(() => setVacationMode(replica, { on: false, from: dayAfter(today, 3) })).toThrow(/from goes with on: true/);
+      setVacationMode(replica, { on: true });
+      expect(() => setVacationMode(replica, { on: true, from: dayAfter(today, 3) })).toThrow(/already on/);
+      expect(replica.settings().vacationScheduledStart).toBeNull();
+    });
+
+    it('cancels the plan and its end with on: false, leaving the mode off', () => {
+      const from = dayAfter(replica.todayKey(), 2);
+      setVacationMode(replica, { on: true, from, until: dayAfter(from, 5) });
+      const result = setVacationMode(replica, { on: false });
+      expect(result.note).toBe(`The vacation planned for ${from} is cancelled, and vacation mode stays off.`);
+      expect(result.planned).toBeUndefined();
+      expect(replica.settings()).toMatchObject({ vacationMode: false, vacationScheduledStart: null, vacationEnd: null });
+    });
   });
 });
