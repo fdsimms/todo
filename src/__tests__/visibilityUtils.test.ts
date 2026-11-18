@@ -1750,6 +1750,22 @@ describe('a negative habit', () => {
     expect(isTaskDeferred(held)).toBe(false);
   });
 
+  // A weekly habit is owed on its own day only; the day after, the row sits on
+  // next week's occurrence (or still on the old one until the rollover moves it).
+  it('leaves Today on the days a weekly repeat is not scheduled', () => {
+    const weekly: Task = { ...avoid, recurrenceType: 'weekly', recurrenceInterval: 1, recurrenceDays: [2] };
+    const today = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate(), 12).toISOString();
+    const nextWeek = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + 7, 12).toISOString();
+    const yesterday = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - 1, 12).toISOString();
+    expect(isTaskVisible({ ...weekly, dueDate: today })).toBe(true);
+    expect(isTaskVisible({ ...weekly, dueDate: nextWeek })).toBe(false);
+    expect(isTaskDeferred({ ...weekly, dueDate: nextWeek })).toBe(true);
+    expect(isTaskVisible({ ...weekly, dueDate: yesterday })).toBe(false);
+    // A daily one is owed every day, whatever its date says.
+    const daily: Task = { ...avoid, recurrenceType: 'daily', recurrenceInterval: 1, dueDate: yesterday };
+    expect(isTaskVisible(daily)).toBe(true);
+  });
+
   it('is hidden once archived', () => {
     expect(isVisibleApartFromVacation({ ...avoid, archived: true })).toBe(false);
   });
