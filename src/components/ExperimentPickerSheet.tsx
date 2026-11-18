@@ -26,7 +26,7 @@ interface Props {
  * Which planned experiment a task starts from its row (`Task.experimentId`).
  * A short card: one pick from a closed set. Only experiments with no first day
  * are listed, since one that has begun has nothing left to start; making one
- * is the Mood screen's job, so the empty state says where.
+ * is the Experiments screen's job, so the empty state says where.
  */
 export function ExperimentPickerSheet({ visible, experiments, selectedId, onSelect, onClose }: Props) {
   const colors = useColors();
@@ -35,7 +35,7 @@ export function ExperimentPickerSheet({ visible, experiments, selectedId, onSele
   const dismiss = () => card.close(onClose);
   // A way to the place, rather than directions to it. navigateToTab resolves
   // from a pushed screen as well as from a tab; the card finishes leaving first.
-  const goToMood = () => { haptics.tap(); card.close(() => { onClose(); navigateToTab('Mood'); }); };
+  const goToExperiments = () => { haptics.tap(); card.close(() => { onClose(); navigateToTab('Experiments'); }); };
   const planned = useMemo(() => experiments.filter(e => !e.startDate), [experiments]);
 
   return (
@@ -50,7 +50,7 @@ export function ExperimentPickerSheet({ visible, experiments, selectedId, onSele
           <View>
             <Text style={styles.empty}>No planned experiments yet. Plan one, then pick it here.</Text>
             <View style={styles.action}>
-              <InlineAction label="Plan an experiment" icon="flask-outline" onPress={goToMood} accessibilityLabel="Open the Mood screen to plan an experiment" />
+              <InlineAction label="Plan an experiment" icon="flask-outline" onPress={goToExperiments} accessibilityLabel="Open the Experiments screen to plan an experiment" />
             </View>
           </View>
         ) : (
@@ -79,7 +79,7 @@ export function ExperimentPickerSheet({ visible, experiments, selectedId, onSele
         )}
         {planned.length > 0 && (
           <View style={styles.action}>
-            <InlineAction label="Plan another" icon="flask-outline" variant="neutral" onPress={goToMood} accessibilityLabel="Open the Mood screen to plan another experiment" />
+            <InlineAction label="Plan another" icon="flask-outline" variant="neutral" onPress={goToExperiments} accessibilityLabel="Open the Experiments screen to plan another experiment" />
           </View>
         )}
       </View>

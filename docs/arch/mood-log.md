@@ -5,7 +5,8 @@ Read this before changing anything under `src/utils/moodLog.ts`,
 `src/utils/moodInsights.ts`, `src/utils/moodHistory.ts`, `src/utils/moodExport.ts`,
 `src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`, `src/store/useMilestoneStore.ts`,
 `src/screens/MoodScreen.tsx`, `src/screens/MoodHistoryScreen.tsx`,
-`src/screens/SymptomDetailScreen.tsx`, `src/components/MoodLogSheet.tsx`,
+`src/screens/MoodInsightsScreen.tsx`, `src/screens/SymptomsScreen.tsx`,
+`src/screens/ExperimentsScreen.tsx`, `src/screens/SymptomDetailScreen.tsx`, `src/components/MoodLogSheet.tsx`,
 `src/components/MilestoneSheet.tsx`, `src/utils/experiments.ts`,
 `src/store/useExperimentStore.ts`, `src/screens/ExperimentDetailScreen.tsx`,
 `src/components/ExperimentSheet.tsx`, `src/utils/medicationLog.ts`,
@@ -71,7 +72,7 @@ different question: things going on that day that aren't symptoms but
 plausibly explain the mood anyway — "vacation", "travel day", "big deadline
 at work". Same freeform, `symptomKey`-style match as symptoms (`contextTagKey`
 is a plain alias of it), same derived vocabulary (`contextTagVocabulary`),
-same day collapse (`dayContextTags`), same contrast shape on the Mood screen
+same day collapse (`dayContextTags`), same contrast shape on the Insights screen
 (`contextTagMoodContrasts`, built off the same `contrastsFor` symptoms use).
 It is a second freeform field next to symptoms rather than a fold into
 `symptoms` itself, because a tag carries no severity — "vacation" is not mild
@@ -381,8 +382,8 @@ while the far stronger claim about its relationship to their mood did.
 
 `SymptomDetailScreen` answers it: days, last logged, worst it reached, a
 fortnight strip at the day's worst severity, the severity breakdown, and every
-entry carrying it. The Mood screen reaches it two ways, and it needs both — the
-contrast rows (top four, gated), and a plain `SYMPTOMS` directory built from
+entry carrying it. Two screens reach it, and it needs both — the Insights
+contrast rows (top four, gated), and the Symptoms screen's plain directory built from
 `symptomStats`, without which a symptom logged three times is on no screen at
 all.
 
@@ -420,7 +421,7 @@ for every day before it. Three consequences worth not re-deriving:
   (an archived one, or a decision task holding an answer) cannot make a purged
   day look like a fully recorded one with a single completion on it.
 
-The Mood screen says how many logged days this drops, under the card it affects.
+The Insights screen says how many logged days this drops, under the card it affects.
 A correlation drawn over half a record is a different claim from one drawn over
 all of it, and the person who set the window is the only one who can decide
 whether that matters.
@@ -895,7 +896,7 @@ Its second gate is the one that makes the answer mean anything: it runs over
 log would have said so. Against every mood day, this read would really be "the
 days I logged my food against the days I didn't", with a food's name on it.
 
-**It is behind `kitchenEnabled`**, which the Mood screen checks exactly as it
+**It is behind `kitchenEnabled`**, which the Insights screen checks exactly as it
 checks `healthReadEnabled` for the readings: the whole food half of the app is
 behind that switch, and reading a log somebody has switched away from to tell
 them about their eating is the same mistake as reading Health without
@@ -918,7 +919,7 @@ lager and margarita at once, so keyed by label it would split one habit across a
 below `MIN_CONTRAST_DAYS`. A day carries it when any entry states alcohol above zero, and it rides the same two
 gates as a food: a day logged past one meal, and `MIN_CONTRAST_DAYS` on both sides. So the "without" group is
 days that were logged and stated none, which is as honest as the log lets it be, and the card's own caution
-applies in full: a drink nobody logged reads as no drink. It is how the Mood screen and a symptom's page answer
+applies in full: a drink nobody logged reads as no drink. It is how the Insights screen and a symptom's page answer
 "is it the days I drink", and it is deliberately not a nutrient insight: alcohol is not in
 `NUTRIENT_INSIGHT_KEYS`, for caffeine's reason (it is stated on drinking days and on nothing else), and Stats
 leaves it out of its per-day averages for the same one.
@@ -1187,7 +1188,7 @@ apply on top (`MIN_PAIRED_DAYS` counted from that first workout,
 side, and the caption says it doesn't show cause and effect, because people
 tend to train on days they already feel well.
 
-**The Mood screen's MILESTONES card is a directory, like SYMPTOMS, not a
+**The Experiments screen's MILESTONES card is a directory, like the Symptoms screen, not a
 ranked top-four like the with/without cards above it.** Every milestone the
 user has logged gets its own row — either a `ContrastBars` "Before"/"After"
 row once it has enough days on each side, or a plain link row saying so
@@ -1206,7 +1207,7 @@ app's experiment page and the MCP's `list_experiments` both call it.
 
 **Its own entity, not a milestone with an end date.** It carries a start, an
 end, the symptoms it is meant to change and what is expected, and it has a
-state (not started, running, finished) that drives the Mood screen's list and
+state (not started, running, finished) that drives the Experiments screen's list and
 the page. Folding that into `Milestone` would have made every milestone
 reader ask which kind it is holding. Same shape otherwise: its own table
 (`experiments`), CRUD-only store (`useExperimentStore`), tracked for sync and
@@ -1245,7 +1246,7 @@ stretches of time and can't separate this change from the others in them.
 **Deleting an experiment touches nothing else.** It points at no entries, and
 no entry points at it.
 
-**A finished one shows its result on the Mood screen** (`experimentSummary`):
+**A finished one shows its result on the Experiments screen** (`experimentSummary`):
 mood, then up to two picked symptoms that can be compared, as the share of
 logged days each was on. Unpicked symptoms stay on the page, beside the
 caption about chance; a list row has no room for that caveat.
@@ -1316,7 +1317,8 @@ over the guideline risk, and the full reasoning is in `docs/arch/mcp-server.md`.
 
 The Mood screen is a `contentScreen` in `simpleMode` — like People and Stacks,
 it holds rows that live nowhere else, so hiding it while it holds any would
-strand them.
+strand them. Insights, Symptoms and Experiments are content screens that follow
+Mood's own count (`screenShown`).
 
 And `checkMoodTasks` refuses to run in demo mode, like every other
 time-triggered generator: demo mode swaps the database, so a demo session's
