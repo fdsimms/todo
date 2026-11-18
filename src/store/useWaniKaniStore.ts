@@ -107,9 +107,9 @@ export const useWaniKaniStore = create<WaniKaniState>((set, get) => ({
         dayStart,
         dayKey,
         lessons,
-        // Only matters until today's lessons task is written, so it isn't read after.
-        apprentice: lessons && settings.wanikaniApprenticeCap !== null
-          && settings.wanikaniLessonsLastDayKey !== dayKey,
+        // Read while the cap is on: it decides whether the task is written and
+        // whether one already written still qualifies.
+        apprentice: lessons && settings.wanikaniApprenticeCap !== null,
         user: get().user === null,
       });
       if (!result) return;

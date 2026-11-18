@@ -175,6 +175,7 @@ import {
   wanikaniReviewTitle,
   wanikaniTaskKind,
   wantsWaniKaniLessonsTask,
+  isWaniKaniLessonsOverCap,
 } from '../utils/wanikaniTasks';
 import {
   FRANKI_READ_URL,
@@ -9537,6 +9538,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (left === null) return;
     const lessonsSourceId = wanikaniLessonsSourceId(todayKey);
     const liveLessons = liveGeneratedTask(get().tasks, 'wanikani', lessonsSourceId);
+    // Written before the cap was reached or set: it no longer qualifies. The
+    // day stays spent, so it doesn't come back until tomorrow.
+    if (liveLessons && isWaniKaniLessonsOverCap(snapshot, settings.wanikaniApprenticeCap)) {
+      deleteGeneratedTaskQuietly(liveLessons.id);
+      return;
+    }
     if (!liveLessons && !wantsWaniKaniLessonsTask({
       snapshot,
       todayKey,

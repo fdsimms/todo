@@ -71,7 +71,7 @@ describe('refresh', () => {
     expect((fetchWaniKani as jest.Mock).mock.calls[1][1].user).toBe(false);
   });
 
-  it('asks for lessons and Apprentice only while the lessons task wants them', async () => {
+  it('asks for lessons and Apprentice only while the lessons task and the cap are on', async () => {
     await useWaniKaniStore.getState().refresh(true);
     expect((fetchWaniKani as jest.Mock).mock.calls[0][1]).toMatchObject({ lessons: false, apprentice: false });
 
@@ -79,10 +79,14 @@ describe('refresh', () => {
     await useWaniKaniStore.getState().refresh(true);
     expect((fetchWaniKani as jest.Mock).mock.calls[1][1]).toMatchObject({ lessons: true, apprentice: true });
 
-    // Today's lessons task is written, so the cap has nothing left to decide.
+    // Still read once today's task is written: a task over the cap is removed.
     settings.wanikaniLessonsLastDayKey = dayKeyOf(getCurrentDayStart());
     await useWaniKaniStore.getState().refresh(true);
-    expect((fetchWaniKani as jest.Mock).mock.calls[2][1]).toMatchObject({ lessons: true, apprentice: false });
+    expect((fetchWaniKani as jest.Mock).mock.calls[2][1]).toMatchObject({ lessons: true, apprentice: true });
+
+    settings.wanikaniApprenticeCap = null;
+    await useWaniKaniStore.getState().refresh(true);
+    expect((fetchWaniKani as jest.Mock).mock.calls[3][1]).toMatchObject({ lessons: true, apprentice: false });
   });
 
   it('leaves a fresh read alone unless forced', async () => {

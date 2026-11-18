@@ -7,6 +7,7 @@ import {
   clampWaniKaniLessonsPerDay,
   clampWaniKaniReviewThreshold,
   decideWaniKaniReviews,
+  isWaniKaniLessonsOverCap,
   isWaniKaniTaskReady,
   parseWaniKaniReviewState,
   wanikaniHeldUntil,
@@ -181,15 +182,24 @@ describe('decideWaniKaniReviews', () => {
     expect(decision.state.openSourceId).toBeNull();
   });
 
-  it('only updates the count of a task already on Today, even an empty queue', () => {
+  it('only updates the count of a task already on Today while the queue is over the number', () => {
     const live = { sourceId: 'reviews:2026-10-18T09', heldUntil: null };
-    expect(decideWaniKaniReviews({ ...base, live, snapshot: snapshot({ reviewsNow: 0 }) }).action)
-      .toEqual({ type: 'write', sourceId: live.sourceId, count: 0, holdUntil: null });
+    expect(decideWaniKaniReviews({ ...base, live, snapshot: snapshot({ reviewsNow: 12 }) }).action)
+      .toEqual({ type: 'write', sourceId: live.sourceId, count: 12, holdUntil: null });
+  });
+
+  it('drops a task on Today once the queue falls under the number, moving the baseline down', () => {
+    const live = { sourceId: 'reviews:2026-10-18T09', heldUntil: null };
+    const decision = decideWaniKaniReviews({
+      ...base, live, snapshot: snapshot({ reviewsNow: 3 }), state: { baseline: 5, openSourceId: live.sourceId },
+    });
+    expect(decision.action).toEqual({ type: 'drop' });
+    expect(decision.state).toEqual({ baseline: 3, openSourceId: null });
   });
 
   it('treats a task whose hour has passed as on Today', () => {
     const live = { sourceId: 'reviews:2026-10-18T09', heldUntil: at(9) };
-    expect(decideWaniKaniReviews({ ...base, live, threshold: 100 }).action)
+    expect(decideWaniKaniReviews({ ...base, live, threshold: 3 }).action)
       .toEqual({ type: 'write', sourceId: live.sourceId, count: 4, holdUntil: null });
   });
 
@@ -320,5 +330,14 @@ describe('all lessons', () => {
     const task = row(wanikaniLessonsSourceId('2026-10-18'));
     expect(isWaniKaniTaskReady(task, snapshot({ lessonsNow: 3 }), WANIKANI_LESSONS_ALL, NOW)).toBe(false);
     expect(isWaniKaniTaskReady(task, snapshot({ lessonsNow: 0 }), WANIKANI_LESSONS_ALL, NOW)).toBe(true);
+  });
+});
+
+describe('isWaniKaniLessonsOverCap', () => {
+  it('is over only when Apprentice is read and at or past the cap', () => {
+    expect(isWaniKaniLessonsOverCap(snapshot({ apprentice: 25 }), 25)).toBe(true);
+    expect(isWaniKaniLessonsOverCap(snapshot({ apprentice: 24 }), 25)).toBe(false);
+    expect(isWaniKaniLessonsOverCap(snapshot({ apprentice: null }), 25)).toBe(false);
+    expect(isWaniKaniLessonsOverCap(snapshot({ apprentice: 99 }), null)).toBe(false);
   });
 });
