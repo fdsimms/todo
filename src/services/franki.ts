@@ -6,7 +6,8 @@ import type { FrankiStudyDay } from '../utils/frankiStudy';
 /**
  * The person's own Franki server (their Anki sync server, with Read & Listen
  * beside it), over the network: how many flashcards are due now, the learning
- * cards coming due later today, and whether a Read & Listen text is waiting.
+ * cards coming due later today, and which Read & Listen languages have a text
+ * waiting.
  * The server answers with Anki's own counts (`GET /reader/api/status`, in
  * fdsimms/flashcards' `server/reader`).
  *
@@ -58,6 +59,24 @@ function readListenFrom(body: unknown): FrankiReadListen | null {
   };
 }
 
+/**
+ * Every language Read & Listen reports, in the server's order. A server from
+ * before it listed them reports only the language being read, which is then
+ * the whole list. An entry with no language is dropped.
+ */
+function readLanguagesFrom(body: unknown, current: FrankiReadListen | null): FrankiReadListen[] {
+  if (!Array.isArray(body)) return current ? [current] : [];
+  const seen = new Set<string>();
+  const languages: FrankiReadListen[] = [];
+  for (const item of body) {
+    const entry = readListenFrom(item);
+    if (!entry || seen.has(entry.language)) continue;
+    seen.add(entry.language);
+    languages.push(entry);
+  }
+  return languages;
+}
+
 function studyDaysFrom(body: unknown): FrankiStudyDay[] {
   if (!Array.isArray(body)) return [];
   const days: FrankiStudyDay[] = [];
@@ -89,7 +108,7 @@ function frankiNewFrom(body: unknown): number | null {
 export function frankiSnapshotFrom(body: unknown, fetchedAt: string): FrankiSnapshot | null {
   const b = body as {
     reviews?: unknown; learning?: unknown; learning_later?: unknown; day_ends_at?: unknown;
-    read_and_listen?: unknown; franki?: unknown; study_days?: unknown;
+    read_and_listen?: unknown; read_and_listen_languages?: unknown; franki?: unknown; study_days?: unknown;
   } | null;
   if (!b || typeof b !== 'object' || typeof b.reviews !== 'number') return null;
   const byInstant = new Map<string, number>();
@@ -103,12 +122,14 @@ export function frankiSnapshotFrom(body: unknown, fetchedAt: string): FrankiSnap
   const upcoming = [...byInstant.entries()]
     .map(([at, n]) => ({ at, count: n }))
     .sort((a, c) => Date.parse(a.at) - Date.parse(c.at));
+  const readListen = readListenFrom(b.read_and_listen);
   return {
     fetchedAt,
     reviewsNow: count(b.reviews) + count(b.learning),
     upcoming,
     dayEndsAt: instant(b.day_ends_at),
-    readListen: readListenFrom(b.read_and_listen),
+    readListen,
+    readLanguages: readLanguagesFrom(b.read_and_listen_languages, readListen),
     frankiNew: frankiNewFrom(b.franki),
     studyDays: studyDaysFrom(b.study_days),
   };

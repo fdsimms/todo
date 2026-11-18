@@ -23512,16 +23512,22 @@ describe('checkFrankiTasks', () => {
 
   // Oct 18 2026, 10:20 local, with 4 learning cards coming due at 11:05.
   const NOW = new Date(2026, 9, 18, 10, 20);
-  const snap = (overrides: Record<string, unknown> = {}) => ({
-    fetchedAt: NOW.toISOString(),
-    reviewsNow: 12,
-    upcoming: [{ at: new Date(2026, 9, 18, 11, 5).toISOString(), count: 4 }],
-    dayEndsAt: new Date(2026, 9, 19, 4, 0).toISOString(),
-    readListen: { language: 'th', name: 'Thai', waiting: 2, lastReadAt: null },
-    frankiNew: null,
-    studyDays: [],
-    ...overrides,
-  });
+  const THAI = { language: 'th', name: 'Thai', waiting: 2, lastReadAt: null };
+  const FRENCH = { language: 'fr', name: 'French', waiting: 1, lastReadAt: null };
+  const snap = (overrides: Record<string, unknown> = {}) => {
+    const readListen = 'readListen' in overrides ? overrides.readListen : THAI;
+    return {
+      fetchedAt: NOW.toISOString(),
+      reviewsNow: 12,
+      upcoming: [{ at: new Date(2026, 9, 18, 11, 5).toISOString(), count: 4 }],
+      dayEndsAt: new Date(2026, 9, 19, 4, 0).toISOString(),
+      readListen,
+      readLanguages: readListen ? [readListen] : [],
+      frankiNew: null,
+      studyDays: [],
+      ...overrides,
+    };
+  };
 
   let current: Record<string, unknown>;
   const setSettings = (overrides: Record<string, unknown> = {}) => {
@@ -23536,7 +23542,9 @@ describe('checkFrankiTasks', () => {
       frankiReviewThreshold: 10,
       frankiReadTasks: true,
       frankiReviewState: { baseline: 0, openSourceId: null },
-      frankiReadLastDayKey: null,
+      frankiReadLanguages: {},
+      frankiReadRotateCount: 1,
+      frankiReadSpent: null,
       // The wave tests below set waves; the once-a-day ones set daily.
       frankiReviewMode: 'waves',
       frankiGoalMinutes: null,
@@ -23544,7 +23552,7 @@ describe('checkFrankiTasks', () => {
       frankiDailyLastDayKey: null,
       frankiGoalLastDayKey: null,
       setFrankiReviewState: jest.fn((state: unknown) => { current.frankiReviewState = state; }),
-      setFrankiReadLastDayKey: jest.fn((key: unknown) => { current.frankiReadLastDayKey = key; }),
+      setFrankiReadSpent: jest.fn((spent: unknown) => { current.frankiReadSpent = spent; }),
       setFrankiDailyLastDayKey: jest.fn((key: unknown) => { current.frankiDailyLastDayKey = key; }),
       setFrankiGoalLastDayKey: jest.fn((key: unknown) => { current.frankiGoalLastDayKey = key; }),
       ...overrides,
@@ -23622,8 +23630,8 @@ describe('checkFrankiTasks', () => {
     const [task] = live('read:');
     expect(task.title).toBe('Read & Listen: Thai');
     expect(task.linkUrl).toBe('franki://read');
-    expect(task.generatedSourceId).toBe('read:2026-10-18');
-    expect(current.frankiReadLastDayKey).toBe('2026-10-18');
+    expect(task.generatedSourceId).toBe('read:2026-10-18:th');
+    expect(current.frankiReadSpent).toEqual({ dayKey: '2026-10-18', languages: ['th'] });
 
     // Deleted by the person: the day is spent, so it doesn't come back today.
     useTaskStore.setState({ tasks: useTaskStore.getState().tasks.filter(t => t.id !== task.id) });
@@ -23632,17 +23640,55 @@ describe('checkFrankiTasks', () => {
   });
 
   it('writes no Read & Listen task once a text was read today, with none waiting, or switched off', () => {
-    setSnapshot({ readListen: { language: 'th', name: 'Thai', waiting: 2, lastReadAt: new Date(2026, 9, 18, 8).toISOString() } });
+    setSnapshot({ readListen: { ...THAI, lastReadAt: new Date(2026, 9, 18, 8).toISOString() } });
     check();
     expect(live('read:')).toHaveLength(0);
-    setSnapshot({ readListen: { language: 'th', name: 'Thai', waiting: 0, lastReadAt: null } });
+    setSnapshot({ readListen: { ...THAI, waiting: 0 } });
     check();
     expect(live('read:')).toHaveLength(0);
     setSnapshot();
     setSettings({ frankiReadTasks: false });
     check();
     expect(live('read:')).toHaveLength(0);
-    expect(current.frankiReadLastDayKey).toBeNull();
+    expect(current.frankiReadSpent).toBeNull();
+  });
+
+  it('writes a Read & Listen task for each language that is set to Every day, and one rotating language besides', () => {
+    const th = { ...THAI, lastReadAt: new Date(2026, 9, 17).toISOString() };
+    const pl = { language: 'pl', name: 'Polish', waiting: 1, lastReadAt: new Date(2026, 9, 10).toISOString() };
+    setSettings({ frankiReadLanguages: { th: 'daily' } });
+    setSnapshot({ readListen: th, readLanguages: [th, FRENCH, pl] });
+    check();
+    // Thai every day, then the rotating language read longest ago (French was never read).
+    expect(live('read:').map(t => t.generatedSourceId).sort()).toEqual(['read:2026-10-18:fr', 'read:2026-10-18:th']);
+    expect(live('read:').map(t => t.title).sort()).toEqual(['Read & Listen: French', 'Read & Listen: Thai']);
+    expect(current.frankiReadSpent).toEqual({ dayKey: '2026-10-18', languages: expect.arrayContaining(['th', 'fr']) });
+
+    // Reading French does not bring Polish's turn today: its slot was spent by writing the task.
+    useTaskStore.setState({ tasks: useTaskStore.getState().tasks.filter(t => !t.generatedSourceId?.endsWith(':fr')) });
+    setSnapshot({ readListen: th, readLanguages: [th, { ...FRENCH, lastReadAt: new Date(2026, 9, 18, 9).toISOString() }, pl] });
+    check();
+    expect(live('read:').map(t => t.generatedSourceId)).toEqual(['read:2026-10-18:th']);
+  });
+
+  it('takes a language’s task away once it is set to Off, and writes none for one that is Off', () => {
+    check();
+    expect(live('read:')).toHaveLength(1);
+    setSettings({ frankiReadLanguages: { th: 'off' }, frankiReadSpent: current.frankiReadSpent });
+    check();
+    expect(live('read:')).toHaveLength(0);
+  });
+
+  it('replaces a Read & Listen task written before there was one per language', () => {
+    check();
+    const [task] = live('read:');
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t => (t.id === task.id ? { ...t, generatedSourceId: 'read:2026-10-18' } : t)),
+    });
+    setSettings({ frankiReadSpent: { dayKey: '2026-10-18', languages: ['th'] } });
+    check();
+    // The old one goes; its language was already spent today, so the new one is not written again.
+    expect(live('read:')).toHaveLength(0);
   });
 
   it('writes one cards task a day in once-a-day mode, counting Franki’s new cards and the learning to come', () => {
@@ -23715,7 +23761,7 @@ describe('checkFrankiTasks', () => {
     check();
     expect(live('read:')).toHaveLength(1);
     jest.setSystemTime(new Date(2026, 9, 19, 9, 0));
-    setSnapshot({ readListen: { language: 'th', name: 'Thai', waiting: 0, lastReadAt: null } });
+    setSnapshot({ readListen: { ...THAI, waiting: 0 } });
     check();
     expect(live('read:')).toHaveLength(0);
   });

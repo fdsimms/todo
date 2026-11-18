@@ -2156,13 +2156,19 @@ export function seedDemoData(): void {
   // reading task rather than a reviews one, since WaniKani's above already
   // shows what a review queue looks like as a task.
   useSettingsStore.getState().setFrankiTaskCategory('Study');
-  addTask({
-    title: frankiReadTitle({ name: 'Polish' }),
-    dueDate: today.toISOString(),
-    category: 'Study',
-    linkUrl: FRANKI_READ_URL,
-    ...generatedBy('franki', frankiReadSourceId(dayKeyOf(today))),
-  });
+  // Two languages, one task each: Polish every day and Thai taking its turn
+  // (Settings, Automations, Franki).
+  useSettingsStore.getState().setFrankiReadLanguageMode('pl', 'daily');
+  useSettingsStore.getState().setFrankiReadLanguageMode('th', 'rotate');
+  for (const [code, name] of [['pl', 'Polish'], ['th', 'Thai']] as const) {
+    addTask({
+      title: frankiReadTitle({ name }),
+      dueDate: today.toISOString(),
+      category: 'Study',
+      linkUrl: FRANKI_READ_URL,
+      ...generatedBy('franki', frankiReadSourceId(dayKeyOf(today), code)),
+    });
+  }
 
   // The weigh-in request, seeded directly for the same reason the health task
   // above it is: `checkWeighInTasks` refuses outright in demo mode, and it

@@ -5440,16 +5440,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(settings.wanikaniTasks).toBe(false);
   });
 
-  it('seeds a Franki Read & Listen task, with the switch left off so nothing reads', () => {
+  it('seeds a Franki Read & Listen task for each language, with the switch left off so nothing reads', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();
+    const today = dayKeyOf(getCurrentDayStart());
 
-    const task = tasks.find(t => t.generatedKind === 'franki');
-    expect(task).toBeDefined();
-    expect(task!.title).toBe('Read & Listen: Polish');
-    expect(task!.generatedSourceId).toBe(`read:${dayKeyOf(getCurrentDayStart())}`);
-    expect(task!.linkUrl).toBe('franki://read');
-    expect(task!.category).toBe('Study');
+    const franki = tasks.filter(t => t.generatedKind === 'franki');
+    expect(franki.map(t => t.title).sort()).toEqual(['Read & Listen: Polish', 'Read & Listen: Thai']);
+    expect(franki.map(t => t.generatedSourceId).sort()).toEqual([`read:${today}:pl`, `read:${today}:th`]);
+    for (const task of franki) {
+      expect(task.linkUrl).toBe('franki://read');
+      expect(task.category).toBe('Study');
+    }
+    expect(settings.frankiReadLanguages).toEqual({ pl: 'daily', th: 'rotate' });
     expect(settings.frankiTaskCategory).toBe('Study');
     expect(settings.frankiTasks).toBe(false);
   });
