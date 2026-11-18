@@ -8,15 +8,6 @@ export function movedDayLabel(date: Date, dayResetTime?: string): string {
   return day === 'Today' || day === 'Tomorrow' ? day.toLowerCase() : day;
 }
 
-/** The undo label for "future tasks only" on a time of day: nothing on the rows themselves changed time. */
-export function describeFutureTimeOfDay(
-  tasks: Pick<Task, 'title'>[],
-  timeSegments: TimeOfDay[],
-): string {
-  const subject = tasks.length === 1 ? `“${tasks[0].title}”` : `${tasks.length} tasks`;
-  return `Set future repeats of ${subject} to ${timeSegments.join(', ') || 'any time of day'}`;
-}
-
 /**
  * The undo bar's message for a When pick, shared by the row's picker and the
  * bulk bar. A pick that leaves every task on the day it was already on and only

@@ -67,24 +67,14 @@ export function confirmScheduleMove(
  * `timeSegments` is a content field, so a plain `updateTask` carries it onto
  * every later occurrence; the row picker and the bulk bar's When used to do
  * exactly that with no question, where the task editor has always asked.
- * `proceed('occurrence' | 'series' | 'future')` gets the answer. Only a repeating task
+ * `proceed('occurrence' | 'series')` gets the answer. Only a repeating task
  * or a dated series whose segment actually changes counts, so picking a new
  * day alone never prompts. Cancel calls nothing.
- *
- * 'future' is a third answer for repeating tasks: the repeats after this one
- * get the new time of day and this one keeps its own. A later time of day
- * written onto a task that is on Today takes it off Today until that time
- * arrives, so "this and future" can't change a schedule without also moving
- * today's. A dated series has no such answer, since its later dates are rows
- * written one by one (`seriesFanOutRows`), so it is offered only when every
- * task asked about repeats.
  */
-export type SegmentScope = 'occurrence' | 'series' | 'future';
-
 export function confirmSegmentScope(
   tasks: Task[],
   timeSegments: TimeOfDay[],
-  proceed: (scope: SegmentScope) => void,
+  proceed: (scope: 'occurrence' | 'series') => void,
 ): void {
   const asked = tasks.filter(
     t => (t.recurrenceType !== 'none' || !!t.seriesId) && !sameSegments(t.timeSegments ?? [], timeSegments),
@@ -95,19 +85,17 @@ export function confirmSegmentScope(
   }
   const one = asked.length === 1;
   const isSeries = one && !!asked[0].seriesId && asked[0].recurrenceType === 'none';
-  const offersFuture = asked.every(t => t.recurrenceType !== 'none');
   Alert.alert(
     'Change time of day',
     one
       ? isSeries
         ? 'This task falls on more than one date. Apply the new time of day to this date only, or to this and later dates?'
-        : 'This task repeats. Apply the new time of day to this task only, to it and all future repeats, or to future repeats only? Future repeats only leaves this task as it is.'
-      : `${asked.length} of these repeat. Apply the new time of day to just these tasks, to them and every future repeat, or to future repeats only? Future repeats only leaves these tasks as they are.`,
+        : 'This task repeats. Apply the new time of day to this task only, or to it and all future repeats?'
+      : `${asked.length} of these repeat. Apply the new time of day to just these tasks, or to them and every future repeat?`,
     [
       { text: isSeries ? 'This date' : one ? 'This task' : 'These tasks', onPress: () => proceed('occurrence') },
       { text: isSeries ? 'This and later dates' : one ? 'This and future tasks' : 'These and future tasks', onPress: () => proceed('series') },
-      ...(offersFuture ? [{ text: 'Future tasks only', onPress: () => proceed('future') }] : []),
-      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
     ],
   );
 }

@@ -4,9 +4,8 @@
  * around it is; these pin the extracted functions on their own, since the MCP
  * server calls them with no store around them at all.
  */
-import { comparePinned, derivedTargetCount, futureOnlySegmentsPatch, mergeTaskUpdate, nextPinnedOrder, seriesFanOutRows, type TaskUpdateContext } from '../utils/taskUpdate';
+import { comparePinned, derivedTargetCount, mergeTaskUpdate, nextPinnedOrder, seriesFanOutRows, type TaskUpdateContext } from '../utils/taskUpdate';
 import { newTaskFromDraft } from '../utils/taskDraft';
-import { inheritedOccurrence } from '../utils/rotation';
 import type { Task, TaskDraft } from '../types';
 
 const mockSettings = {
@@ -293,24 +292,5 @@ describe('a window bound that follows the sun', () => {
     const t = anchored();
     expect(t.windowStartSun).toBe('sunset');
     expect(make({ windowStart: '09:00' }).windowStartSun).toBeNull();
-  });
-});
-
-// "Future tasks only" on a time of day: a later segment written onto a task
-// that is on Today takes it off Today until the segment starts, so the row
-// keeps its own and the repeats after it are handed the new one.
-describe('futureOnlySegmentsPatch', () => {
-  it('leaves this row on its own time of day and gives the next repeat the new one', () => {
-    const t = make({ recurrenceType: 'daily', timeSegments: ['morning'] });
-    const next = mergeTaskUpdate(t, futureOnlySegmentsPatch(t, ['evening']), ctx);
-    expect(next.timeSegments).toEqual(['morning']);
-    expect(inheritedOccurrence(next).timeSegments).toEqual(['evening']);
-  });
-
-  it('replaces a time of day an earlier "this task only" edit had parked', () => {
-    const t = { ...make({ recurrenceType: 'daily', timeSegments: ['afternoon'] }), seriesDefaults: { timeSegments: ['morning' as const], notes: 'kept' } };
-    const next = mergeTaskUpdate(t, futureOnlySegmentsPatch(t, ['evening']), ctx);
-    expect(next.timeSegments).toEqual(['afternoon']);
-    expect(next.seriesDefaults).toEqual({ timeSegments: ['evening'], notes: 'kept' });
   });
 });

@@ -87,25 +87,6 @@ export function hasLaterRows(task: Pick<Task, 'recurrenceType' | 'seriesId'>): b
   return task.recurrenceType !== 'none' || !!task.seriesId;
 }
 
-/**
- * The patch for "future tasks only" on a time of day: this row keeps the time
- * it has, and the repeats after it get `timeSegments`.
- *
- * It is `scope: 'occurrence'` turned around. That scope writes the new value on
- * this row and parks the old one in `seriesDefaults` for the successor to
- * revert to; this parks the new one there and leaves the row alone. A row on
- * Today that gets a later time of day written onto it would otherwise leave
- * Today until that time arrives. Names `seriesDefaults` outright, so
- * `mergeTaskUpdate` takes it as written, and `timeSegments` stays out of the
- * patch for the same reason.
- */
-export function futureOnlySegmentsPatch(
-  task: Pick<Task, 'seriesDefaults'>,
-  timeSegments: Task['timeSegments'],
-): Pick<Task, 'seriesDefaults'> {
-  return { seriesDefaults: { ...(task.seriesDefaults ?? {}), timeSegments } };
-}
-
 // The fields whose arrival in an `updates` patch means the user is writing the
 // schedule itself, rather than the app moving the row around. Only these
 // re-derive recurrenceAnchorDay (see updateTask).

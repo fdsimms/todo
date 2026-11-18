@@ -91,33 +91,21 @@ describe('confirmSegmentScope', () => {
   it('asks for a repeating task whose time of day changes', () => {
     const proceed = jest.fn();
     confirmSegmentScope([task({ timeSegments: ['morning'] })], ['evening'], proceed);
-    expect(buttons().map(b => b.text)).toEqual(['This task', 'This and future tasks', 'Future tasks only', 'Cancel']);
+    expect(buttons().map(b => b.text)).toEqual(['This task', 'This and future tasks', 'Cancel']);
     buttons()[0].onPress!();
     expect(proceed).toHaveBeenCalledWith('occurrence');
-  });
-
-  it('answers "future" for future tasks only', () => {
-    const proceed = jest.fn();
-    confirmSegmentScope([task({ timeSegments: ['morning'] })], ['evening'], proceed);
-    buttons()[2].onPress!();
-    expect(proceed).toHaveBeenCalledWith('future');
-  });
-
-  it('does not offer future tasks only for a dated series, whose later dates are separate rows', () => {
-    confirmSegmentScope([task({ recurrenceType: 'none', seriesId: 's', timeSegments: [] })], ['evening'], jest.fn());
-    expect(buttons().map(b => b.text)).toEqual(['This date', 'This and later dates', 'Cancel']);
   });
 
   it('says "these tasks" when several repeating tasks change', () => {
     const proceed = jest.fn();
     confirmSegmentScope([task({ id: 'a', timeSegments: [] }), task({ id: 'b', timeSegments: [] })], ['evening'], proceed);
-    expect(buttons().map(b => b.text)).toEqual(['These tasks', 'These and future tasks', 'Future tasks only', 'Cancel']);
+    expect(buttons().map(b => b.text)).toEqual(['These tasks', 'These and future tasks', 'Cancel']);
   });
 
   it('does nothing on Cancel', () => {
     const proceed = jest.fn();
     confirmSegmentScope([task({ timeSegments: [] })], ['evening'], proceed);
-    buttons()[3].onPress?.();
+    buttons()[2].onPress?.();
     expect(proceed).not.toHaveBeenCalled();
   });
 });

@@ -65,8 +65,7 @@ import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
 import type { NegativeHold } from '../utils/negativeHabits';
 import { dropsTimeOfDayOnMove, scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
-import { futureOnlySegmentsPatch } from '../utils/taskUpdate';
-import { describeReschedule, describeFutureTimeOfDay } from '../utils/rescheduleLabel';
+import { describeReschedule } from '../utils/rescheduleLabel';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
 import { penaltyChipLabel } from '../utils/penaltyShield';
@@ -6120,12 +6119,7 @@ const TaskItemRow = React.memo(function TaskItem({
             // caller; the comments explaining the three arms moved with it.
             // A pull forward on a repeating task asks first whether the rest of
             // the schedule stays put or counts from here (confirmScheduleMove).
-            // 'future' leaves this row's own time of day alone and hands the new
-            // one to the repeats after it, so a task on Today stays on Today.
-            const baseUpdates = {
-              ...scheduleMoveUpdates(task, date, undefined, { restartSchedule }),
-              ...(segmentScope === 'future' ? futureOnlySegmentsPatch(task, segs) : { timeSegments: segs }),
-            };
+            const baseUpdates = { ...scheduleMoveUpdates(task, date, undefined, { restartSchedule }), timeSegments: segs };
             const picked = date ? getTaskDayStart(date) : null;
             // Pinning is for today's block specifically — moving the task off
             // the day it was sitting on means it no longer belongs there, so a
@@ -6146,7 +6140,7 @@ const TaskItemRow = React.memo(function TaskItem({
               { markSeenOnBecomeVisible: true, ...(segmentScope === 'occurrence' ? { scope: 'occurrence' as const } : {}) },
             );
             setLastAction({
-              label: segmentScope === 'future' ? describeFutureTimeOfDay([snapshot], segs) : describeReschedule([snapshot], date, segs),
+              label: describeReschedule([snapshot], date, segs),
               // On the bar, not only the shake: the row usually leaves the list
               // it was on, so the bar is the one place left to take it back.
               announce: true,

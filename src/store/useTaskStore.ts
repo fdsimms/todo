@@ -300,7 +300,6 @@ import {
   nextPinnedOrder,
   comparePinned,
   seriesFanOutRows,
-  futureOnlySegmentsPatch,
 } from '../utils/taskUpdate';
 // Re-exported: TaskEditor reads both from here, and they lived here first.
 export { CONTENT_FIELDS, derivedTargetCount } from '../utils/taskUpdate';
@@ -562,7 +561,7 @@ import {
 } from '../utils/undoHistory';
 import { isOpenEnded, listItemFinder } from '../utils/listMode';
 import { payProjectBonus, takeBackProjectBonus } from '../utils/projectBonus';
-import { describeReschedule, describeFutureTimeOfDay } from '../utils/rescheduleLabel';
+import { describeReschedule } from '../utils/rescheduleLabel';
 import { timedPart } from '../utils/perfLog';
 import { mergeTaskDelta } from '../utils/taskDeltaReload';
 import { keepUnchanged } from '../utils/structuralSharing';
@@ -2828,7 +2827,7 @@ interface TaskStore extends UndoHistoryActions {
   bulkSetDifficulty: (ids: string[], difficulty: Difficulty | null, options?: { scope?: 'occurrence' | 'series' }) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
-  bulkSetWhen: (ids: string[], date: Date | null | undefined, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' | 'future' }) => void;
+  bulkSetWhen: (ids: string[], date: Date | null | undefined, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
   bulkSetCategory: (ids: string[], category: string | null, options?: { scope?: 'occurrence' | 'series' }) => void;
   bulkAddTags: (ids: string[], tags: string[], options?: { scope?: 'occurrence' | 'series' }) => void;
   addTag: (tag: string) => void;
@@ -12174,8 +12173,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * pulled forward then counts its schedule from the new date rather than
    * keeping its grid (see pullForwardChoice). `scope: 'occurrence'` is the
    * answer to confirmSegmentScope: the new time of day stays on these rows and
-   * the repeats after them keep the old one. `'future'` is the reverse: these
-   * rows keep their time of day and the repeats after them get the new one.
+   * the repeats after them keep the old one.
    */
   bulkSetWhen(ids, date, timeSegments, options) {
     if (ids.length === 0) return;
@@ -12196,14 +12194,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // `undefined` is a time-of-day change with no day picked: every row
         // keeps its own date (and its pin), where `null` clears the date.
         const moved = date !== undefined && snapshot.pinned && prevDay !== newDay;
-        // 'future' only applies to a row with repeats after it; a plain row in
-        // the same selection takes the new time of day as usual.
-        const futureOnly = options?.scope === 'future' && snapshot.recurrenceType !== 'none';
         get().updateTask(
           snapshot.id,
           {
             ...(date === undefined ? {} : scheduleMoveUpdates(snapshot, date, dayResetTime, { restartSchedule: options?.restartSchedules })),
-            ...(futureOnly ? futureOnlySegmentsPatch(snapshot, timeSegments) : { timeSegments }),
+            timeSegments,
             ...(moved ? { pinned: false } : {}),
           },
           // The user picked this date a moment ago, so a task pulled onto today
@@ -12217,9 +12212,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (snapshots.length > 0) {
       get().setLastAction({
-        label: options?.scope === 'future' && snapshots.some(t => t.recurrenceType !== 'none')
-          ? describeFutureTimeOfDay(snapshots, timeSegments)
-          : describeReschedule(snapshots, date, timeSegments, dayResetTime),
+        label: describeReschedule(snapshots, date, timeSegments, dayResetTime),
         announce: true,
         redo: () => get().bulkSetWhen(ids, date, timeSegments, options),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
