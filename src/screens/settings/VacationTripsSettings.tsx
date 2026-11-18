@@ -11,6 +11,7 @@ import { WhenPicker } from '../../components/WhenPicker';
 import { getTaskDayStart } from '../../utils/dateUtils';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
@@ -86,12 +87,11 @@ export function VacationTripsSettings() {
             void useCalendarStore.getState().refresh();
           }}
         />
+        <SettingsNested>
         {!vacationMode && (
           <>
-            <View style={styles.sep} />
             <SettingsRow
               entryId="vacationStart"
-              icon="play-outline"
               label="Start date"
               hint={vacationScheduledStart
                 ? 'Turns on automatically on this day'
@@ -116,10 +116,9 @@ export function VacationTripsSettings() {
         )}
         {(vacationMode || vacationScheduledStart) && (
           <>
-            <View style={styles.sep} />
+            {!vacationMode && <View style={styles.sep} />}
             <SettingsRow
               entryId="vacationEnd"
-              icon="calendar-outline"
               label="End date"
               hint={vacationEnd
                 ? 'Turns off automatically on this day'
@@ -142,6 +141,7 @@ export function VacationTripsSettings() {
             />
           </>
         )}
+        </SettingsNested>
       </SettingsSection>
       )}
 
