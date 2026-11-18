@@ -212,7 +212,7 @@ export interface ExperimentResult {
   span: ExperimentSpan | null;
   /** The last day read: the end, or today while it's running. Null before it starts. */
   readToKey: string | null;
-  /** Days with any entry in each stretch, for the captions. */
+  /** Days with a mood rating in each stretch, for the captions (a day with only symptoms isn't counted). */
   loggedDaysBefore: number;
   loggedDaysDuring: number;
   /** Null until both stretches have enough days with a mood. */
@@ -354,8 +354,8 @@ export function experimentResult(
     status,
     span,
     readToKey,
-    loggedDaysBefore: beforeDays.length,
-    loggedDaysDuring: duringDays.length,
+    loggedDaysBefore: moodsBefore.length,
+    loggedDaysDuring: moodsDuring.length,
     mood,
     picked,
     others,

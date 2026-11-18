@@ -191,6 +191,11 @@ describe('experimentResult: mood', () => {
     expect(experimentResult(e, logs, '2026-11-20').mood).toBeNull();
   });
 
+  it('counts only days with a mood in the captions, not symptom-only days', () => {
+    const r = experimentResult(e, [log('2026-11-01', 3), log('2026-11-02', null, [{ name: 'Headache', severity: 1 }])], '2026-11-02');
+    expect(r.loggedDaysDuring).toBe(1);
+  });
+
   it('reads nothing for one that hasn’t started', () => {
     const logs = run('2026-10-18', 10, (_, k) => log(k, 3));
     const r = experimentResult(e, logs, '2026-10-28');
