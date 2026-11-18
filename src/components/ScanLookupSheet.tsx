@@ -1,6 +1,7 @@
 import React from 'react';
 import { useGroceryStore } from '../store/useGroceryStore';
 import type { ScannedGtinLink } from '../utils/scanResolve';
+import { saveScanToCatalog } from '../utils/scanCatalogWrite';
 import { haptics } from '../utils/haptics';
 import { BarcodeScanSheet, type ScanProductDraft } from './BarcodeScanSheet';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
@@ -16,11 +17,8 @@ import type { ReceiptAddDraft } from './ReceiptImportSheet';
  * food log, and it records no price, since a shelf price isn't a purchase. A row
  * that is not checked writes nothing at all, and closing writes nothing.
  *
- * The write is `ScanToLogFlow.handleScanApply`'s catalog half, in the same
- * order and for the same reasons (the boxes first so a link finds one,
- * `linkScannedGtins` last), with `ensureCatalogItem` rather than `addByName`
- * so a minted row arrives off the list and `{ promote: false }` so recording a
- * box is not choosing it for the next shop.
+ * The write is `saveScanToCatalog`, the same one the food log's scan makes: its
+ * doc comment holds the order and the reasons.
  *
  * Mounted by Groceries, Pantry and the food log, each behind the same
  * `barcodeScanning` switch as their other scan action.
@@ -42,23 +40,7 @@ export function ScanLookupSheet({ visible, onClose }: Props) {
     products: ScanProductDraft[],
     gtinLinks: ScannedGtinLink[]
   ) => {
-    const mintedLinks: ScannedGtinLink[] = [];
-    for (const draft of toAdd) {
-      // An off-list match already has its box and link in `products` and
-      // `gtinLinks`: the sheet knew its id. Only a row this mints needs them made.
-      if (draft.existingItemId) continue;
-      const item = ensureCatalogItem(draft.name, { nameFromScan: draft.nameFromScan === true });
-      if (!item) continue;
-      if (draft.gtin) {
-        const variant = draft.variant ?? null;
-        if (draft.brand || variant) addProduct(item.id, { brand: draft.brand, variant }, { promote: false });
-        mintedLinks.push({ gtin: draft.gtin, itemId: item.id, brand: draft.brand, variant });
-      }
-    }
-    for (const product of products) {
-      addProduct(product.itemId, { brand: product.brand, variant: product.variant }, { promote: false });
-    }
-    linkScannedGtins([...gtinLinks, ...mintedLinks]);
+    saveScanToCatalog({ ensureCatalogItem, addProduct, linkScannedGtins }, toAdd, products, gtinLinks);
     haptics.success();
     onClose();
   };

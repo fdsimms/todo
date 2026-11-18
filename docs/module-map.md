@@ -561,6 +561,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedLinks.ts` — SAVED_LINKS_KEY, SAVED_LINKS_LIMIT, SavedLink, savedLinkKey, parseSavedLinks, isChipUrl, canSaveLink, suggestLinkName, addSavedLink, renameSavedLink, +7 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, withoutMultipleLead, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, +8 more
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, savedPlaceNameTaken, +8 more
+- `src/utils/scanCatalogWrite.ts` — ScanCatalogActions, ScanCatalogDraft, ScanCatalogProduct, saveScanToCatalog
 - `src/utils/scanItemType.ts` — itemTypeFromCategory, cleanModelItemType, catalogSpellingOf, ItemTypeMove, itemTypeMoveFor
 - `src/utils/scanLookup.ts` — describeScanPanel
 - `src/utils/scanPermission.ts` — scanPermissionMessage
