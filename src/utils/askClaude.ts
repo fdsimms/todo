@@ -1,6 +1,7 @@
 /**
- * "Discuss with Claude": a link that opens the Claude app on a new chat with the
- * first message already typed in, for a task or a project.
+ * "Discuss with Claude": the first message of a chat about a task or a project,
+ * typed in for the person to send. It opens in Ask Claude when that is set up,
+ * and otherwise in the Claude app through `claudeChatUrl` (`discussWithClaude`).
  *
  * The message names the item and carries its id, so a Claude connected to the
  * person's sync server (see `docs/arch/mcp-server.md`) can pull the live row with

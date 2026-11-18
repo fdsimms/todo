@@ -27,7 +27,7 @@ interface Props {
   /** Records a miss and ends the rest of the chain, rather than moving into its next step. */
   onEndChain?: () => void;
   onDuplicate?: () => void;
-  /** Opens the Claude app on a new chat about this task. */
+  /** Opens a chat about this task: Ask Claude when it is set up, else the Claude app (`discussWithClaude`). */
   onDiscuss?: () => void;
   onClose: () => void;
 }

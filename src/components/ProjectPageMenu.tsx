@@ -5,8 +5,9 @@ import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { openExternalUrl } from '../utils/openExternalUrl';
-import { claudeChatUrl, projectChatPrompt } from '../utils/askClaude';
+import { projectChatPrompt } from '../utils/askClaude';
+import { discussProjectHint, discussWithClaude } from '../utils/discussWithClaude';
+import { useAskClaudeReady } from '../hooks/useAskClaudeReady';
 import { useProjectActions } from '../hooks/useProjectActions';
 import { useProjectStore } from '../store/useProjectStore';
 import type { Project } from '../types';
@@ -62,6 +63,7 @@ function MenuRow({ card, icon, label, hint, onPress, destructive, checked, acces
  * cards run, through `useProjectActions`.
  */
 export function ProjectPageMenu({ visible, onClose, anchor, project }: Props) {
+  const askClaudeReady = useAskClaudeReady();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -118,8 +120,8 @@ export function ProjectPageMenu({ visible, onClose, anchor, project }: Props) {
       <MenuRow card={card}
         icon="chatbubble-ellipses-outline"
         label="Discuss with Claude"
-        hint="Start a chat about this project in the Claude app"
-        onPress={() => { openExternalUrl(claudeChatUrl(projectChatPrompt(project))); }}
+        hint={discussProjectHint(askClaudeReady)}
+        onPress={() => { discussWithClaude(projectChatPrompt(project)); }}
       />
       <View style={styles.sep} />
       <MenuRow card={card}

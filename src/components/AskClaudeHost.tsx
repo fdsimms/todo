@@ -12,9 +12,10 @@ import { LazySheet } from './LazySheet';
 export function AskClaudeHost() {
   const open = useAskClaudeStore(s => s.open);
   const hide = useAskClaudeStore(s => s.hide);
+  const seed = useAskClaudeStore(s => s.seed);
   return (
     <LazySheet open={open}>
-      <AskClaudeSheet visible={open} onClose={hide} />
+      <AskClaudeSheet visible={open} onClose={hide} seed={seed} />
     </LazySheet>
   );
 }

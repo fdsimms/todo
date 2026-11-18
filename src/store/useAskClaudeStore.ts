@@ -13,7 +13,14 @@ interface AskClaudeState {
   hasToken: boolean;
   /** Whether the sheet is open. Held here because Today's header and the side menu both open it (`AskClaudeHost`). */
   open: boolean;
-  show: () => void;
+  /**
+   * A message to put in the sheet's text box, from "Discuss with Claude"
+   * (`discussWithClaude`). `id` changes with each one, so the same message
+   * asked for twice is put back the second time too.
+   */
+  seed: { text: string; id: number } | null;
+  /** Opens the sheet, with `text` typed in when given. */
+  show: (text?: string) => void;
   hide: () => void;
   /** Reads whether a token is saved. Called once from the root component. */
   initialize: () => Promise<void>;
@@ -24,7 +31,11 @@ interface AskClaudeState {
 export const useAskClaudeStore = create<AskClaudeState>(set => ({
   hasToken: false,
   open: false,
-  show: () => set({ open: true }),
+  seed: null,
+  show: text => set(st => ({
+    open: true,
+    seed: text ? { text, id: (st.seed?.id ?? 0) + 1 } : st.seed,
+  })),
   hide: () => set({ open: false }),
 
   async initialize() {

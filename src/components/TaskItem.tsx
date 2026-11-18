@@ -106,7 +106,8 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { openExternalUrl } from '../utils/openExternalUrl';
-import { claudeChatUrl, taskChatPrompt } from '../utils/askClaude';
+import { taskChatPrompt } from '../utils/askClaude';
+import { discussWithClaude } from '../utils/discussWithClaude';
 import { eventCoordinate } from '../utils/calendarSync';
 import { SegmentedControl } from './SegmentedControl';
 import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, travelOriginForEvent, travelOriginLabel, type TravelChoice } from '../utils/travelTasks';
@@ -5849,7 +5850,7 @@ const TaskItemRow = React.memo(function TaskItem({
       ? () => handleMiss(true)
       : undefined,
     onDuplicate: () => duplicateTask(task.id),
-    onDiscuss: () => { void openExternalUrl(claudeChatUrl(taskChatPrompt(task))); },
+    onDiscuss: () => { discussWithClaude(taskChatPrompt(task)); },
   };
 
   // ==== the right-click menu (Mac) ====

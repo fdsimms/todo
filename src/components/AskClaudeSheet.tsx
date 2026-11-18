@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
@@ -57,9 +57,11 @@ const entryId = () => `ask-${++nextEntryId}`;
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /** A message to type in for the person to send ("Discuss with Claude"). */
+  seed: { text: string; id: number } | null;
 }
 
-export function AskClaudeSheet({ visible, onClose }: Props) {
+export function AskClaudeSheet({ visible, onClose, seed }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardHeight = useKeyboardHeight(visible);
@@ -68,6 +70,11 @@ export function AskClaudeSheet({ visible, onClose }: Props) {
   const [history, setHistory] = useState<AskTurn[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState('');
+  // Typed in, not sent: the person reads what goes out first, as in the
+  // Claude app, which the same link used to open.
+  useEffect(() => {
+    if (seed) setDraft(seed.text);
+  }, [seed]);
   const [busy, setBusy] = useState(false);
   /** What the person did with previews since their last message, sent ahead of the next one. */
   const notes = useRef<string[]>([]);
@@ -268,9 +275,7 @@ export function AskClaudeSheet({ visible, onClose }: Props) {
               onChangeText={setDraft}
               placeholder="e.g. Add oat milk to the grocery list"
               placeholderTextColor={colors.textTertiary}
-              returnKeyType="send"
-              onSubmitEditing={() => { void send(draft); }}
-              blurOnSubmit={false}
+              multiline
               accessibilityLabel="Message Claude"
             />
             <PressableScale
@@ -419,10 +424,11 @@ function makeStyles(colors: Colors) {
       borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator, backgroundColor: colors.bg,
     },
     field: {
-      flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bgSecondary,
+      flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, backgroundColor: colors.bgSecondary,
       borderRadius: 20, paddingVertical: spacing.xsm, paddingLeft: 14, paddingRight: spacing.xsm, minHeight: 40,
     },
-    input: { flex: 1, fontSize: font.md, color: colors.text, paddingVertical: spacing.xs },
+    // Grows with what is typed, up to a few lines, then scrolls inside itself.
+    input: { flex: 1, fontSize: font.md, color: colors.text, paddingTop: spacing.xs, paddingBottom: spacing.xs, maxHeight: 120 },
     send: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
     sendOff: { backgroundColor: colors.bgQuaternary },
     foot: { fontSize: font.xxs, color: colors.textTertiary, textAlign: 'center', marginTop: spacing.xsm },
