@@ -191,9 +191,7 @@ export function ClaudeCalendarSettings() {
             entryId="claudeCalendarAsksFirst"
             icon="hand-left-outline"
             label="Ask before adding"
-            hint={asksFirst
-              ? 'Events from Claude wait in your Inbox until you tap Add to calendar'
-              : 'Events from Claude are added without asking'}
+            hint="Events from Claude wait in your Inbox until you tap Add to calendar. When off, they are added without asking"
             toggle={asksFirst}
             onPress={() => setAsksFirst(!asksFirst)}
             accessibilityLabel="Ask before adding the events Claude asks for"

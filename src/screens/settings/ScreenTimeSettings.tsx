@@ -820,11 +820,8 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
           icon="timer-outline"
           iconColor={focusShieldEnabled ? colors.accent : undefined}
           label="While focusing"
-          hint={focusShieldEnabled
-            ? focusHolding
-              ? 'A session is running, so the apps are blocked. They unblock when you pause or finish it.'
-              : 'Blocked while a focus session is running, and unblocked when you pause or finish it.'
-            : 'Apps stay available during a session.'}
+          hint={'Blocks apps while a focus session is running, and unblocks them when you pause or finish it. When off, apps stay available during a session.'
+            + (focusShieldEnabled && focusHolding ? ' A session is running now, so the apps are blocked.' : '')}
           toggle={focusShieldEnabled}
           onPress={() => toggleReason(
             'focus', focusShieldEnabled, setFocusShieldEnabled,
@@ -837,11 +834,8 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
           icon="checkbox-outline"
           iconColor={gateShieldEnabled ? colors.accent : undefined}
           label="Until a task is done"
-          hint={gateShieldEnabled
-            ? gateCount > 0
-              ? `${gateCount} ${gateCount === 1 ? 'task is' : 'tasks are'} holding your apps now. Finishing a task, or moving it to another day, unblocks them.`
-              : 'Tasks you mark keep the apps blocked while they sit on Today undone. No task is holding them now.'
-            : 'No tasks block apps.'}
+          hint={'Tasks you mark keep the apps blocked while they sit on Today undone. Finishing a task, or moving it to another day, unblocks them. When off, no tasks block apps.'
+            + (gateShieldEnabled && gateCount > 0 ? ` ${gateCount} ${gateCount === 1 ? 'task is' : 'tasks are'} holding your apps now.` : '')}
           toggle={gateShieldEnabled}
           onPress={() => toggleReason(
             'gate', gateShieldEnabled, setGateShieldEnabled,
@@ -854,11 +848,8 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
           icon="alert-circle-outline"
           iconColor={penaltyShieldEnabled ? colors.accent : undefined}
           label="When you fail a task"
-          hint={penaltyShieldEnabled
-            ? penaltyEndLabel
-              ? `${penaltyLine ?? 'A task wasn’t done in time.'} To end this early, use the emergency button.`
-              : 'Each task sets how long. The apps are blocked when you miss a cutoff, or log a slip on a task you’re avoiding.'
-            : 'Failing a task blocks nothing.'}
+          hint={'Each task sets how long. The apps are blocked when you miss a cutoff, or log a slip on a task you’re avoiding. When off, failing a task blocks nothing.'
+            + (penaltyShieldEnabled && penaltyEndLabel ? ` ${penaltyLine ?? 'A task wasn’t done in time.'} To end this early, use the emergency button.` : '')}
           toggle={penaltyShieldEnabled}
           onPress={() => toggleReason(
             'penalty', penaltyShieldEnabled, setPenaltyShieldEnabled,
