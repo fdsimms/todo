@@ -1650,29 +1650,29 @@ const scheduleSchema = z.object({
 const isoDateTime = z.string().nullable().optional();
 const taskFieldsShape = {
   notes: z.string().optional(),
-  category: z.string().nullable().optional().describe('A task category, by name, from list_categories. Required when creating a top-level task unless its project has a default category; a name that isn\'t one of the user\'s is refused unless newCategory is set.'),
-  newCategory: z.boolean().optional().describe('Create category as a new category. Only when none of the existing ones fits; say so to the user.'),
+  category: z.string().nullable().optional().describe('A category name from list_categories. Required for a new top-level task unless its project has a default one. A name that isn\'t theirs is refused unless newCategory.'),
+  newCategory: z.boolean().optional().describe('Create category as new, only when none fits; tell the user.'),
   tags: z.array(z.string()).optional(),
   projectId: z.string().nullable().optional().describe('File it in a project (see list_projects), or null to take it out.'),
-  dueDate: isoDateTime.describe('YYYY-MM-DD (read as that day in their own time zone) or an ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
+  dueDate: isoDateTime.describe('YYYY-MM-DD (their time zone) or an ISO date-time: the day it is for. On a repeating task this moves the schedule; defer_task moves one occurrence.'),
   deferUntil: isoDateTime.describe('YYYY-MM-DD or an ISO date-time. Hides the task until then.'),
   deadline: isoDateTime.describe('ISO date-time. Shown on the task; does not hide or move it.'),
   deadlineTime: z.string().nullable().optional()
-    .describe('HH:MM (24-hour) the deadline closes at on its day, shown on the task row and counted late from that minute. null makes it a deadline for the whole day. Needs a deadline, or a deadlineRule.'),
+    .describe('HH:MM (24-hour) the deadline closes on its day; late from that minute. null: the whole day. Needs deadline or deadlineRule.'),
   reminderTime: isoDateTime.describe('ISO date-time of a reminder.'),
   timeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional()
     .describe('The part of the day it shows up in. Usually one.'),
   priority: z.number().int().min(0).max(4).optional().describe('0 none, 1 low, 2 medium, 3 high, 4 urgent.'),
   effort: z.number().int().min(0).max(6).optional(),
   difficulty: z.enum(['trivial', 'easy', 'normal', 'hard']).nullable().optional()
-    .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves, trivial earns none.'),
+    .describe('How hard it is to make yourself do, apart from its length. Scales its coins: hard doubles, easy halves, trivial none.'),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional()
-    .describe('Hold a one-off task until the first day in the next two weeks with this kind of forecast, e.g. "leave books on the curb on the next sunny day". The phone matches the forecast and moves the task, so it can take until the next sync to leave Today. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),
+    .describe('Hold a one-off task until the first day in the next two weeks with this forecast ("books on the curb on the next sunny day"). The phone moves it, so it may stay on Today until the next sync. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),
   pinned: z.boolean().optional().describe('Pin it to the top of Today.'),
-  pinEachOccurrence: z.boolean().optional().describe('On a repeating task: every occurrence it spawns starts pinned, so the pin is not redone by hand each time. Does nothing on a task that does not repeat.'),
+  pinEachOccurrence: z.boolean().optional().describe('Repeating tasks: each occurrence it spawns starts pinned.'),
   mission: z.object({ kind: z.literal('pushups'), count: z.number().int().min(1).max(200) }).nullable().optional()
-    .describe('Something to do on the phone before the task can be checked off: { kind: "pushups", count } is counted by the phone\'s Face ID camera, with the phone face up under the person\'s face (or by the proximity sensor, under their chest, on a phone without one). Ticking the task on the phone opens it. With an alarm reminder, the alarm rings back every 15 seconds after Stop until it is done ("make me do pushups to stop the alarm"). A task with one cannot be completed over MCP. null removes it.'),
+    .describe('Something to do on the phone before checking it off: { kind: "pushups", count }, counted by the Face ID camera (or the proximity sensor). With an alarm reminder the alarm rings again every 15 seconds until it is done. A task with one cannot be completed over MCP. null removes it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
   deliverableOptions: z.array(z.string()).optional()
@@ -1693,8 +1693,8 @@ const taskFieldsShape = {
     endDate: z.string().nullable().optional().describe('ISO date: stop repeating after this.'),
     count: z.number().int().nullable().optional().describe('Stop after this many more times, this one included. Give endDate or count, not both.'),
     holidays: z.enum(['skip', 'move']).nullable().optional()
-      .describe('An occurrence the rule lands on a holiday: "skip" leaves it out, "move" puts it on the next day (a trash pickup after a holiday). Holidays are the set and days off chosen in the app\'s Settings. Omit for "happens anyway". Not for hourly.'),
-  }).optional().describe('How it repeats. Replaces the whole rule. The first occurrence sits on dueDate; the rule places the ones after it, so set dueDate to the first matching day.'),
+      .describe('An occurrence on a holiday (as set in the app\'s Settings): "skip" leaves it out, "move" puts it on the next day. Omit to keep it. Not for hourly.'),
+  }).optional().describe('How it repeats; replaces the whole rule. The first occurrence is dueDate, so set dueDate to the first matching day.'),
   chain: z.object({
     steps: z.array(z.object({
       title: z.string(),
@@ -1703,58 +1703,58 @@ const taskFieldsShape = {
         .describe('Completing this step asks for an answer of this kind.'),
       answerSchedulesNextStep: z.boolean().optional()
         .describe('With asks: "date", the answer becomes the next step\'s date ("Book haircut" answered with the appointment puts "Get haircut" on that day).'),
-      notes: z.string().nullable().optional().describe('A note for this step alone, shown on the task while the step is current. null clears it; leave it out to keep the current one.'),
-      link: z.string().nullable().optional().describe('What this step\'s link button opens: a web address or an app scheme like "youtube://". null clears it; leave it out to keep the current one.'),
+      notes: z.string().nullable().optional().describe('A note shown while this step is current. null clears; omit to keep.'),
+      link: z.string().nullable().optional().describe('This step\'s link: a web address or app scheme ("youtube://"). null clears; omit to keep.'),
       medication: z.object({
         name: z.string().describe('Use the spelling list_medication_logs already has.'),
         amount: z.number().positive().nullable().optional(),
         unit: z.string().nullable().optional().describe('E.g. "mg". Give it with amount, or neither.'),
-      }).nullable().optional().describe('Completing this step records a dose of this medicine in the medication log ("morning pills" / "evening pills" steps each log their own). Replaces the task\'s own medication while this step is current. null clears it; leave it out to keep the current one.'),
+      }).nullable().optional().describe('Completing this step logs a dose of this medicine, in place of the task\'s own while the step is current. null clears; omit to keep.'),
     })).describe('At least two. One task that becomes each step in turn: completing a step brings up the next.'),
     stepsFollowSchedule: z.boolean().optional()
       .describe('On a repeating chain: each step waits for the next date on the schedule, instead of coming up as soon as the last one is done.'),
   }).nullable().optional()
-    .describe('A sequence of steps done one after another, each appearing when the one before is done. On a repeating task the whole chain starts over on the schedule. Not subtasks: subtasks are a checklist done together. null removes it.'),
+    .describe('Steps done in turn, each appearing when the one before is done; a repeating task restarts the chain on its schedule. Not subtasks (a checklist done together). null removes it.'),
   target: z.object({
     count: z.number().int().optional().describe('2 to 99. Omit it with everyMinutes: the app works the count out from the cadence and the time window.'),
     per: z.enum(['day', 'week']),
     unit: z.string().nullable().optional().describe('E.g. "glasses". Optional.'),
     everyMinutes: z.number().int().nullable().optional()
-      .describe('Per day only: one unit every this many minutes, 5 to 240, across the task\'s time window (or the person\'s active hours when it has none). "Look away every 20 minutes" is 20 with window 09:00 to 18:00. The count follows the window, so give the window in the same call. Not with allowOvershoot or rampUp. null goes back to a plain count.'),
+      .describe('Per day only: one unit every N minutes (5 to 240) across the task\'s window, or the person\'s active hours ("look away every 20 minutes" with window 09:00 to 18:00). The count follows the window, so set it in the same call. Not with allowOvershoot or rampUp. null: a plain count.'),
     remind: z.boolean().optional()
-      .describe('Per day only, needs a count of 2 or more: send a notification as each unit falls due, which reaches the Apple Watch the way any iPhone notification does. The phone holds only the next few ahead, so the rest are scheduled as the app is opened through the day.'),
+      .describe('Per day, count 2 or more: notify as each unit falls due (it reaches the Apple Watch). A few are scheduled ahead, the rest as the app is opened.'),
     onlyAtPlaces: z.array(z.string()).nullable().optional()
-      .describe('With remind: only notify while the phone is at one of these saved places, by name (as the person named them, e.g. "Home", "Office"; each needs a map pin). The phone checks where it is when the app is opened, never in the background, so notifications stop within about 2 hours of leaving and nothing is sent when it cannot tell. [] or null: notify anywhere.'),
+      .describe('With remind: notify only at these saved places, by name (each needs a map pin). Checked when the app is opened, never in the background, so notifications stop within about 2 hours of leaving. [] or null: anywhere.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
-    coinsPerTap: z.boolean().optional().describe('Pay coins on every tap instead of when the target is reached. The total is the same; each tap earns its share and the last one the rest. Only matters while rewards are on. Omit to leave as is.'),
-    restAfterLog: z.boolean().optional().describe('Weekly targets only. Once a log puts the target on pace, hide it from Today for the rest of that day and show it again the next day, however far ahead of pace it is. Without it a weekly target that is ahead of pace stays off Today until its next unit falls due, which can be days away. Ignored while alwaysVisible is on. Omit to leave as is.'),
-    timePerUnit: z.number().int().min(1).max(180).nullable().optional().describe('A countdown for each unit, in minutes (1 to 180), for logging time in chunks, such as 30 for reading. It restarts when a unit is logged and never blocks logging one early. Use this on a target instead of timed, which a target cannot also have. null removes it. Omit to leave as is.'),
-    alwaysVisible: z.boolean().optional().describe('Keep the task on Today all day (a weekly one, all week) instead of hiding it while you are on pace. Pacing still runs underneath; only the hiding is switched off. A rotation hides while on pace like any weekly target, so this is how to keep one up. Omit to leave as is.'),
+    coinsPerTap: z.boolean().optional().describe('Pay each tap its share of the coins instead of all at the target (same total). Omit to leave as is.'),
+    restAfterLog: z.boolean().optional().describe('Weekly only: once a log puts it on pace, hide it for the rest of that day only, instead of until its next unit falls due (which can be days). Ignored with alwaysVisible. Omit to leave as is.'),
+    timePerUnit: z.number().int().min(1).max(180).nullable().optional().describe('A countdown per unit, 1 to 180 minutes (30 for reading in chunks), restarting at each log; never blocks logging early. Use instead of timed, which a target cannot have. null removes it. Omit to leave as is.'),
+    alwaysVisible: z.boolean().optional().describe('Keep it on Today all day (weekly: all week) instead of hiding while on pace; pacing still runs. How to keep a rotation up. Omit to leave as is.'),
     rampUp: z.object({
       add: z.number().int().describe('How much to add to the count each time, 1 to 20.'),
       every: z.number().int().describe('How many days (weeks, for a weekly target) the target has to be met before each increase, 1 to 60.'),
       upTo: z.number().int().nullable().optional().describe('The count to stop at, above the current count and at most 99. Omit to climb to 99.'),
     }).nullable().optional()
-      .describe('Raise the count as it keeps being met: "10 push-ups a day, add 2 after every 3 days I hit it, up to 30". A missed or short day neither counts nor resets the run. Not with allowOvershoot. null turns it off.'),
+      .describe('Raise the count as it keeps being met ("10 push-ups a day, add 2 after every 3 days I hit it, up to 30"). A missed day neither counts nor resets. Not with allowOvershoot. null turns it off.'),
     firstWeek: z.enum(['fewer', 'full']).optional()
-      .describe('create_task, per week only: "fewer" (the default) scales the first week to the days left in it, as the app does (3 a week set on a Thursday asks for 2 that week, then 3). "full" asks for the whole count from the start.'),
+      .describe('create_task, weekly only: "fewer" (default) scales the first week to the days left (3 a week set on Thursday asks for 2); "full" asks the whole count.'),
   }).nullable().optional()
-    .describe('Something done several times: "drink water 8 times a day", "run 3 times a week". A daily target makes the task repeat daily if it did not; a weekly one makes it repeat weekly. null removes it.'),
+    .describe('Done several times: "water 8 times a day", "run 3 times a week". Makes the task repeat daily or weekly if it did not. null removes it.'),
   timed: z.object({
     minutes: z.number().int().optional().describe('1 to 1440.'),
     seconds: z.number().int().optional().describe('For a countdown under a minute, e.g. 45. Use this or minutes, not both.'),
   }).nullable().optional()
-    .describe('A countdown the task runs once it is started, e.g. "stretch for 15 minutes". Also sets the estimate and effort from the countdown unless you name them. Not for a subtask. null removes it.'),
+    .describe('A countdown run once started ("stretch for 15 minutes"); sets estimate and effort unless named. Not for a subtask. null removes it.'),
   rotation: z.object({
-    members: z.array(rotationMemberSchema).describe('At least two different members, in the order to show them. A member is a name, or { title, timesPerWeek, workoutRoutineId or workoutProgramId } for one done more than once a week (1 to 7) or one that is a workout (the pill starts it, and finishing it logs the member). A bare name keeps the count and workout it already has.'),
+    members: z.array(rotationMemberSchema).describe('At least two different members, in order: a name, or { title, timesPerWeek (1 to 7), workoutRoutineId or workoutProgramId } (a workout member\'s pill starts it, and finishing logs it). A bare name keeps its count and workout.'),
   }).nullable().optional()
-    .describe('A set of things done each week, in any order ("a podcast in each of my five languages", or "three runs and one bike ride"). Each member is done once a week unless it says timesPerWeek. The weekly target is the sum of the counts. A task with no repeat becomes weekly. Re-sending a member\'s name keeps its history. null removes it.'),
+    .describe('A set done each week in any order ("three runs and a bike ride"). Each member once a week unless timesPerWeek; the target is their sum. A task with no repeat becomes weekly. Re-sending a name keeps its history. null removes it.'),
   healthTarget: z.object({
     metric: z.enum(['steps', 'sleepHours', 'exerciseMinutes', 'activeEnergyKcal', 'standHours']),
     target: z.number().int().optional().describe('In the metric\'s own unit. Defaults to the app\'s starting value: 8000 steps, 8 hours, 30 minutes, 500 kcal, 12 hours.'),
     followGoal: z.boolean().optional().describe('exerciseMinutes, activeEnergyKcal and standHours only: use the goal set in Fitness instead of target.'),
   }).nullable().optional()
-    .describe('The task becomes ready to check off once Apple Health reaches a number today. This only sets it up: it cannot be read from here, so never say whether it has been reached. It never completes the task. null removes it.'),
+    .describe('Ready to check off once Apple Health reaches a number today. Only sets it up: it can\'t be read from here, so never say whether it was reached. Never completes the task. null removes it.'),
   supply: z.object({
     count: z.number().int().describe('How many are left now, 0 to 999. 0 means it has run out.'),
     unit: z.string().nullable().optional().describe('E.g. "filters".'),
@@ -1762,21 +1762,21 @@ const taskFieldsShape = {
     reorderAt: z.number().int().optional().describe('Offer to reorder when this many are left. At least 1; default 1.'),
     leadDays: z.number().int().nullable().optional().describe('Days a delivery takes, 0 to 365.'),
   }).nullable().optional()
-    .describe('A stock that goes down by one each time this repeating task is completed ("12 filters left"), and asks to reorder as it runs low. Needs a repeat, and not for a subtask. null removes it.'),
+    .describe('Stock that drops by one per completion ("12 filters left") and asks to reorder when low. Needs a repeat; not for a subtask. null removes it.'),
   window: z.object({
-    start: z.string().nullable().optional().describe('"HH:MM", 24-hour: it shows up from this time. Or follow the sun: "sunrise", "sunset", or either with a minutes offset of up to 180 ("sunset-30", "sunrise+45"), which moves with the sun each day.'),
-    end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day. On an "avoid" habit it means the opposite: the day counts as clean from this time if no slip was logged ("no snacking until 5pm" is end "17:00"). Or "sunrise"/"sunset" with an optional offset, as for start ("sunset" for "before dark").'),
-  }).nullable().optional().describe('A time of day to do it in. null removes it. For an "avoid" habit, set end to the time the day counts as clean (start only hides the habit until then).'),
+    start: z.string().nullable().optional().describe('"HH:MM" (24-hour) it shows from, or "sunrise"/"sunset" with an offset up to 180 minutes ("sunset-30"), which moves with the sun.'),
+    end: z.string().nullable().optional().describe('"HH:MM" after which it counts as missed. On an "avoid" habit, the day counts clean from then if no slip was logged ("no snacking until 5pm" is "17:00"). Or sunrise/sunset as for start ("sunset" for "before dark").'),
+  }).nullable().optional().describe('A time of day to do it in. null removes it.'),
   habit: z.enum(['do', 'avoid']).optional()
-    .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. To count each day clean at a set time ("no snacking until 5pm") give window.end; log_slip records a slip. Only for a plain task, not a chain or a target.'),
+    .describe('"avoid": a habit of NOT doing something ("no phone in bed"), never completed; its streak counts days held off. window.end counts a day clean at a time; log_slip records a slip. Plain tasks only, not a chain or target.'),
   slipAllowance: z.number().int().min(1).max(20).nullable().optional()
-    .describe('For an "avoid" habit: how many slips a day it absorbs. Those slips are counted but leave the streak alone and cost nothing; the next one resets it. null removes the allowance, and the first slip of a day then resets it.'),
+    .describe('Avoid habits: slips a day that are counted but leave the streak alone and cost nothing; the next one resets it. null: the first slip resets it.'),
   dueDaysFromEvent: z.number().int().optional()
-    .describe('Instead of dueDate: days from the project\'s event date, negative for before ("get the license 60 days before" is -60, "thank-you notes a week after" is 7). Becomes an ordinary date; it does not follow the event later, but moving the event with moveTasks moves it.'),
+    .describe('Instead of dueDate: days from the project\'s event date, negative for before (-60 for "60 days before"). Becomes a plain date; moving the event with moveTasks moves it.'),
   deadlineDaysFromEvent: z.number().int().optional()
     .describe('Instead of deadline: days from the project\'s event date, as dueDaysFromEvent.'),
   dueEndOfMonthAfterEvent: z.number().int().min(0).optional()
-    .describe('Instead of dueDate: the last day of a month counted from the event\'s, 0 for the event\'s own month and 1 for the month after ("update records by the end of the month after" is 1).'),
+    .describe('Instead of dueDate: the last day of the month N after the event\'s (0 its own month).'),
   deadlineEndOfMonthAfterEvent: z.number().int().min(0).optional()
     .describe('Instead of deadline: as dueEndOfMonthAfterEvent.'),
   waitsOn: z.array(z.string()).optional()
@@ -1787,7 +1787,7 @@ const taskFieldsShape = {
     taskId: z.string().describe('A task that asks a Yes/No or pick-one question when completed.'),
     answers: z.array(z.string()).min(1).describe('The answers that show this task, spelled as the question offers them.'),
   }).nullable().optional()
-    .describe('A branch: this task waits until that question is answered, then shows only for these answers. Any other answer marks it not needed: off every list and out of the project\'s count. A task waiting only on not-needed tasks is not needed too. null removes it.'),
+    .describe('A branch: waits for that answer, then shows only for these answers; any other marks it not needed (off every list and out of the project\'s count), as does waiting only on not-needed tasks. null removes it.'),
   followUp: z.object({
     everyN: z.number().int().optional().describe('2 to 99. Give this or atEnd.'),
     atEnd: z.boolean().optional().describe('Add the task once, when the repeat ends instead of every Nth time. The repeat needs a count or end date.'),
@@ -1796,25 +1796,25 @@ const taskFieldsShape = {
     estimatedMinutes: z.number().int().positive().nullable().optional(),
     oneAtATime: z.boolean().optional().describe('Don\'t add another while the last one is still open.'),
   }).nullable().optional()
-    .describe('Repeating tasks only: every Nth completion also adds a separate task, e.g. every 4th run, "Replace running shoes" or every 10th clean, "Deep clean the oven". Or with atEnd, adds it once when the repeat ends, e.g. after the last of 6 classes, "Sign up for the next session". null removes it.'),
+    .describe('Repeating tasks only: every Nth completion also adds a separate task ("Replace running shoes" every 4th run), or with atEnd once when the repeat ends. null removes it.'),
   personIds: z.array(z.string()).optional()
-    .describe('People the task is about or with, by id from list_people ("call Mum", "dinner with Sam"). It then shows on their page. [] clears them.'),
+    .describe('People it is about or with, by id from list_people; it shows on their page. [] clears.'),
   linkUrl: z.string().nullable().optional().describe('A web address or app link the task row opens. null clears it.'),
   phoneNumber: z.string().nullable().optional().describe('A number the task row can call, as written. null clears it.'),
   emailAddress: z.string().nullable().optional().describe('An address the task row can email. null clears it.'),
   location: z.string().nullable().optional().describe('The place it happens, as free text. null clears it.'),
   vacationPause: z.boolean().optional()
-    .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
+    .describe('Hide it, keeping its streak, while vacation mode is on.'),
   slotIn: z.boolean().nullable().optional()
-    .describe('If the day is full: true lets the phone hold this task until a day that is not busy (at least one waiting task still shows every day, longest wait first, never more than the slotInMaxWaitDays setting (3 days by default), and never past its deadline); false keeps its date even when its category says wait; null follows the category. Only for a dated task that is not a daily repeat, a daily target, an every-N-hours task, a meter or weather wait, or one with a reminder at a set time.'),
+    .describe('On a full day: true lets the phone hold it for a lighter one (one waiting task still shows each day, longest wait first, at most slotInMaxWaitDays, default 3, never past its deadline); false keeps its date despite its category; null follows the category. Only a dated task that is not a daily repeat or target, every-N-hours, a meter, weather wait or timed reminder.'),
   templateId: z.string().nullable().optional()
-    .describe('A template id (list_templates) the task row offers to run, as "Run <name>". Use it for a template whose questions cannot be answered yet (a packing list before the trip is decided): the person answers them on the phone when they tap it, and running it checks the task off. Nothing is created until then. null removes the link. A deleted template leaves the row showing "Template deleted".'),
+    .describe('A template (list_templates) the row offers to run ("Run <name>"), for one whose questions can\'t be answered yet: the person answers on the phone, and running it checks the task off. null removes it.'),
   experimentId: z.string().nullable().optional()
-    .describe('A planned experiment id (list_experiments, planned). The task row then offers "Start <label>": tapping it starts the experiment today and checks the task off, while a plain check-off asks first and never starts it silently. The task can be undated, deferred or dated, and can wait on other tasks (waitsOn) so trials start one at a time. If the experiment is already running or finished the row offers "View experiment". Deleting the experiment leaves the link and the row reads "Experiment not found". null removes the link. add_experiment with planned: true makes the experiment, or plan_experiment makes it with this task in one step.'),
+    .describe('A planned experiment (list_experiments). The row offers "Start <label>", which starts it today and checks the task off; a plain check-off asks first. With waitsOn, trials start one at a time. null removes it. plan_experiment makes the experiment and this task in one step.'),
   workoutRoutineId: z.string().nullable().optional()
-    .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link. Setting it clears workoutProgramId.'),
+    .describe('A routine (list_workouts; save_routine). The row offers Start workout, and finishing it completes the task (completing the task never logs one). Clears workoutProgramId. null removes it.'),
   workoutProgramId: z.string().nullable().optional()
-    .describe('A workout program id (list_workouts lists programs; save_program makes one), in place of a routine: the task row then starts the program\'s next routine, worked out from its finished workouts, and finishing it completes the task. null removes the link. Setting it clears workoutRoutineId.'),
+    .describe('A program (list_workouts; save_program) instead of a routine: the row starts its next routine, and finishing it completes the task. Clears workoutRoutineId. null removes it.'),
   medication: z.object({
     name: z.string().describe('Use the spelling list_medication_logs already has.'),
     amount: z.number().nullable().optional(),
@@ -1824,15 +1824,15 @@ const taskFieldsShape = {
       amount: z.number().nullable().optional(),
       unit: z.string().nullable().optional().describe('E.g. "mg".'),
     })).max(4).optional()
-      .describe('Further medicines taken together with this one ("Iron + Vitamin C"): completing the task records a dose of each, and reopening it takes them all back. Replaces the whole list; [] clears it. Not for a task with a daily or weekly target.'),
+      .describe('More medicines taken with it ("Iron + Vitamin C"), each dosed on completion and taken back on reopen. Replaces the list; [] clears. Not with a target.'),
   }).nullable().optional()
-    .describe('Completing it also records a dose of this medicine in the medication log ("take vitamin D"). Undone with the completion by reopen_task. null stops it.'),
+    .describe('Completing it logs a dose of this medicine ("take vitamin D"); reopen_task undoes it. null stops it.'),
   logsMeal: z.object({
     slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack', 'other']).describe('other: outside any meal. It cannot go with byTime.'),
     savedMealId: z.string().nullable().optional().describe('A saved meal id (list_saved_meals) to log straight away. Leave it out and the phone asks what was eaten.'),
     byTime: z.boolean().optional().describe('Choose the meal from the time of day it is completed instead, with slot as the fallback.'),
   }).nullable().optional()
-    .describe('Completing it also logs to the food log under this meal ("2 scoops Metamucil" logs the saved meal). Undone with the completion by reopen_task. Replaces the whole setting, so name the saved meal again to keep it. null stops it, which is how to take a saved meal off a task before using medication in its place.'),
+    .describe('Completing it logs to the food log under this meal; reopen_task undoes it. Replaces the whole setting (name the saved meal again to keep it). null stops it, e.g. before using medication instead.'),
   deadlineRule: z.object({
     daysBeforeDate: z.number().int().optional(),
     daysAfterDate: z.number().int().optional(),
