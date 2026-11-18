@@ -733,10 +733,10 @@ export type GeneratedKind =
   // no source row; deleting one closes that wave and writes nothing.
   | 'wanikani'
   // "Franki: 30 reviews" when the person's flashcards have that many cards due,
-  // and "Read & Listen: Thai" once a day while a text is waiting — see
+  // and "Read & Listen: Thai" a day at a time, for each language chosen, while a text is waiting — see
   // src/utils/frankiTasks.ts. Fed by a fetch of their own Franki server
   // (src/services/franki.ts). Sourced by the wave (`reviews:<hour>`) or the day
-  // (`read:<day>`), with no source row; deleting one writes nothing.
+  // (`read:<day>:<language>`), with no source row; deleting one writes nothing.
   | 'franki';
 
 /** "Only if <question> is answered one of <answers>" — see `Task.answerGate`. */

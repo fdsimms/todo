@@ -2262,11 +2262,20 @@ lands. The rules are in `src/utils/frankiTasks.ts`.
   included), never a lookalike here. New cards are left out: Franki's progress gate is its own,
   so Anki's new count can differ from what Franki's deck list says. The server works out the study
   day in its `TZ` setting, so it can be off by the time difference while the person travels.
-- **The Read & Listen task is day-keyed**: once a day (`read:<day>`, the mark
-  `frankiReadLastDayKey`, per device), only while a text is waiting in the language being read
-  and nothing was read to the end since the logical day began, spent by writing it. It reads ready
-  once a text is read, and yesterday's goes at the first pass of the new day. `frankiReadTasks`
-  switches it off inside the generator.
+- **The Read & Listen tasks are day-keyed, one per language** (`read:<day>:<language>`, the
+  device's own record `frankiReadSpent`: the languages written today). A language gets its task only
+  while a text is waiting in it and nothing in it was read to the end since the logical day began,
+  spent by writing it, ready once a text in it is read, and yesterday's goes at the first pass of the
+  new day. The server lists every language (`read_and_listen_languages`); one task named after
+  "the language being read" switched language whenever that setting changed in Franki, which is why
+  it is per language. `frankiReadTasks` switches all of them off inside the generator.
+  - **Which languages** is `frankiReadLanguages` (language code to `daily`, `rotate` or `off`, synced;
+    a language nobody set rotates). Every day always gets its task. Rotate languages share
+    `frankiReadRotateCount` tasks a day (default 1), the one read least recently first, a never-read
+    one before any, ties by name (`plannedFrankiReadLanguages`). The count includes the rotating
+    languages already written today, so reading French doesn't bring Polish's turn on top of it.
+  - **A task from before this** (`read:<day>`, no language) is deleted at the first pass and its
+    language's own written in its place.
 - **The study-time goal** (`frankiGoalMinutes`, null for none): "Franki: 12 of 20 min" once a day
   (`goal:<day>`, `frankiGoalLastDayKey`) while today's minutes are read and under it, ready once
   met. Minutes come from the server's `study_days` (`src/utils/frankiStudy.ts`): the time Anki

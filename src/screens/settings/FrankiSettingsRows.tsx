@@ -16,6 +16,7 @@ import {
   FRANKI_REVIEW_THRESHOLD_MIN,
   type FrankiReviewMode,
 } from '../../utils/frankiTasks';
+import { FrankiReadLanguageRows } from './FrankiReadLanguageRows';
 import { FrankiTokenRows } from './FrankiTokenRows';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -132,11 +133,12 @@ export function FrankiSettingsRows(): React.ReactElement {
         iconColor={s.readTasks ? colors.accent : undefined}
         label="Read & Listen"
         hint={s.readTasks
-          ? 'A task each day while a text is waiting and none was read today.'
+          ? 'A task each day for each language below while a text is waiting and none was read today.'
           : 'No reading task'}
         toggle={s.readTasks}
         onPress={() => s.setReadTasks(!s.readTasks)}
       />
+      {s.readTasks && <FrankiReadLanguageRows />}
 
       <View style={styles.sep} />
       <SettingsRow
