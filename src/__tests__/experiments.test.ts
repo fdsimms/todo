@@ -10,6 +10,7 @@ import {
   experimentNoticeDayKey,
   experimentRefusal,
   experimentResult,
+  startedAtFor,
   experimentSpan,
   experimentStatus,
   experimentSummary,
@@ -44,6 +45,7 @@ function experiment(over: Partial<Experiment> & { start?: string; end?: string }
     startDate: over.startDate ?? noon(over.start ?? '2026-11-01'),
     endDate: over.endDate ?? noon(over.end ?? '2026-11-14'),
     days: over.days ?? null,
+    startedAt: over.startedAt ?? null,
     symptoms: over.symptoms ?? [],
     note: over.note ?? null,
     createdAt: over.createdAt ?? '2026-10-01T09:00:00',
@@ -189,6 +191,32 @@ describe('experimentResult: mood', () => {
       ...run('2026-11-01', 3, (_, k) => log(k, 4)),
     ];
     expect(experimentResult(e, logs, '2026-11-20').mood).toBeNull();
+  });
+
+  it('leaves out entries logged on the first day before it was started', () => {
+    const started = experiment({ startedAt: '2026-11-01T18:00:00' });
+    const morning = { ...log('2026-11-01', 2), loggedAt: '2026-11-01T09:00:00' };
+    const evening = { ...log('2026-11-01', 4), loggedAt: '2026-11-01T20:00:00' };
+    const r = experimentResult(started, [morning, evening], '2026-11-01');
+    expect(r.loggedDaysDuring).toBe(1);
+    expect(experimentResult(started, [morning], '2026-11-01').loggedDaysDuring).toBe(0);
+    // With no recorded moment, the whole first day counts.
+    expect(experimentResult(experiment(), [morning], '2026-11-01').loggedDaysDuring).toBe(1);
+  });
+
+  it('keeps a symptom\u2019s first-logged day even when that entry came before the start', () => {
+    const started = experiment({ startedAt: '2026-11-01T18:00:00', symptoms: ['Headache'] });
+    const before = [...run('2026-10-18', 13, (_, k) => log(k, 3, [{ name: 'Headache', severity: 2 }]))];
+    const early = { ...log('2026-11-01', 3, [{ name: 'Headache', severity: 2 }]), loggedAt: '2026-11-01T09:00:00' };
+    const r = experimentResult(started, [...before, early], '2026-11-01');
+    expect(r.picked[0].firstLoggedKey).toBe('2026-10-18');
+    expect(r.picked[0].during.loggedDays).toBe(0);
+  });
+
+  it('startedAtFor records the moment only for a start today', () => {
+    const now = new Date(2026, 10, 18, 15);
+    expect(startedAtFor(new Date(2026, 10, 18, 12), now, new Date(2026, 10, 18))).toBe(now.toISOString());
+    expect(startedAtFor(new Date(2026, 10, 15, 12), now, new Date(2026, 10, 18))).toBeNull();
   });
 
   it('counts only days with a mood in the captions, not symptom-only days', () => {

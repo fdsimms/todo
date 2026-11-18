@@ -2618,6 +2618,8 @@ function runInitDatabase(): void {
     // Experiment.days: NULL on every existing experiment, which already has its
     // last day, so the planned length is never read.
     'ALTER TABLE experiments ADD COLUMN days INTEGER',
+    // Experiment.startedAt: NULL on every existing experiment, so its whole first day counts.
+    'ALTER TABLE experiments ADD COLUMN started_at TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -8276,6 +8278,7 @@ function rowToExperiment(row: Record<string, unknown>): Experiment {
     startDate: (row.start_date as string) || null,
     endDate: (row.end_date as string) || null,
     days: typeof row.days === 'number' ? row.days : null,
+    startedAt: (row.started_at as string | null) ?? null,
     symptoms,
     note: (row.note as string | null) ?? null,
     createdAt: row.created_at as string,
@@ -8295,21 +8298,21 @@ const dayColumn = (iso: string | null): string => iso ?? '';
 
 export function dbInsertExperiment(experiment: Experiment): void {
   db.runSync(
-    `INSERT INTO experiments (id, label, start_date, end_date, days, symptoms, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO experiments (id, label, start_date, end_date, days, started_at, symptoms, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       experiment.id, experiment.label, dayColumn(experiment.startDate), dayColumn(experiment.endDate), experiment.days,
-      JSON.stringify(experiment.symptoms), experiment.note, experiment.createdAt,
+      experiment.startedAt, JSON.stringify(experiment.symptoms), experiment.note, experiment.createdAt,
     ]
   );
 }
 
 export function dbUpdateExperiment(experiment: Experiment): void {
   db.runSync(
-    `UPDATE experiments SET label=?, start_date=?, end_date=?, days=?, symptoms=?, note=? WHERE id=?`,
+    `UPDATE experiments SET label=?, start_date=?, end_date=?, days=?, started_at=?, symptoms=?, note=? WHERE id=?`,
     [
       experiment.label, dayColumn(experiment.startDate), dayColumn(experiment.endDate), experiment.days,
-      JSON.stringify(experiment.symptoms), experiment.note, experiment.id,
+      experiment.startedAt, JSON.stringify(experiment.symptoms), experiment.note, experiment.id,
     ]
   );
 }

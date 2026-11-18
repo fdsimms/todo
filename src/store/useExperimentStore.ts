@@ -8,7 +8,8 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { keepUnchanged } from '../utils/structuralSharing';
-import { DEFAULT_EXPERIMENT_DAYS, cleanExperimentSymptoms, endOfLength, experimentRefusal } from '../utils/experiments';
+import { DEFAULT_EXPERIMENT_DAYS, cleanExperimentSymptoms, endOfLength, experimentDayKey, experimentRefusal, startedAtFor } from '../utils/experiments';
+import { getLogicalToday } from '../utils/dateUtils';
 
 /**
  * Experiments: a change tried for a set stretch of days, read against the
@@ -93,6 +94,7 @@ export const useExperimentStore = create<ExperimentStore>((set, get) => ({
       days: draft.days !== undefined ? draft.days : (draft.startDate && draft.endDate ? null : DEFAULT_EXPERIMENT_DAYS),
       symptoms: cleanExperimentSymptoms(draft.symptoms),
       note: cleanNote(draft.note),
+      startedAt: draft.startDate ? startedAtFor(draft.startDate, new Date(), getLogicalToday()) : null,
       createdAt: new Date().toISOString(),
     };
     dbInsertExperiment(experiment);
@@ -120,6 +122,10 @@ export const useExperimentStore = create<ExperimentStore>((set, get) => ({
       days: merged.days ?? null,
       symptoms: cleanExperimentSymptoms(merged.symptoms),
       note: cleanNote(merged.note),
+      // The recorded moment belongs to the day it was recorded for: moving the first day drops it.
+      startedAt: patch.startDate !== undefined && patch.startDate && existing.startDate
+        && experimentDayKey(noonIso(patch.startDate)) === experimentDayKey(existing.startDate)
+        ? existing.startedAt : (patch.startDate !== undefined ? null : existing.startedAt),
     };
     dbUpdateExperiment(next);
     set({ experiments: get().experiments.map(e => (e.id === id ? next : e)).sort(byStart) });
@@ -137,6 +143,7 @@ export const useExperimentStore = create<ExperimentStore>((set, get) => ({
       startDate: noonIso(startDate),
       endDate: endDate ? noonIso(endDate) : null,
       days: length,
+      startedAt: startedAtFor(startDate, new Date(), getLogicalToday()),
     };
     dbUpdateExperiment(next);
     set({ experiments: get().experiments.map(e => (e.id === id ? next : e)).sort(byStart) });

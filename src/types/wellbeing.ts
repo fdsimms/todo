@@ -265,6 +265,13 @@ export interface Experiment {
   symptoms: string[];
   /** What you expect it to change, or null. */
   note: string | null;
+  /**
+   * The moment it was started, when that was today: entries logged earlier on
+   * its first day came before it, so they count as neither baseline nor
+   * experiment. Null for one started on a backdated day, one started before
+   * this was recorded, and one still planned; the whole first day counts then.
+   */
+  startedAt: string | null;
   createdAt: string;
 }
 
