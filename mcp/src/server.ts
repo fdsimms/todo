@@ -1750,10 +1750,10 @@ const taskFieldsShape = {
     .describe('A stock that goes down by one each time this repeating task is completed ("12 filters left"), and asks to reorder as it runs low. Needs a repeat, and not for a subtask. null removes it.'),
   window: z.object({
     start: z.string().nullable().optional().describe('"HH:MM", 24-hour: it shows up from this time. Or follow the sun: "sunrise", "sunset", or either with a minutes offset of up to 180 ("sunset-30", "sunrise+45"), which moves with the sun each day.'),
-    end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day. Or "sunrise"/"sunset" with an optional offset, as for start ("sunset" for "before dark").'),
-  }).nullable().optional().describe('A time of day to do it in. null removes it.'),
+    end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day. On an "avoid" habit it means the opposite: the day counts as clean from this time if no slip was logged ("no snacking until 5pm" is end "17:00"). Or "sunrise"/"sunset" with an optional offset, as for start ("sunset" for "before dark").'),
+  }).nullable().optional().describe('A time of day to do it in. null removes it. For an "avoid" habit, set end to the time the day counts as clean (start only hides the habit until then).'),
   habit: z.enum(['do', 'avoid']).optional()
-    .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. Only for a plain task, not a chain or a target.'),
+    .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. To count each day clean at a set time ("no snacking until 5pm") give window.end; log_slip records a slip. Only for a plain task, not a chain or a target.'),
   slipAllowance: z.number().int().min(1).max(20).nullable().optional()
     .describe('For an "avoid" habit: how many slips a day it absorbs. Those slips are counted but leave the streak alone and cost nothing; the next one resets it. null removes the allowance, and the first slip of a day then resets it.'),
   dueDaysFromEvent: z.number().int().optional()
