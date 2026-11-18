@@ -61,13 +61,11 @@ export function WaniKaniSettingsRows(): React.ReactElement {
   })));
   return (
     <>
-      <View style={styles.sep} />
-      <WaniKaniTokenRows entryId="wanikaniToken" linkToPrivacy />
+      <WaniKaniTokenRows entryId="wanikaniToken" linkToPrivacy nested />
 
       <View style={styles.sep} />
       <SettingsRow
         entryId="wanikaniReviewThreshold"
-        icon="time-outline"
         label="Add the task at"
         hint="How many reviews have to be waiting. If fewer are, the task waits for the hour WaniKani expects that many."
         value={plural(s.threshold, 'review', 'reviews')}
@@ -87,8 +85,6 @@ export function WaniKaniSettingsRows(): React.ReactElement {
       <View style={styles.sep} />
       <SettingsRow
         entryId="wanikaniLessonsPerDay"
-        icon="sparkles-outline"
-        iconColor={s.lessonsPerDay !== null ? colors.accent : undefined}
         label="Lessons"
         hint={s.lessonsPerDay === WANIKANI_LESSONS_ALL
           ? 'A task each day to do all the lessons available.'
@@ -124,8 +120,6 @@ export function WaniKaniSettingsRows(): React.ReactElement {
           <View style={styles.sep} />
           <SettingsRow
             entryId="wanikaniApprenticeCap"
-            icon="layers-outline"
-            iconColor={s.apprenticeCap !== null ? colors.accent : undefined}
             label="Skip lessons at"
             hint="No lessons task on a day this many items or more are in Apprentice."
             toggle={s.apprenticeCap !== null}
@@ -151,8 +145,6 @@ export function WaniKaniSettingsRows(): React.ReactElement {
       <View style={styles.sep} />
       <SettingsRow
         entryId="wanikaniClientLink"
-        icon="link-outline"
-        iconColor={s.clientLink ? colors.accent : undefined}
         label="Open in"
         hint="Where the task opens. Paste a link from the WaniKani app you use. Leave blank for wanikani.com."
         alwaysShowHint
@@ -174,8 +166,6 @@ export function WaniKaniSettingsRows(): React.ReactElement {
       <View style={styles.sep} />
       <SettingsRow
         entryId="wanikaniNotify"
-        icon="notifications-outline"
-        iconColor={s.notify ? colors.accent : undefined}
         label="Notify when reviews arrive"
         hint="Sends a notification at the hour a held task appears. When off, the task appears without a notification"
         toggle={s.notify}

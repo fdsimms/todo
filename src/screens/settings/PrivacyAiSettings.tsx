@@ -12,6 +12,7 @@ import { authenticateForAppLock, getAppLockSupport, type AppLockSupport } from '
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { SettingsDisclosure } from './SettingsDisclosure';
 import { SettingsSegments } from './SettingsSegments';
 import { useSettingsFocusFlash } from './SettingsFocus';
@@ -345,16 +346,16 @@ export function PrivacyAiSettings() {
                   />
                 )}
                 {feature.id === 'nutritionEstimate' && config.enabled && (
-                  <SettingsRow
-                    entryId="ai:nutritionEstimate:webSearch"
-                    icon="globe-outline"
-                    iconColor={config.webSearch ? colors.purple : undefined}
-                    label="Search the web for brand figures"
-                    hint="Looks up a chain’s or brand’s published nutrition when the description names one. Each search is billed to your API key. Results still need your confirmation."
-                    toggle={!!config.webSearch}
-                    onPress={() => setAiFeatureConfig('nutritionEstimate', { webSearch: !config.webSearch })}
-                    accessibilityLabel="Search the web for brand nutrition figures"
-                  />
+                  <SettingsNested>
+                    <SettingsRow
+                      entryId="ai:nutritionEstimate:webSearch"
+                      label="Search the web for brand figures"
+                      hint="Looks up a chain’s or brand’s published nutrition when the description names one. Each search is billed to your API key. Results still need your confirmation."
+                      toggle={!!config.webSearch}
+                      onPress={() => setAiFeatureConfig('nutritionEstimate', { webSearch: !config.webSearch })}
+                      accessibilityLabel="Search the web for brand nutrition figures"
+                    />
+                  </SettingsNested>
                 )}
               </AiFeatureBlock>
             </React.Fragment>
@@ -407,18 +408,18 @@ export function PrivacyAiSettings() {
             turns out not to work, so turning this on can't leave the feature
             with no answer at all — it can only change which one answers. */}
         {onDeviceAiEnabled && (
-          <SettingsRow
-            entryId="ai:groceryAisles:preferOnDevice"
-            icon="hardware-chip-outline"
-            iconColor={aiFeatureConfig.groceryAisles.preferOnDevice ? colors.purple : undefined}
-            label="Prefer it for aisle sorting"
-            hint="Sorts new grocery items on this device instead of sending them to Claude, when you have an API key."
-            toggle={!!aiFeatureConfig.groceryAisles.preferOnDevice}
-            onPress={() => setAiFeatureConfig('groceryAisles', {
-              preferOnDevice: !aiFeatureConfig.groceryAisles.preferOnDevice,
-            })}
-            accessibilityLabel="Prefer on-device for aisle sorting"
-          />
+          <SettingsNested>
+            <SettingsRow
+              entryId="ai:groceryAisles:preferOnDevice"
+              label="Prefer it for aisle sorting"
+              hint="Sorts new grocery items on this device instead of sending them to Claude, when you have an API key."
+              toggle={!!aiFeatureConfig.groceryAisles.preferOnDevice}
+              onPress={() => setAiFeatureConfig('groceryAisles', {
+                preferOnDevice: !aiFeatureConfig.groceryAisles.preferOnDevice,
+              })}
+              accessibilityLabel="Prefer on-device for aisle sorting"
+            />
+          </SettingsNested>
         )}
       </SettingsSection>
       )}

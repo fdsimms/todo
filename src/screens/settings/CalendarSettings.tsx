@@ -19,6 +19,7 @@ import { useColors } from '../../theme/ThemeContext';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
@@ -486,11 +487,9 @@ export function CalendarSettings() {
             accessibilityLabel="Show events on Today"
           />
           {calendarEventCategory && (
-            <>
-              <View style={styles.sep} />
+            <SettingsNested>
               <SettingsRow
                 entryId="calendarEventCategory"
-                icon="pricetag-outline"
                 label="Show events under"
                 value={categoryLabel(calendarEventCategory, categories)}
                 tight
@@ -507,7 +506,7 @@ export function CalendarSettings() {
                   }))}
                 />
               </View>
-            </>
+            </SettingsNested>
           )}
         </>
       )}

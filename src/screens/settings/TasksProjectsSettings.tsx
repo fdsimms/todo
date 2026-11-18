@@ -9,6 +9,7 @@ import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGrac
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
@@ -339,11 +340,9 @@ export function TasksProjectsSettings() {
           onPress={() => setPostponeCheckEnabled(!postponeCheckEnabled)}
         />
         {postponeCheckEnabled && (
-          <>
-            <View style={styles.sep} />
+          <SettingsNested>
             <SettingsRow
               entryId="postponeCheckThreshold"
-              icon="hand-left-outline"
               label="Reschedule threshold"
               tight
             />
@@ -357,7 +356,7 @@ export function TasksProjectsSettings() {
                 describeValue={n => `${n} reschedules`}
               />
             </View>
-          </>
+          </SettingsNested>
         )}
       </SettingsSection>
 

@@ -58,11 +58,8 @@ export function FrankiSettingsRows(): React.ReactElement {
   })));
   return (
     <>
-      <View style={styles.sep} />
       <SettingsRow
         entryId="frankiServer"
-        icon="server-outline"
-        iconColor={s.server ? colors.accent : undefined}
         label="Server"
         hint="Your Anki sync server’s address, the one Franki syncs with."
         alwaysShowHint
@@ -82,12 +79,11 @@ export function FrankiSettingsRows(): React.ReactElement {
       </SettingsRow>
 
       <View style={styles.sep} />
-      <FrankiTokenRows entryId="frankiToken" linkToPrivacy />
+      <FrankiTokenRows entryId="frankiToken" linkToPrivacy nested />
 
       <View style={styles.sep} />
       <SettingsRow
         entryId="frankiReviewMode"
-        icon="albums-outline"
         label="Reviews task"
         hint={s.mode === 'daily'
           ? 'One task a day for all of today’s cards, ready once they’re done. New cards count once Share today’s counts is on in Franki, under Settings, Read & Listen.'
@@ -107,7 +103,6 @@ export function FrankiSettingsRows(): React.ReactElement {
           <View style={styles.sep} />
           <SettingsRow
             entryId="frankiReviewThreshold"
-            icon="time-outline"
             label="Add the task at"
             hint="How many cards have to be due. If fewer are, the task waits for the time Anki expects that many."
             value={plural(s.threshold, 'card', 'cards')}
@@ -129,8 +124,6 @@ export function FrankiSettingsRows(): React.ReactElement {
       <View style={styles.sep} />
       <SettingsRow
         entryId="frankiReadTasks"
-        icon="book-outline"
-        iconColor={s.readTasks ? colors.accent : undefined}
         label="Read & Listen"
         hint="Adds a task each day for each language below while a text is waiting and none was read today. When off, no reading task is added."
         toggle={s.readTasks}
@@ -141,8 +134,6 @@ export function FrankiSettingsRows(): React.ReactElement {
       <View style={styles.sep} />
       <SettingsRow
         entryId="frankiGoalMinutes"
-        icon="hourglass-outline"
-        iconColor={s.goal !== null ? colors.accent : undefined}
         label="Study goal"
         hint="A task each day until you’ve studied this long in Franki."
         toggle={s.goal !== null}
@@ -166,8 +157,6 @@ export function FrankiSettingsRows(): React.ReactElement {
       <View style={styles.sep} />
       <SettingsRow
         entryId="frankiCountReading"
-        icon="headset-outline"
-        iconColor={s.countReading ? colors.accent : undefined}
         label="Count Read & Listen time"
         hint="Counts time reading and listening as study time: toward the goal, on the tasks and in Stats. When off, only time answering cards counts."
         toggle={s.countReading}

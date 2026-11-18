@@ -10,6 +10,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
@@ -221,16 +222,16 @@ export function KitchenSettings() {
             kept: turning the recap back on brings this back as it was. Same
             nesting the product-lookup keys get under their own switch. */}
         {cookRecapEnabled && (
-        <SettingsRow
-          entryId="restockOfferEnabled"
-          icon="basket-outline"
-          iconColor={restockOfferEnabled ? colors.accent : undefined}
-          label="Restock after cooking"
-          hint="Include what the meal used that isn’t on your grocery list, with a button to add it."
-          toggle={restockOfferEnabled}
-          onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
-          accessibilityLabel="Restock after cooking"
-        />
+        <SettingsNested>
+          <SettingsRow
+            entryId="restockOfferEnabled"
+            label="Restock after cooking"
+            hint="Include what the meal used that isn’t on your grocery list, with a button to add it."
+            toggle={restockOfferEnabled}
+            onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
+            accessibilityLabel="Restock after cooking"
+          />
+        </SettingsNested>
         )}
         {/* The way back from "Don't ask again" on the leftovers question. Only
             there while something has been turned off, so it isn't a row that

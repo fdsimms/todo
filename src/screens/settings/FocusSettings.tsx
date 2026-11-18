@@ -8,6 +8,7 @@ import { haptics } from '../../utils/haptics';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { makeSettingsStyles } from './settingsStyles';
 import {
   FOCUS_DEFAULTS,
@@ -204,11 +205,9 @@ export function FocusSettings() {
             </View>
 
             {focusLongRestEvery !== null && (
-              <>
-                <View style={styles.sep} />
+              <SettingsNested>
                 <SettingsRow
                   entryId="focusLongRestMinutes"
-                  icon="moon-outline"
                   label="Long break length"
                   tight
                 />
@@ -223,7 +222,7 @@ export function FocusSettings() {
                     describeValue={n => `${n} minutes`}
                   />
                 </View>
-              </>
+              </SettingsNested>
             )}
           </>
         )}

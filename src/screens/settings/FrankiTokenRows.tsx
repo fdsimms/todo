@@ -55,8 +55,10 @@ function problemText(problem: FrankiProblem, detail: string | null): string {
   }
 }
 
-export function FrankiTokenRows({ entryId, linkToPrivacy = false }: {
+export function FrankiTokenRows({ entryId, linkToPrivacy = false, nested = false }: {
   entryId: string;
+  /** Drawn inside `SettingsNested`, where a row has no icon of its own. */
+  nested?: boolean;
   /** Offers a jump to the Privacy & AI copy while no key is saved. */
   linkToPrivacy?: boolean;
 }): React.ReactElement {
@@ -88,8 +90,8 @@ export function FrankiTokenRows({ entryId, linkToPrivacy = false }: {
     <>
       <SettingsRow
         entryId={entryId}
-        icon="key-outline"
-        iconColor={account.hasToken ? colors.accent : undefined}
+        icon={nested ? undefined : 'key-outline'}
+        iconColor={nested || !account.hasToken ? undefined : colors.accent}
         label="Status key"
         hint={tokenHint(account.hasToken, account.snapshot, account.refreshing)}
         alwaysShowHint
@@ -135,8 +137,8 @@ export function FrankiTokenRows({ entryId, linkToPrivacy = false }: {
         <>
           <View style={styles.sep} />
           <SettingsRow
-            icon="alert-circle-outline"
-            iconColor={colors.red}
+            icon={nested ? undefined : 'alert-circle-outline'}
+            iconColor={nested ? undefined : colors.red}
             label={problemText(account.problem, account.problemDetail)}
             labelColor={colors.redText}
           />

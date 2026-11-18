@@ -35,6 +35,7 @@ import { RAIN_TAG_MM, type MoodContextSources } from '../../utils/moodContextSou
 import { formatRain, rainUnitFor, type RainUnit } from '../../utils/rainUnits';
 import { MoodEventTagsSheet } from '../../components/MoodEventTagsSheet';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
@@ -565,11 +566,9 @@ export function HealthSettings() {
             />
           </View>
           {healthCategory && (
-            <>
-              <View style={styles.sep} />
+            <SettingsNested>
               <SettingsRow
                 entryId="healthTodayRows"
-                icon="list-outline"
                 label="Readings shown"
                 tight
               />
@@ -594,7 +593,7 @@ export function HealthSettings() {
                   })}
                 />
               </View>
-            </>
+            </SettingsNested>
           )}
         </>
       )}
@@ -808,10 +807,9 @@ export function HealthSettings() {
             tight={shortNightNoteEnabled || moodContextSources.shortNight}
           />
           {(shortNightNoteEnabled || moodContextSources.shortNight) && (
-            <>
+            <SettingsNested>
               <SettingsRow
                 entryId="shortNightThreshold"
-                icon="time-outline"
                 label="Short night threshold"
                 tight
               />
@@ -827,7 +825,7 @@ export function HealthSettings() {
                   describeValue={n => (n === null ? '' : formatSleepDuration(n))}
                 />
               </View>
-            </>
+            </SettingsNested>
           )}
         </>
       )}
