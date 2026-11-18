@@ -85,7 +85,7 @@ import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type Deliverab
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { activeChainStep, chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
-import { isAnsweredByRecord, recordGlyph, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
+import { isAnsweredByRecord, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
 import { dictationSupported } from '../utils/speechSupport';
 import { offerBlockStart } from '../utils/blockOfferAccept';
 import { offersBlockStart } from '../utils/blockOfferTasks';
@@ -3798,7 +3798,7 @@ const TaskItemRow = React.memo(function TaskItem({
           {!completing && !isNegative && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
-          {!completing && !completionLocked && (asksOnComplete || reviewProjectId) && !recordLog && !reviewOpensLink && !mealSlotChooseSource && (
+          {!completing && !completionLocked && (asksOnComplete || reviewProjectId || recordLog) && !reviewOpensLink && !mealSlotChooseSource && (
             // xs like the lock, not sm like the repeat: a "?" is tall where
             // the repeat glyph is wide and short, so the same nominal size
             // fills far more of a 20pt box and reads as crowded. Shared with
@@ -3817,12 +3817,6 @@ const TaskItemRow = React.memo(function TaskItem({
             // opens, so the box wears that link's glyph and the button below
             // steps aside, the same as a record task's box.
             <Ionicons name={linkIconFor(rowLink) as never} size={iconSize.xs} color={colors.accentText} />
-          )}
-          {!completing && !completionLocked && recordLog && (
-            // The entry's own glyph in place of the "?", so the box is the
-            // button that opens the sheet and the row needs no second one at
-            // its trailing edge (see the link button below, which skips it).
-            <Ionicons name={recordGlyph(task) ?? 'help'} size={iconSize.xs} color={colors.accentText} />
           )}
           {!completing && !completionLocked && offersMealLog && (
             // A different glyph from "?" on purpose — see
@@ -4902,7 +4896,7 @@ const TaskItemRow = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && rowLink && rowLink !== peopleLink && !(recordLog && rowLink === recordLog) && !reviewOpensLink && (
+      {!selectionMode && showActions && rowLink && rowLink !== peopleLink && !reviewOpensLink && (
         <TouchableOpacity
           activeOpacity={interaction.activeOpacity}
           onPress={() => handleOpenLink()}
