@@ -12,7 +12,6 @@ import {
   deloadBlockerFor,
   dropsTimeOfDayOnMove,
   isDateAnchored,
-  keepsPlaceOnToday,
   pullForwardChoice,
   scheduleMoveUpdates,
 } from '../utils/taskMoves';
@@ -170,40 +169,6 @@ describe('dropsTimeOfDayOnMove', () => {
   it('is false for a repeating task or a dated series, whose time of day belongs to the schedule', () => {
     expect(dropsTimeOfDayOnMove(task({ recurrenceType: 'daily' }))).toBe(false);
     expect(dropsTimeOfDayOnMove(task({ seriesId: 's1' }))).toBe(false);
-  });
-});
-
-describe('keepsPlaceOnToday', () => {
-  const noon = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).toISOString();
-  const repeating = (over: Partial<Task> = {}) => task({ recurrenceType: 'weekly', ...over });
-
-  beforeEach(() => { jest.useFakeTimers().setSystemTime(new Date(2026, 10, 17, 19, 7)); });
-  afterEach(() => jest.useRealTimers());
-
-  it('dates a dateless repeating task today when its time of day is cleared, so it is not left with nothing placing it on Today', () => {
-    expect(keepsPlaceOnToday(repeating(), [])).toEqual({ dueDate: noon(new Date(2026, 10, 17)) });
-  });
-
-  it('counts the early hours as the day before, like every other day pick', () => {
-    jest.setSystemTime(new Date(2026, 10, 18, 2, 0));
-    expect(keepsPlaceOnToday(repeating(), [], '04:00')).toEqual({ dueDate: noon(new Date(2026, 10, 17)) });
-  });
-
-  it('does nothing while a time of day is still set', () => {
-    expect(keepsPlaceOnToday(repeating(), ['evening'])).toEqual({});
-  });
-
-  it('does nothing for a task that has another date signal', () => {
-    expect(keepsPlaceOnToday(repeating({ dueDate: '2026-11-15T12:00:00.000Z' }), [])).toEqual({});
-    expect(keepsPlaceOnToday(repeating({ deferUntil: '2026-11-20T12:00:00.000Z' }), [])).toEqual({});
-    expect(keepsPlaceOnToday(repeating({ windowStart: '09:00' }), [])).toEqual({});
-  });
-
-  it('does nothing for a one-off, a project task, a negative habit or a finished task', () => {
-    expect(keepsPlaceOnToday(task(), [])).toEqual({});
-    expect(keepsPlaceOnToday(repeating({ projectId: 'p1' }), [])).toEqual({});
-    expect(keepsPlaceOnToday(repeating({ polarity: 'negative' }), [])).toEqual({});
-    expect(keepsPlaceOnToday(repeating({ completed: true }), [])).toEqual({});
   });
 });
 

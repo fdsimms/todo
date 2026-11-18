@@ -63,7 +63,7 @@ import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatT
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
 import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
 import type { NegativeHold } from '../utils/negativeHabits';
-import { dropsTimeOfDayOnMove, keepsPlaceOnToday, scheduleMoveUpdates } from '../utils/taskMoves';
+import { dropsTimeOfDayOnMove, scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { formatDuration, formatStopwatch } from '../utils/effort';
@@ -6119,13 +6119,7 @@ const TaskItemRow = React.memo(function TaskItem({
             // caller; the comments explaining the three arms moved with it.
             // A pull forward on a repeating task asks first whether the rest of
             // the schedule stays put or counts from here (confirmScheduleMove).
-            // Clearing the time of day on a dateless repeating task would leave
-            // it nothing to sit on Today by, so it is dated today instead.
-            const baseUpdates = {
-              ...scheduleMoveUpdates(task, date, undefined, { restartSchedule }),
-              timeSegments: segs,
-              ...(date ? {} : keepsPlaceOnToday(task, segs)),
-            };
+            const baseUpdates = { ...scheduleMoveUpdates(task, date, undefined, { restartSchedule }), timeSegments: segs };
             const picked = date ? getTaskDayStart(date) : null;
             // Pinning is for today's block specifically — moving the task off
             // the day it was sitting on means it no longer belongs there, so a
