@@ -10,6 +10,8 @@ import {
   experimentNoticeDayKey,
   experimentRefusal,
   experimentResult,
+  startedAtFor,
+  startedAtRefusal,
   experimentSpan,
   experimentStatus,
   experimentSummary,
@@ -44,6 +46,7 @@ function experiment(over: Partial<Experiment> & { start?: string; end?: string }
     startDate: over.startDate ?? noon(over.start ?? '2026-11-01'),
     endDate: over.endDate ?? noon(over.end ?? '2026-11-14'),
     days: over.days ?? null,
+    startedAt: over.startedAt ?? null,
     symptoms: over.symptoms ?? [],
     note: over.note ?? null,
     createdAt: over.createdAt ?? '2026-10-01T09:00:00',
@@ -189,6 +192,47 @@ describe('experimentResult: mood', () => {
       ...run('2026-11-01', 3, (_, k) => log(k, 4)),
     ];
     expect(experimentResult(e, logs, '2026-11-20').mood).toBeNull();
+  });
+
+  it('leaves out entries logged on the first day before it was started', () => {
+    const started = experiment({ startedAt: '2026-11-01T18:00:00' });
+    const morning = { ...log('2026-11-01', 2), loggedAt: '2026-11-01T09:00:00' };
+    const evening = { ...log('2026-11-01', 4), loggedAt: '2026-11-01T20:00:00' };
+    const r = experimentResult(started, [morning, evening], '2026-11-01');
+    expect(r.loggedDaysDuring).toBe(1);
+    expect(experimentResult(started, [morning], '2026-11-01').loggedDaysDuring).toBe(0);
+    // With no recorded moment, the whole first day counts.
+    expect(experimentResult(experiment(), [morning], '2026-11-01').loggedDaysDuring).toBe(1);
+  });
+
+  it('keeps a symptom\u2019s first-logged day even when that entry came before the start', () => {
+    const started = experiment({ startedAt: '2026-11-01T18:00:00', symptoms: ['Headache'] });
+    const before = [...run('2026-10-18', 13, (_, k) => log(k, 3, [{ name: 'Headache', severity: 2 }]))];
+    const early = { ...log('2026-11-01', 3, [{ name: 'Headache', severity: 2 }]), loggedAt: '2026-11-01T09:00:00' };
+    const r = experimentResult(started, [...before, early], '2026-11-01');
+    expect(r.picked[0].firstLoggedKey).toBe('2026-10-18');
+    expect(r.picked[0].during.loggedDays).toBe(0);
+  });
+
+  it('startedAtRefusal accepts the first day, forgetting, and refuses anything else', () => {
+    const dayOf = (d: Date) => format(d, 'yyyy-MM-dd');
+    const start = noon('2026-11-01');
+    expect(startedAtRefusal(start, null, dayOf)).toBeNull();
+    expect(startedAtRefusal(start, new Date('2026-11-01T18:00'), dayOf)).toBeNull();
+    expect(startedAtRefusal(start, new Date('2026-11-02T09:00'), dayOf)).toMatch(/first day, 2026-11-01/);
+    expect(startedAtRefusal(null, new Date('2026-11-01T18:00'), dayOf)).toMatch(/has not started/);
+    expect(startedAtRefusal(start, new Date(NaN), dayOf)).toMatch(/not a time/);
+  });
+
+  it('startedAtFor records the moment only for a start today', () => {
+    const now = new Date(2026, 10, 18, 15);
+    expect(startedAtFor(new Date(2026, 10, 18, 12), now, new Date(2026, 10, 18))).toBe(now.toISOString());
+    expect(startedAtFor(new Date(2026, 10, 15, 12), now, new Date(2026, 10, 18))).toBeNull();
+  });
+
+  it('counts only days with a mood in the captions, not symptom-only days', () => {
+    const r = experimentResult(e, [log('2026-11-01', 3), log('2026-11-02', null, [{ name: 'Headache', severity: 1 }])], '2026-11-02');
+    expect(r.loggedDaysDuring).toBe(1);
   });
 
   it('reads nothing for one that hasn’t started', () => {

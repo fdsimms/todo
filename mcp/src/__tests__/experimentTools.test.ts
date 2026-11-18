@@ -92,6 +92,27 @@ describe('the experiment tools', () => {
     expect(() => updateExperiment(replica, 'nope', { label: 'x' })).toThrow(/No experiment with id nope/);
   });
 
+  it('sets, shows and forgets the time it started, and refuses one off its first day', () => {
+    const { experiment } = addExperiment(replica, { label: 'Magnesium', startDate: '2026-09-01', endDate: '2026-09-14' });
+    expect(experiment.startedAt).toBeUndefined();
+    const set = updateExperiment(replica, experiment.id, { startedAt: '2026-09-01T18:30' }).experiment;
+    expect(set.startedAt).toBe('2026-09-01T18:30');
+    expect(replica.experiments()[0].startedAt).toBe(new Date('2026-09-01T18:30').toISOString());
+    // An edit that leaves the first day alone keeps it.
+    expect(updateExperiment(replica, experiment.id, { endDate: '2026-09-20' }).experiment.startedAt).toBe('2026-09-01T18:30');
+    expect(() => updateExperiment(replica, experiment.id, { startedAt: '2026-09-02T09:00' })).toThrow(/first day, 2026-09-01/);
+    expect(() => updateExperiment(replica, experiment.id, { startedAt: 'yesterday evening' })).toThrow(/YYYY-MM-DDTHH:MM/);
+    // Moving the first day drops it, since it described the old one.
+    expect(updateExperiment(replica, experiment.id, { startDate: '2026-09-02' }).experiment.startedAt).toBeUndefined();
+    updateExperiment(replica, experiment.id, { startedAt: '2026-09-02T07:15' });
+    expect(updateExperiment(replica, experiment.id, { startedAt: null }).experiment.startedAt).toBeUndefined();
+  });
+
+  it('refuses a start time for one that has not started', () => {
+    const { experiment } = addExperiment(replica, { label: 'Zinc', planned: true });
+    expect(() => updateExperiment(replica, experiment.id, { startedAt: '2026-09-01T18:30' })).toThrow(/has not started/);
+  });
+
   it('deletes one and hands back what it removed', () => {
     const { experiment } = addExperiment(replica, { label: 'No dairy' });
     expect(deleteExperiment(replica, experiment.id).removed).toEqual({ id: experiment.id, label: 'No dairy' });

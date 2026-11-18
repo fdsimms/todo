@@ -69,6 +69,35 @@ export function experimentDayKey(iso: string): string {
   return dayKeyOf(new Date(iso));
 }
 
+/**
+ * The moment an experiment starting on `startDate` really began: now, when
+ * that day is today. A backdated start has no moment to record (null), and the
+ * whole day counts. `today` is the logical today.
+ */
+export function startedAtFor(startDate: Date, now: Date, today: Date): string | null {
+  return dayKeyOf(startDate) === dayKeyOf(today) ? now.toISOString() : null;
+}
+
+/**
+ * Why a start moment can't be set, or null. It must belong to a started
+ * experiment and fall on its first day (as the logical day, so a 1 AM dose is
+ * the day before), the only day it can separate earlier entries from later ones.
+ */
+export function startedAtRefusal(
+  startDate: string | null,
+  startedAt: Date | null,
+  logicalDayKeyOf: (date: Date) => string,
+): string | null {
+  if (startedAt === null) return null;
+  if (Number.isNaN(startedAt.getTime())) return 'startedAt: that is not a time I can read.';
+  if (startDate === null) return 'That experiment has not started, so it has no start time to set.';
+  const firstDay = experimentDayKey(startDate);
+  if (logicalDayKeyOf(startedAt) !== firstDay) {
+    return `startedAt: the start time has to be on the experiment’s first day, ${firstDay}.`;
+  }
+  return null;
+}
+
 /** The experiment's days, and the baseline it is read against. Every bound is inclusive. */
 export interface ExperimentSpan {
   startKey: string;
@@ -212,7 +241,7 @@ export interface ExperimentResult {
   span: ExperimentSpan | null;
   /** The last day read: the end, or today while it's running. Null before it starts. */
   readToKey: string | null;
-  /** Days with any entry in each stretch, for the captions. */
+  /** Days with a mood rating in each stretch, for the captions (a day with only symptoms isn't counted). */
   loggedDaysBefore: number;
   loggedDaysDuring: number;
   /** Null until both stretches have enough days with a mood. */
@@ -301,7 +330,15 @@ export function experimentResult(
     return { status, span: null, readToKey: null, loggedDaysBefore: 0, loggedDaysDuring: 0, mood: null, picked: [], others: [] };
   }
   const readToKey = status === 'upcoming' ? null : (status === 'finished' ? span.endKey : todayKey);
-  const { loggedDays, worst, firstLogged, lastName } = indexLogs(logs);
+  // Entries logged on the first day before the experiment was started came
+  // before it, so they are in neither stretch. A symptom's first-logged day
+  // still reads every entry: it says when the person began recording it.
+  const startedMs = experiment.startedAt ? new Date(experiment.startedAt).getTime() : null;
+  const counted = startedMs === null
+    ? logs
+    : logs.filter(l => l.dayKey !== span.startKey || new Date(l.loggedAt).getTime() >= startedMs);
+  const { firstLogged, lastName } = indexLogs(logs);
+  const { loggedDays, worst } = indexLogs(counted);
 
   const allDays = [...loggedDays].sort();
   // The baseline ends before today too, for an experiment whose start is
@@ -309,8 +346,8 @@ export function experimentResult(
   const beforeDays = allDays.filter(d => inRange(d, span.baselineFromKey, span.baselineToKey) && d <= todayKey);
   const duringDays = readToKey === null ? [] : allDays.filter(d => inRange(d, span.startKey, readToKey));
 
-  const moodsBefore = beforeDays.map(d => dayMoodAverage(logs, d)).filter((m): m is number => m !== null);
-  const moodsDuring = duringDays.map(d => dayMoodAverage(logs, d)).filter((m): m is number => m !== null);
+  const moodsBefore = beforeDays.map(d => dayMoodAverage(counted, d)).filter((m): m is number => m !== null);
+  const moodsDuring = duringDays.map(d => dayMoodAverage(counted, d)).filter((m): m is number => m !== null);
   const mood = moodsBefore.length >= MIN_CONTRAST_DAYS
     && moodsDuring.length >= MIN_CONTRAST_DAYS
     && moodsBefore.length + moodsDuring.length >= MIN_PAIRED_DAYS
@@ -354,8 +391,8 @@ export function experimentResult(
     status,
     span,
     readToKey,
-    loggedDaysBefore: beforeDays.length,
-    loggedDaysDuring: duringDays.length,
+    loggedDaysBefore: moodsBefore.length,
+    loggedDaysDuring: moodsDuring.length,
     mood,
     picked,
     others,
