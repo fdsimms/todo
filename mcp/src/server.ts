@@ -1427,7 +1427,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     // so looking at a change does not ask for the approval the change does.
     server.tool(
       'preview_change',
-      'Shows what a write tool would change, in plain words, without changing anything. Pass the write tool\'s name and the arguments you would give it (no apply). Returns willDo and a confirmToken. Show the person willDo and wait for their yes, then call confirm_change with the confirmToken and willDo repeated exactly.',
+      'Shows what a write tool would change, in plain words, without changing anything. Pass the write tool\'s name and the arguments you would give it (no apply). Returns willDo and a confirmToken. Write willDo in your reply to the person (not only in a tool call) and wait for their yes, then call confirm_change with the confirmToken and willDo repeated exactly.',
       {
         tool: z.string().describe('The name of a write tool, such as update_task or complete_task.'),
         arguments: z.record(z.unknown()).optional().describe('The arguments you would pass that tool.'),
