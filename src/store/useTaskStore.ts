@@ -184,15 +184,19 @@ import {
   frankiDailyTitle,
   frankiGoalSourceId,
   frankiGoalTitle,
+  frankiReadModeOf,
   frankiReadSourceId,
+  frankiReadSpentToday,
+  frankiReadTaskLanguage,
   frankiReadTitle,
   frankiReviewSourceId,
   frankiReviewTitle,
   frankiTaskDayKey,
   frankiTaskKind,
+  plannedFrankiReadLanguages,
   wantsFrankiDailyTask,
   wantsFrankiGoalTask,
-  wantsFrankiReadTask,
+  withFrankiReadSpent,
 } from '../utils/frankiTasks';
 import { minutesStudiedToday } from '../utils/frankiStudy';
 import { decideReviewWave, reviewHeldUntil, reviewHoldFields } from '../utils/reviewQueue';
@@ -9563,7 +9567,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   /**
    * The Franki tasks. The reviews task is WaniKani's rule for rule
-   * (`src/utils/reviewQueue.ts`); the Read & Listen task's rules are in
+   * (`src/utils/reviewQueue.ts`); the Read & Listen tasks' rules are in
    * `src/utils/frankiTasks.ts`. This reads the last snapshot, applies them and
    * writes. It never fetches: `useFrankiSync` reads the server and calls this
    * when the read lands, and the background run does the same. The launch and
@@ -9734,14 +9738,39 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
-    // ==== Read & Listen ====
-    dayTask({
-      sourceId: frankiReadSourceId(todayKey),
-      wanted: settings.frankiReadTasks,
-      wants: wantsFrankiReadTask({ snapshot, todayKey, dayStart, lastDayKey: settings.frankiReadLastDayKey }),
-      title: frankiReadTitle(snapshot.readListen),
-      link: FRANKI_READ_URL,
-      spend: () => settings.setFrankiReadLastDayKey(todayKey),
+    // ==== Read & Listen: a task for each language chosen for the day ====
+    // One written before there was a task per language (`read:<day>`, no
+    // language) is replaced by its language's own.
+    liveOf('read')
+      .filter(task => frankiReadTaskLanguage(task) === null)
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+    const readModes = settings.frankiReadLanguages;
+    const readPlanned = plannedFrankiReadLanguages({
+      snapshot,
+      dayStart,
+      modes: readModes,
+      rotateCount: settings.frankiReadRotateCount,
+      spentToday: frankiReadSpentToday(settings.frankiReadSpent, todayKey),
+    });
+    // The languages the read lists, and any that still have a task of their own here.
+    const readLanguages = new Map(snapshot.readLanguages.map(l => [l.language, l]));
+    const readCodes = new Set([
+      ...readLanguages.keys(),
+      ...liveOf('read').flatMap(task => frankiReadTaskLanguage(task) ?? []),
+    ]);
+    readCodes.forEach(code => {
+      dayTask({
+        sourceId: frankiReadSourceId(todayKey, code),
+        wanted: settings.frankiReadTasks && frankiReadModeOf(readModes, code) !== 'off',
+        wants: readPlanned.includes(code),
+        title: frankiReadTitle(readLanguages.get(code) ?? { name: code }),
+        link: FRANKI_READ_URL,
+        // The latest record, since another language's task may have spent just before this one.
+        spend: () => {
+          const latest = useSettingsStore.getState();
+          latest.setFrankiReadSpent(withFrankiReadSpent(latest.frankiReadSpent, todayKey, code));
+        },
+      });
     });
 
     // ==== the study-time goal ====

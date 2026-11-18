@@ -3,6 +3,7 @@ import { Animated, View, Alert, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { dbClearGtinLookups, dbCountGtinLookups } from '../../db/database';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { keyEditToSave } from '../../utils/secureApiKey';
 import { useAppLockStore } from '../../store/useAppLockStore';
 import { selectSyncsAnywhere, useSyncStore } from '../../store/useSyncStore';
 import { useJournalLockStore } from '../../store/useJournalLockStore';
@@ -116,6 +117,12 @@ export function PrivacyAiSettings() {
       ]
     );
   }, []);
+
+  // Only text that differs from the key the app holds is an edit; see keyEditToSave.
+  const commitKey = (draft: string, current: string, save: (key: string) => void) => {
+    const next = keyEditToSave(draft, current);
+    if (next !== null) save(next);
+  };
 
   useFocusEffect(
     React.useCallback(() => {
@@ -291,7 +298,7 @@ export function PrivacyAiSettings() {
             style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
             value={apiKeyDraft}
             onChangeText={setApiKeyDraft}
-            onBlur={() => setAnthropicApiKey(apiKeyDraft.trim())}
+            onBlur={() => commitKey(apiKeyDraft, useSettingsStore.getState().anthropicApiKey, setAnthropicApiKey)}
             placeholder="e.g. sk-ant-..."
             placeholderTextColor={colors.textTertiary}
             secureTextEntry
@@ -464,7 +471,7 @@ export function PrivacyAiSettings() {
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                   value={fdcDraft}
                   onChangeText={setFdcDraft}
-                  onBlur={() => setFdcApiKey(fdcDraft.trim())}
+                  onBlur={() => commitKey(fdcDraft, useSettingsStore.getState().fdcApiKey, setFdcApiKey)}
                   placeholder="e.g. a1b2c3..."
                   placeholderTextColor={colors.textTertiary}
                   secureTextEntry
@@ -488,7 +495,7 @@ export function PrivacyAiSettings() {
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                   value={goUpcDraft}
                   onChangeText={setGoUpcDraft}
-                  onBlur={() => setGoUpcApiKey(goUpcDraft.trim())}
+                  onBlur={() => commitKey(goUpcDraft, useSettingsStore.getState().goUpcApiKey, setGoUpcApiKey)}
                   placeholder="e.g. a1b2c3..."
                   placeholderTextColor={colors.textTertiary}
                   secureTextEntry

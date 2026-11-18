@@ -25,6 +25,12 @@ const statusBody = {
   decks: [{ name: 'Languages::Polski', reviews: 30, learning: 2 }],
   day_ends_at: new Date(2026, 9, 19, 4).toISOString(),
   read_and_listen: { language: 'pl', name: 'Polish', waiting: 3, last_read_at: null },
+  read_and_listen_languages: [
+    { language: 'th', name: 'Thai', waiting: 2, last_read_at: later(8) },
+    { language: 'pl', name: 'Polish', waiting: 3, last_read_at: null },
+    { language: 'th', name: 'Thai again', waiting: 9, last_read_at: null },
+    { name: 'No code', waiting: 1 },
+  ],
   study_days: [
     { starts_at: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answer_seconds: 600, reading_seconds: 120 },
     { starts_at: new Date(2026, 9, 17, 4).toISOString(), cards: 12, answer_seconds: 300, reading_seconds: 0 },
@@ -40,6 +46,11 @@ describe('frankiSnapshotFrom', () => {
       upcoming: [{ at: later(10, 45), count: 1 }, { at: later(11, 5), count: 3 }],
       dayEndsAt: new Date(2026, 9, 19, 4).toISOString(),
       readListen: { language: 'pl', name: 'Polish', waiting: 3, lastReadAt: null },
+      // In the server's order, one entry a language, and nothing without a language.
+      readLanguages: [
+        { language: 'th', name: 'Thai', waiting: 2, lastReadAt: later(8) },
+        { language: 'pl', name: 'Polish', waiting: 3, lastReadAt: null },
+      ],
       frankiNew: 8,
       studyDays: [
         { startsAt: new Date(2026, 9, 17, 4).toISOString(), cards: 12, answerSeconds: 300, readingSeconds: 0 },
@@ -55,10 +66,20 @@ describe('frankiSnapshotFrom', () => {
     expect(frankiSnapshotFrom({ ...statusBody, franki: null }, FETCHED)?.frankiNew).toBeNull();
   });
 
-  it('reads a server without Read & Listen, and refuses a body that is not a status', () => {
-    const { read_and_listen: _unused, ...withoutReading } = statusBody;
+  it('takes the language being read as the only one from a server that does not list them', () => {
+    const { read_and_listen_languages: _unused, ...older } = statusBody;
     void _unused;
+    expect(frankiSnapshotFrom(older, FETCHED)?.readLanguages).toEqual([
+      { language: 'pl', name: 'Polish', waiting: 3, lastReadAt: null },
+    ]);
+  });
+
+  it('reads a server without Read & Listen, and refuses a body that is not a status', () => {
+    const { read_and_listen: _a, read_and_listen_languages: _b, ...withoutReading } = statusBody;
+    void _a;
+    void _b;
     expect(frankiSnapshotFrom(withoutReading, FETCHED)?.readListen).toBeNull();
+    expect(frankiSnapshotFrom(withoutReading, FETCHED)?.readLanguages).toEqual([]);
     expect(frankiSnapshotFrom({ detail: 'Wrong passphrase or status key.' }, FETCHED)).toBeNull();
     expect(frankiSnapshotFrom(null, FETCHED)).toBeNull();
   });

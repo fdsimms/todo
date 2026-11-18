@@ -376,7 +376,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
-              label={selected.size > 0 ? `Add ${selected.size}` : 'Add'}
+              label={selected.size > 0 ? `Add ${selected.size} to list` : 'Add to list'}
               onPress={handleAdd}
               disabled={selected.size === 0}
               minWidth={72}

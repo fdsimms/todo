@@ -123,7 +123,7 @@ import { bumpChipUses, parseChipUses, type ChipUses } from '../utils/chipUses';
 import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, clearTabSlot, DEFAULT_TAB_ROUTES, EMPTY_MENU_ARRANGEMENT, parseMenuArrangement, type MenuArrangement } from '../utils/navHubs';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
-import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
+import { API_KEY_SECURE_KEY, ensureReadableWhileLocked, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveLockedReadableKey } from '../utils/secureApiKey';
 import {
   AI_FEATURE_IDS, currentAiModelId, defaultAiFeatureConfig,
   type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
@@ -196,6 +196,13 @@ import {
 } from '../utils/wanikaniTasks';
 import {
   clampFrankiGoalMinutes,
+  clampFrankiRotateCount,
+  FRANKI_ROTATE_COUNT_DEFAULT,
+  parseFrankiReadModes,
+  parseFrankiReadSpent,
+  type FrankiReadModes,
+  type FrankiReadMode,
+  type FrankiReadSpent,
   clampFrankiReviewThreshold,
   FRANKI_REVIEW_MODE_DEFAULT,
   FRANKI_REVIEW_THRESHOLD_DEFAULT,
@@ -2019,11 +2026,14 @@ interface SettingsStore {
   wanikaniReviewState: WaniKaniReviewState;
   wanikaniLessonsLastDayKey: string | null;
   // The Franki tasks (src/utils/frankiTasks.ts): a reviews task from the
-  // person's flashcards and a daily Read & Listen task, read from their own
+  // person's flashcards and a daily Read & Listen task for each language, read from their own
   // Franki server. Off by default, and inert without the server's address and
   // its status key in the keychain (useFrankiStore). The reviews task is once
   // a day or in waves (frankiReviewMode); the threshold is how many cards a
-  // wave needs. frankiReadTasks is the Read & Listen task's own switch,
+  // wave needs. frankiReadTasks is the Read & Listen tasks' own switch,
+  // frankiReadLanguages how each language is handled (Every day, Rotate or
+  // Off; a language not listed rotates) and frankiReadRotateCount how many
+  // rotating languages get a task a day,
   // frankiGoalMinutes the study-time goal (null for none) and
   // frankiCountReading whether Read & Listen time counts toward it. The review
   // state and the day marks are this device's own and never sync.
@@ -2033,7 +2043,9 @@ interface SettingsStore {
   frankiReviewThreshold: number;
   frankiReadTasks: boolean;
   frankiReviewState: ReviewWaveState;
-  frankiReadLastDayKey: string | null;
+  frankiReadLanguages: FrankiReadModes;
+  frankiReadRotateCount: number;
+  frankiReadSpent: FrankiReadSpent | null;
   frankiReviewMode: FrankiReviewMode;
   frankiGoalMinutes: number | null;
   frankiCountReading: boolean;
@@ -2658,7 +2670,9 @@ interface SettingsStore {
   setFrankiReviewThreshold: (count: number) => void;
   setFrankiReadTasks: (on: boolean) => void;
   setFrankiReviewState: (state: ReviewWaveState) => void;
-  setFrankiReadLastDayKey: (key: string | null) => void;
+  setFrankiReadLanguageMode: (language: string, mode: FrankiReadMode) => void;
+  setFrankiReadRotateCount: (count: number) => void;
+  setFrankiReadSpent: (spent: FrankiReadSpent) => void;
   setFrankiReviewMode: (mode: FrankiReviewMode) => void;
   setFrankiGoalMinutes: (minutes: number | null) => void;
   setFrankiCountReading: (on: boolean) => void;
@@ -3498,7 +3512,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   frankiReviewThreshold: FRANKI_REVIEW_THRESHOLD_DEFAULT,
   frankiReadTasks: true,
   frankiReviewState: REVIEW_WAVE_INITIAL_STATE,
-  frankiReadLastDayKey: null,
+  frankiReadLanguages: {},
+  frankiReadRotateCount: FRANKI_ROTATE_COUNT_DEFAULT,
+  frankiReadSpent: null,
   frankiReviewMode: FRANKI_REVIEW_MODE_DEFAULT,
   frankiGoalMinutes: null,
   frankiCountReading: true,
@@ -4109,10 +4125,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const storedFrankiThreshold = parseInt(dbGetSetting('frankiReviewThreshold') ?? '', 10);
     const frankiReviewThreshold = clampFrankiReviewThreshold(
       Number.isFinite(storedFrankiThreshold) ? storedFrankiThreshold : undefined);
-    // On unless switched off: the Read & Listen task is half of what the switch above turns on.
+    // On unless switched off: the Read & Listen tasks are half of what the switch above turns on.
     const frankiReadTasks = dbGetSetting('frankiReadTasks') !== 'false';
     const frankiReviewState = parseReviewWaveState(dbGetSetting('frankiReviewState'));
-    const frankiReadLastDayKey = dbGetSetting('frankiReadLastDayKey') || null;
+    const frankiReadLanguages = parseFrankiReadModes(dbGetSetting('frankiReadLanguages'));
+    const storedFrankiRotate = parseInt(dbGetSetting('frankiReadRotateCount') ?? '', 10);
+    const frankiReadRotateCount = clampFrankiRotateCount(Number.isFinite(storedFrankiRotate) ? storedFrankiRotate : undefined);
+    const frankiReadSpent = parseFrankiReadSpent(dbGetSetting('frankiReadSpent'));
     const frankiReviewMode = parseFrankiReviewMode(dbGetSetting('frankiReviewMode'));
     const storedFrankiGoal = parseInt(dbGetSetting('frankiGoalMinutes') ?? '', 10);
     const frankiGoalMinutes = clampFrankiGoalMinutes(Number.isFinite(storedFrankiGoal) ? storedFrankiGoal : null);
@@ -4423,7 +4442,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       frankiDailyLastDayKey,
       frankiGoalLastDayKey,
       frankiGoalMinutes,
-      frankiReadLastDayKey,
+      frankiReadLanguages,
+      frankiReadRotateCount,
+      frankiReadSpent,
       frankiReadTasks,
       frankiReviewMode,
       frankiReviewState,
@@ -4698,6 +4719,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
    * A key the user typed while this was in flight wins: the write has already
    * gone to the keychain, and clobbering it with the value we set out to read
    * would silently undo it.
+   *
+   * A read on a locked phone comes back empty, so this runs again each time the
+   * app comes to the front while a key is empty (`useRetrySecrets`).
    */
   async initializeSecrets() {
     const anthropicApiKey = await loadAnthropicApiKey();
@@ -4708,6 +4732,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set(state => (state.fdcApiKey ? {} : { fdcApiKey }));
     const goUpcApiKey = await loadSecureKey(GO_UPC_KEY_SECURE_KEY);
     set(state => (state.goUpcApiKey ? {} : { goUpcApiKey }));
+    // Keys saved before they were readable while locked are moved, one at a
+    // time (each is a delete and an add), and only ones that were read here.
+    for (const [name, value] of [
+      [API_KEY_SECURE_KEY, anthropicApiKey],
+      [FDC_KEY_SECURE_KEY, fdcApiKey],
+      [GO_UPC_KEY_SECURE_KEY, goUpcApiKey],
+    ] as const) {
+      if (value) await ensureReadableWhileLocked(name);
+    }
   },
 
   setDayResetTime(time: string) {
@@ -4897,12 +4930,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   setFdcApiKey(key: string) {
     set({ fdcApiKey: key });
-    saveSecureKey(FDC_KEY_SECURE_KEY, key);
+    saveLockedReadableKey(FDC_KEY_SECURE_KEY, key);
   },
 
   setGoUpcApiKey(key: string) {
     set({ goUpcApiKey: key });
-    saveSecureKey(GO_UPC_KEY_SECURE_KEY, key);
+    saveLockedReadableKey(GO_UPC_KEY_SECURE_KEY, key);
   },
 
   setAiFeatureConfig(id: AiFeatureId, patch: Partial<AiFeatureConfig>) {
@@ -5698,9 +5731,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ frankiReviewState: state });
   },
 
-  setFrankiReadLastDayKey(key: string | null) {
-    dbSetSetting('frankiReadLastDayKey', key ?? '');
-    set({ frankiReadLastDayKey: key });
+  setFrankiReadLanguageMode(language: string, mode: FrankiReadMode) {
+    const next = { ...get().frankiReadLanguages, [language]: mode };
+    dbSetSetting('frankiReadLanguages', JSON.stringify(next));
+    set({ frankiReadLanguages: next });
+  },
+
+  setFrankiReadRotateCount(count: number) {
+    const clamped = clampFrankiRotateCount(count);
+    dbSetSetting('frankiReadRotateCount', String(clamped));
+    set({ frankiReadRotateCount: clamped });
+  },
+
+  setFrankiReadSpent(spent: FrankiReadSpent) {
+    dbSetSetting('frankiReadSpent', JSON.stringify(spent));
+    set({ frankiReadSpent: spent });
   },
 
   setFrankiReviewMode(mode: FrankiReviewMode) {

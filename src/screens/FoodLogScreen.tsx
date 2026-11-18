@@ -84,6 +84,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
 import { EstimateAmountSheet } from '../components/EstimateAmountSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
+import { ScanLookupSheet } from '../components/ScanLookupSheet';
 import type { LabelSubject } from '../components/LabelSubjectSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { EmptyNote } from '../components/EmptyNote';
@@ -304,6 +305,9 @@ export function FoodLogScreen() {
   const [reviewing, setReviewing] = useState<PendingEstimate | null>(null);
   const reviewingAt = useMemo(() => (reviewing ? new Date(reviewing.atISO) : null), [reviewing]);
   const [scanOpen, setScanOpen] = useState(false);
+  // Look up a barcode: reads a product and saves nothing unless asked. Its own
+  // sheet, not the log's scan, so it never opens the add sheet or asks an amount.
+  const [lookupOpen, setLookupOpen] = useState(false);
   // A barcode the add sheet's camera already read, handed to the scanner as its first row.
   const [scanCode, setScanCode] = useState<string | null>(null);
   // The food whose nutrition label is being photographed from the picker.
@@ -1132,11 +1136,12 @@ export function FoodLogScreen() {
     ...(fastRunning ? [] : [{ key: 'fast', label: 'Start a fast', icon: 'timer-outline', onPress: () => openFastSheet(null) } as ActionMenuAction]),
     ...(anyFastEnded ? [{ key: 'pastFasts', label: 'Past fasts', icon: 'time-outline', onPress: () => setFastHistoryOpen(true) } as ActionMenuAction] : []),
     { key: 'saved', label: 'Saved meals', icon: 'bookmark-outline', onPress: () => setBrowseMealsOpen(true) },
+    ...(scanShown ? [{ key: 'lookup', label: 'Look up a barcode', icon: 'barcode-outline', onPress: () => setLookupOpen(true) } as ActionMenuAction] : []),
     { key: 'targets', label: 'Nutrition settings', icon: 'flag-outline', onPress: () => setTargetsOpen(true) },
     ...(totalCount > 0
       ? [{ key: 'export', label: 'Export food log', icon: 'share-outline', onPress: () => setExportOpen(true) } as ActionMenuAction]
       : []),
-  ], [totalCount, fastRunning, anyFastEnded, openFastSheet]);
+  ], [totalCount, fastRunning, anyFastEnded, openFastSheet, scanShown]);
 
   const plannedMenuActions = useMemo<ActionMenuAction[]>(() => {
     const coverage = plannedMenuCoverage;
@@ -1847,6 +1852,9 @@ export function FoodLogScreen() {
         anchor={optionsAnchor}
         onClose={() => setOptionsOpen(false)}
       />
+      <LazySheet open={lookupOpen}>
+        <ScanLookupSheet visible={lookupOpen} onClose={() => setLookupOpen(false)} />
+      </LazySheet>
       <LazySheet open={fastSheetOpen}>
         <FastSheet
           visible={fastSheetOpen}

@@ -235,7 +235,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, LIST_CONTENT_WIDTH, DASHBOARD_CONTENT_WIDTH, DASHBOARD_TWO_COLUMN_MIN_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, +12 more
 - `src/utils/frankiStudy.ts` — FrankiStudyDay, studySeconds, studyDayAt, minutesStudiedToday, minutesReadToday, formatStudyMinutes, FrankiWeekBar, FrankiWeek, frankiWeek, describeFrankiWeek
-- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiSnapshot, FrankiReviewMode, FRANKI_REVIEW_MODE_DEFAULT, parseFrankiReviewMode, FRANKI_GOAL_MINUTES_DEFAULT, FRANKI_GOAL_MINUTES_MIN, FRANKI_GOAL_MINUTES_MAX, FRANKI_GOAL_MINUTES_STEP, clampFrankiGoalMinutes, +25 more
+- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiReadMode, FRANKI_READ_MODE_DEFAULT, FrankiReadModes, FRANKI_ROTATE_COUNT_DEFAULT, FRANKI_ROTATE_COUNT_MIN, FRANKI_ROTATE_COUNT_MAX, clampFrankiRotateCount, parseFrankiReadModes, frankiReadModeOf, +39 more
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering, offerFollowUpWriteBack
@@ -561,7 +561,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedLinks.ts` — SAVED_LINKS_KEY, SAVED_LINKS_LIMIT, SavedLink, savedLinkKey, parseSavedLinks, isChipUrl, canSaveLink, suggestLinkName, addSavedLink, renameSavedLink, +7 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, withoutMultipleLead, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, +8 more
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, savedPlaceNameTaken, +8 more
+- `src/utils/scanCatalogWrite.ts` — ScanCatalogActions, ScanCatalogDraft, ScanCatalogProduct, saveScanToCatalog
 - `src/utils/scanItemType.ts` — itemTypeFromCategory, cleanModelItemType, catalogSpellingOf, ItemTypeMove, itemTypeMoveFor
+- `src/utils/scanLookup.ts` — describeScanPanel
 - `src/utils/scanPermission.ts` — scanPermissionMessage
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, servingMillilitres, packSizeGrams, servingsIn, packageChoices, packageFractions, servingDescription, hasServingMl, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, variantFor, ScanBoxSource, scanBoxChoice, scannedItemFor, +11 more
@@ -582,7 +584,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/searchSnippet.ts` — HiddenSnippet, SNIPPET_CONTEXT, hiddenSnippet
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
-- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, FRANKI_TOKEN_SECURE_KEY, +4 more
+- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, FRANKI_TOKEN_SECURE_KEY, +8 more
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsActiveRows.ts` — SettingsGateState, SyncGateState, activeSettingsEntryIds, searchableSettingsEntries
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
@@ -919,6 +921,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useReminderWithholdSync.ts` — useReminderWithholdSync
 - `src/hooks/useRestKey.ts` — useRestKey
 - `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
+- `src/hooks/useRetrySecrets.ts` — useRetrySecrets
 - `src/hooks/useRouteArrival.ts` — useRouteArrival
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useSavedLinks.ts` — useSavedLinks, SavedLinks

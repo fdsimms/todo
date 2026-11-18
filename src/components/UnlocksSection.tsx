@@ -39,6 +39,7 @@ import {
 } from '../utils/rewardUnlocks';
 import { BUTTON_LABEL } from '../copy/shared';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { CountStepper } from './CountStepper';
 import { EmptyNote } from './EmptyNote';
 import { FormField } from './FormField';
@@ -129,6 +130,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
   const stackTitles = useTaskGroupStore(useShallow(s => Object.fromEntries(s.groups.map(g => [g.id, g.title]))));
   const projectTitles = useProjectStore(useShallow(s => Object.fromEntries(s.projects.map(p => [p.id, p.title]))));
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
+  // The code field in the editor starts hidden each time the editor opens.
+  const [pinFieldShown, setPinFieldShown] = useState(false);
+  useEffect(() => { setPinFieldShown(false); }, [draft]);
   const editingId = draft?.mode === 'edit' ? draft.id : null;
   const set = <K extends keyof UnlockDraft>(key: K, value: UnlockDraft[K]) => setFields(f => ({ ...f, [key]: value }));
   const openDraft = (next: Draft, from?: RewardUnlock) => {
@@ -404,17 +408,29 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
             <Text style={styles.pinValue} accessibilityLabel="Code, hidden while locked">• • • •</Text>
           </FormField>
         ) : (
-        <FormField label="Code" hint="Such as a console’s parental controls PIN. Shown only while it’s unlocked.">
-        <TextField
-          style={styles.input}
-          value={fields.pin ?? ''}
-          onChangeText={t => set('pin', t || null)}
-          placeholder="e.g. 4817"
-          placeholderTextColor={colors.textTertiary}
-          autoCorrect={false}
-          autoCapitalize="none"
-          accessibilityLabel="Code, such as a parental controls PIN"
-        />
+        <FormField label="Code" hint="Such as a console’s parental controls PIN. Hidden until you show it.">
+        <View style={styles.pinEdit}>
+          <TextField
+            style={[styles.input, styles.pinEditInput]}
+            value={fields.pin ?? ''}
+            onChangeText={t => set('pin', t || null)}
+            placeholder="e.g. 4817"
+            placeholderTextColor={colors.textTertiary}
+            autoCorrect={false}
+            autoCapitalize="none"
+            secureTextEntry={!pinFieldShown}
+            textContentType="none"
+            autoComplete="off"
+            accessibilityLabel="Code, such as a parental controls PIN"
+          />
+          <InlineAction
+            label={pinFieldShown ? 'Hide' : 'Show'}
+            variant="neutral"
+            onPress={() => { haptics.tap(); setPinFieldShown(v => !v); }}
+            accessibilityLabel={pinFieldShown ? 'Hide the code' : 'Show the code'}
+          />
+          {fields.pin ? <CopyCodeButton code={fields.pin} label="Copy the code" /> : null}
+        </View>
         </FormField>
         )}
 
@@ -499,6 +515,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
               }}
               accessibilityLabel={shown ? `Hide the code for ${unlock.title}` : `Show the code for ${unlock.title}`}
             />
+            <CopyCodeButton code={unlock.pin} label={`Copy the code for ${unlock.title}`} />
           </View>
         )}
 
@@ -583,6 +600,19 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
 }
 
 /** The line under an unlock's name. */
+/** Copies a saved code and shows "Copied" for a moment. */
+function CopyCodeButton({ code, label }: { code: string; label: string }) {
+  const { copy, copied } = useCopyToClipboard();
+  return (
+    <InlineAction
+      label={copied ? 'Copied' : 'Copy'}
+      variant="neutral"
+      onPress={() => copy(code)}
+      accessibilityLabel={label}
+    />
+  );
+}
+
 function subtitleFor(unlock: RewardUnlock, status: UnlockStatus, running: boolean, timeToken: string): string {
   if (status.kind === 'free') return status.reason === 'weekend' ? 'Unlocked all day: it’s the weekend' : 'Unlocked all day: you’re on vacation';
   if (running && unlock.playStartedAt) return `Playing since ${format(new Date(unlock.playStartedAt), timeToken)}`;
@@ -639,6 +669,8 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSunken,
     },
     pinText: { flex: 1 },
+    pinEdit: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    pinEditInput: { flex: 1 },
     pinValue: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, letterSpacing: 4, fontVariant: ['tabular-nums'] },
     timerBlock: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
     // A hero number, which is one of the things a literal font size is for.
