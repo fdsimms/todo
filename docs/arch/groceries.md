@@ -188,6 +188,13 @@ chips are scoped to the item's own products**, deliberately: brands don't genera
   says what came home, not what you're shopping for, and the preference shows on the list row
   every time the plain item is re-added. Letting a scan fill in a preference nobody had set yet
   meant almost every branded item ended up asking for whatever was scanned first.
+- **Look up a barcode is a fourth scan context that only reads** (`BarcodeScanSheet`'s
+  `context="lookup"`, mounted as `ScanLookupSheet` on Groceries, Pantry and the food log). Rows
+  arrive unchecked (`CONTEXT_COPY.startsChecked`), Close never asks to discard, and Save writes the
+  catalog half of `ScanToLogFlow.handleScanApply` and nothing else: no list row, no pantry
+  stock, no food entry, no price (so the sheet hides the shelf-price row there rather than offer
+  an input the save drops). The nutrition line on each row is `describeScanPanel`, which names
+  only figures the source stated.
 - **`productStrict` is one flag, and the product picks the granularity.** A product carrying a
   brand and no variant ("any Arnold's") is the brand-level rule; one carrying both is the
   product-level rule its predecessor `brandStrict` couldn't express. Default false, and nothing

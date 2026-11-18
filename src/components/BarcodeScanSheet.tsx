@@ -60,6 +60,7 @@ import { formatGtin, normalizeGtin } from '../utils/gtin';
 import { scanPermissionMessage } from '../utils/scanPermission';
 import { productsForItem } from '../utils/groceryProduct';
 import { nutritionFor, panelLooksWrongFor } from '../utils/foodNutrition';
+import { describeScanPanel } from '../utils/scanLookup';
 import { priceNearBarcode } from '../utils/shelfLabel';
 import { formatPrice } from '../utils/groceryPrice';
 import { pluNameFor } from '../utils/plu';
@@ -195,7 +196,7 @@ interface ScanRow extends ScannedItem {
 }
 
 /** Which screen is scanning. See `Props.context`. */
-export type ScanContext = 'shopping' | 'pantry' | 'log';
+export type ScanContext = 'shopping' | 'pantry' | 'log' | 'lookup';
 
 /**
  * Everything that reads differently per context, in one place.
@@ -226,6 +227,14 @@ const CONTEXT_COPY: Record<ScanContext, {
    */
   manualActionLabel: string;
   manualActionIcon: 'add' | 'search';
+  /**
+   * Whether a row that resolved is checked on arrival. Every context but
+   * `'lookup'` is recording the scan, so a read row is going in unless unchecked;
+   * a lookup is only looking, so nothing is written until a row is checked.
+   */
+  startsChecked: boolean;
+  /** The left header button. A lookup has nothing to discard, so it only closes. */
+  cancelLabel: string;
 }> = {
   shopping: {
     // The confirm is named for what it does: the scanned rows go in the cart
@@ -241,6 +250,8 @@ const CONTEXT_COPY: Record<ScanContext, {
     manualPlaceholder: 'e.g. bananas, or a barcode number',
     manualActionLabel: 'Add',
     manualActionIcon: 'add',
+    startsChecked: true,
+    cancelLabel: BUTTON_LABEL.cancel,
   },
   pantry: {
     title: 'Scan into pantry',
@@ -253,6 +264,8 @@ const CONTEXT_COPY: Record<ScanContext, {
     manualPlaceholder: 'e.g. bananas, or a barcode number',
     manualActionLabel: 'Add',
     manualActionIcon: 'add',
+    startsChecked: true,
+    cancelLabel: BUTTON_LABEL.cancel,
   },
   log: {
     title: 'Scan to log',
@@ -265,6 +278,22 @@ const CONTEXT_COPY: Record<ScanContext, {
     manualPlaceholder: 'Type a barcode number',
     manualActionLabel: 'Look up',
     manualActionIcon: 'search',
+    startsChecked: true,
+    cancelLabel: BUTTON_LABEL.cancel,
+  },
+  lookup: {
+    title: 'Look up barcode',
+    emptySubtitle: 'Scan a barcode to see what it is and its nutrition. Nothing is saved unless you check it and tap Save.',
+    // What Save does is only ever the catalog: the item, its brand and its
+    // barcode. It never touches the shopping list, the pantry or the food log.
+    confirmLabel: BUTTON_LABEL.save,
+    freezer: false,
+    typedNames: false,
+    manualPlaceholder: 'Type a barcode number',
+    manualActionLabel: 'Look up',
+    manualActionIcon: 'search',
+    startsChecked: false,
+    cancelLabel: 'Close',
   },
 };
 
@@ -280,7 +309,10 @@ interface Props {
    * `'pantry'` (from `KitchenScreen`) frames it in terms of the catalog,
    * since scanning there never touches `onList` at all — see `onApply`;
    * `'log'` (from `FoodLogScreen`) frames it in terms of what was eaten, and
-   * likewise never touches the list.
+   * likewise never touches the list. `'lookup'` (from all three screens'
+   * "Look up a barcode" action) only reads: rows arrive unchecked, and Save
+   * writes the checked ones to the catalog and nowhere else, which is the same
+   * sequence `ScanLookupSheet` makes.
    *
    * **The wording lives in `CONTEXT_COPY` rather than in a ternary per
    * sentence.** It was four `context === 'pantry' ? … : …` branches, which is
@@ -563,7 +595,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
             hasNutrition: !!record.nutrition,
             scanPanel: record.nutrition,
             pending: false,
-            included: true,
+            included: CONTEXT_COPY[context].startsChecked,
             typeSuggestion: fromCategory
               ? { name: catalogSpellingOf(fromCategory, catalogNames), source: 'category' }
               : undefined,
@@ -587,7 +619,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
             });
           }
         } else if (known) {
-          patchRow(key, { pending: false, name: known.name, included: true, error: null });
+          patchRow(key, { pending: false, name: known.name, included: CONTEXT_COPY[context].startsChecked, error: null });
         } else {
           patchRow(key, { pending: false });
           setOpenKey(key);
@@ -595,14 +627,14 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       } catch (e) {
         if (!openings.isCurrent(opening)) return;
         const known = remembered();
-        if (known) patchRow(key, { pending: false, name: known.name, included: true, error: null });
+        if (known) patchRow(key, { pending: false, name: known.name, included: CONTEXT_COPY[context].startsChecked, error: null });
         else {
           patchRow(key, { pending: false, error: describeLookupError(e) });
           setOpenKey(key);
         }
       }
     },
-    [patchRow, gtinItemFor, openings]
+    [patchRow, gtinItemFor, openings, context]
   );
 
   /**
@@ -711,7 +743,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       setManualError(
         entry.reason === 'digits'
           ? 'That isn\u2019t a valid barcode. Check the digits.'
-          : 'Barcodes only here. To log a food by name, close this and add it from the food log.'
+          : context === 'lookup'
+            ? 'Barcodes only here. Type the number printed under the bars.'
+            : 'Barcodes only here. To log a food by name, close this and add it from the food log.'
       );
       haptics.error();
       return;
@@ -1114,8 +1148,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   // A scan session — rows read off the camera, or a name/barcode typed by
   // hand — is nowhere until Add, so a swipe-down would otherwise drop it
   // with no dialog.
+  //
+  // A lookup is the exception: what it holds is something read, not a pending
+  // write, so closing loses nothing and never asks.
   const handleCancel = () => {
-    const dirty = rows.length > 0 || manual.trim() !== '';
+    const dirty = context !== 'lookup' && (rows.length > 0 || manual.trim() !== '');
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
@@ -1125,7 +1162,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       <View style={styles.root}>
         <SheetHeader
           title={CONTEXT_COPY[context].title}
-          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          left={<SheetHeaderButton label={CONTEXT_COPY[context].cancelLabel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={
             <SheetHeaderButton
               label={applying ? 'Working\u2026' : CONTEXT_COPY[context].confirmLabel}
@@ -1156,6 +1193,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
               <Text style={styles.summaryText}>{rows.length} SCANNED</Text>
               {needNutritionCount > 0 && (
                 <Text style={styles.summaryWarn}>{needNutritionCount} NEED NUTRITION</Text>
+              )}
+              {context === 'lookup' && (
+                <Text style={styles.summaryText}>
+                  {includedCount > 0 ? `${includedCount} TO SAVE` : 'NOTHING SAVED YET'}
+                </Text>
               )}
               {/* nothing else: the rows say what they need */}
             </View>
@@ -1215,7 +1257,22 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       ? { tone: 'warn', label: 'Needs a name' }
                       : needsNutrition
                         ? { tone: 'warn', label: 'Add nutrition' }
-                        : null;
+                        // Only a lookup: seeing it is already known is the answer
+                        // it was asked for, and saving it again would change nothing.
+                        : context === 'lookup' && rowItem
+                          ? { tone: 'neutral', label: 'In catalog' }
+                          : null;
+                // A lookup is for reading what the product is, so its row also says
+                // what it holds: the stated figures, or that it states none.
+                // Taken from the catalog when the scan resolved to an item that
+                // already has a panel, same precedence `needsNutritionFor` reads.
+                const lookupBox = rowItem
+                  ? productsForItem(rowItem.id, itemProducts).find(b => b.id === gtinProductFor(row.gtin)?.id)
+                  : undefined;
+                const nutritionLine = context === 'lookup' && !row.pending && !row.error && !needsName
+                  ? describeScanPanel(row.scanPanel ?? (rowItem ? nutritionFor(rowItem, lookupBox) : null))
+                    ?? 'No nutrition facts stated'
+                  : null;
                 const open = openKey === row.key && !row.pending;
                 const toggleOpen = () => setOpenKey(current => (current === row.key ? null : row.key));
                 const subject = shownName.trim() || row.label || 'this scan';
@@ -1322,6 +1379,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       <View style={styles.rowText}>
                         <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
                         {!!subtitle && <Text style={styles.rowSubtitle} numberOfLines={2}>{subtitle}</Text>}
+                        {!!nutritionLine && <Text style={styles.rowSubtitle} numberOfLines={2}>{nutritionLine}</Text>}
                       </View>
                       {row.pending ? (
                         <ActivityIndicator size="small" color={colors.textTertiary} />
@@ -1450,7 +1508,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           code: two labels overlapping in frame is the case
                           nothing offline can rule out, and this is where it
                           gets caught. */}
-                      {row.priceMinor !== null && (
+                      {row.priceMinor !== null && context !== 'lookup' && (
                         <View style={styles.captionRow}>
                           <Text style={styles.rowCaption}>
                             {formatPrice(row.priceMinor, currencySymbol)} on the shelf label

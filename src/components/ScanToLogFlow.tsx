@@ -6,6 +6,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { nutritionFor } from '../utils/foodNutrition';
 import { describeProduct, describeProductOfItem } from '../utils/groceryProduct';
 import type { ScannedGtinLink } from '../utils/scanResolve';
+import { saveScanToCatalog } from '../utils/scanCatalogWrite';
 import { SheetFlow } from './SheetFlow';
 import { BarcodeScanSheet, type ScanProductDraft } from './BarcodeScanSheet';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
@@ -158,10 +159,10 @@ export function ScanToLogFlow({
    * The catalog write is deliberately `ensureCatalogItem` rather than
    * `addByName`, which is the same restraint `KitchenScreen`'s own scan handler
    * takes: eating something is not a plan to buy it, so a row minted here
-   * arrives off the list. Everything else is `GroceryScreen.handleScanApply`'s
-   * sequence and has to stay in that order — the boxes first, so a link finds
-   * one, and `linkScannedGtins` last, since that is what carries the label
-   * panel off the barcode cache and onto the box this is about to read.
+   * arrives off the list. The writes, and the order they have to stay in, are
+   * `saveScanToCatalog`'s: the boxes first so a link finds one, and
+   * `linkScannedGtins` last, since that is what carries the label panel off the
+   * barcode cache and onto the box this is about to read.
    *
    * A row whose panel is still null after all that is dropped rather than
    * offered: a source that stated no nutrients has nothing a total could use,
@@ -175,42 +176,34 @@ export function ScanToLogFlow({
     gtinLinks: ScannedGtinLink[]
   ) => {
     // Keyed rather than looked up in `items`, which is a render snapshot: a row
-    // `ensureCatalogItem` mints two lines down isn't in it, and reading through
-    // it would silently drop exactly the rows this scan just created.
+    // `saveScanToCatalog` mints below isn't in it, and reading through it would
+    // silently drop exactly the rows this scan just created.
     const resolved = new Map<string, GroceryItem>();
     for (const id of itemIds) {
       const item = items.find(i => i.id === id);
       if (item) resolved.set(id, item);
     }
-    const mintedLinks: ScannedGtinLink[] = [];
     const packSizes = new Map<string, string>();
     for (const product of products) {
       if (product.packSize) packSizes.set(product.itemId, product.packSize);
     }
+    // Recorded, never preferred: logging a packet you ate is not choosing it for
+    // the next shop. The order of the writes is `saveScanToCatalog`'s.
+    const { minted, mintedLinks } = saveScanToCatalog(
+      { ensureCatalogItem, addProduct, linkScannedGtins },
+      toAdd,
+      products,
+      gtinLinks
+    );
+    // In draft order, as the rows were scanned, so the amount sheet lists them the same way.
+    const mintedByDraft = new Map(minted.map(({ draft, item }) => [draft, item]));
     for (const draft of toAdd) {
-      const item = draft.existingItemId
-        ? items.find(i => i.id === draft.existingItemId)
-        // Same flag `GroceryScreen.handleScanApply` passes, for the same row:
-        // a name the sheet proposed and nobody edited is the source's words.
-        : ensureCatalogItem(draft.name, { nameFromScan: draft.nameFromScan === true });
+      const item = mintedByDraft.get(draft)
+        ?? (draft.existingItemId ? items.find(i => i.id === draft.existingItemId) : undefined);
       if (!item) continue;
-      const id = item.id;
-      resolved.set(id, item);
-      if (draft.quantity) packSizes.set(id, draft.quantity);
-      if (!draft.existingItemId && draft.gtin) {
-        // A variant only when the name was shortened; an untouched name already
-        // holds every word the source had.
-        const variant = draft.variant ?? null;
-        if (draft.brand || variant) addProduct(id, { brand: draft.brand, variant }, { promote: false });
-        mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant });
-      }
+      resolved.set(item.id, item);
+      if (draft.quantity) packSizes.set(item.id, draft.quantity);
     }
-    // Recorded, never preferred, for GroceryScreen.handleScanApply's reason:
-    // logging a packet you ate is not choosing it for the next shop.
-    for (const product of products) {
-      addProduct(product.itemId, { brand: product.brand, variant: product.variant }, { promote: false });
-    }
-    linkScannedGtins([...gtinLinks, ...mintedLinks]);
 
     const gtinByItemId = new Map(
       [...gtinLinks, ...mintedLinks].map(link => [link.itemId, link.gtin])
