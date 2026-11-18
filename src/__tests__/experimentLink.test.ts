@@ -9,7 +9,7 @@ import {
 
 const noon = (key: string) => new Date(`${key}T12:00:00`).toISOString();
 const exp = (over: Partial<Experiment> = {}): Experiment => ({
-  id: 'e1', label: 'CoQ10', startDate: null, endDate: null, days: 28, symptoms: [], note: null, createdAt: '2026-10-01T09:00:00', ...over,
+  id: 'e1', label: 'CoQ10', startDate: null, endDate: null, days: 28, startedAt: null, symptoms: [], note: null, createdAt: '2026-10-01T09:00:00', ...over,
 });
 const task = (over: Partial<{ experimentId: string | null; completed: boolean; archived: boolean }> = {}) => ({
   experimentId: 'e1', completed: false, archived: false, ...over,

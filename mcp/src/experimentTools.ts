@@ -33,7 +33,7 @@ import { createTask, completeTask } from './tools';
 import type { GetTaskResult } from './tools';
 import type { TaskFieldsInput } from './taskFields';
 
-const RULES = 'An experiment with status "planned" has no start date yet: it is defined (what, which symptoms) and compared with nothing until start_experiment gives it one, today or an earlier day the person really began. Its baseline is then the same number of days before that real start. One with no end (days left out of start_experiment) runs until stop_experiment, and while it runs its baseline is as long as it has run so far, so its comparison shifts each day; stopping fixes it. Each experiment is compared with the same number of days just before it started, counting only days the person logged. Mood and each symptom need at least 3 logged days on each side and 10 in all before a comparison is given. The symptoms under "watched" were picked in advance as what it was meant to change; "otherSymptoms" were not, and with several compared one can differ by chance, so say so if you mention one. A difference between the two stretches does not show the experiment caused it, and "alsoChanged" names other changes in the same days. Experiments reach this server only with Include health logs turned on for the sync server on the phone, so an empty list is not evidence that none exist.';
+const RULES = 'An experiment with status "planned" has no start date yet: it is defined (what, which symptoms) and compared with nothing until start_experiment gives it one, today or an earlier day the person really began. Its baseline is then the same number of days before that real start. One with no end (days left out of start_experiment) runs until stop_experiment, and while it runs its baseline is as long as it has run so far, so its comparison shifts each day; stopping fixes it. One started today records the moment it began, and entries logged earlier that day count as neither before nor during. Each experiment is compared with the same number of days just before it started, counting only days the person logged. Mood and each symptom need at least 3 logged days on each side and 10 in all before a comparison is given. The symptoms under "watched" were picked in advance as what it was meant to change; "otherSymptoms" were not, and with several compared one can differ by chance, so say so if you mention one. A difference between the two stretches does not show the experiment caused it, and "alsoChanged" names other changes in the same days. Experiments reach this server only with Include health logs turned on for the sync server on the phone, so an empty list is not evidence that none exist.';
 
 function round(n: number): number {
   return Math.round(n * 10) / 10;
@@ -73,6 +73,8 @@ export interface ExperimentRow {
   /** `YYYY-MM-DD`, the first and last day, both included. */
   startDate?: string;
   endDate?: string;
+  /** When it was started on its first day, local `YYYY-MM-DDTHH:MM`. Entries logged earlier that day are in neither stretch. Absent: the whole first day counts. */
+  startedAt?: string;
   status: 'planned' | 'upcoming' | 'running' | 'finished';
   /** "12 of 28" while it runs, or just "12" when it has no end. */
   day?: string;
@@ -91,6 +93,13 @@ export interface ExperimentRow {
   alsoChanged: { kind: 'milestone' | 'experiment'; label: string; date: string }[];
 }
 
+/** A start moment as local `YYYY-MM-DDTHH:MM`, the form `update_experiment` takes. */
+function localMoment(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function row(replica: Replica, e: Experiment, all: readonly Experiment[]): ExperimentRow {
   const todayKey = replica.todayKey();
   const result = experimentResult(e, replica.allMoodLogs(), todayKey);
@@ -103,6 +112,7 @@ function row(replica: Replica, e: Experiment, all: readonly Experiment[]): Exper
     id: e.id,
     label: e.label,
     ...(span ? { startDate: span.startKey, ...(e.endDate ? { endDate: span.endKey } : {}) } : {}),
+    ...(e.startedAt ? { startedAt: localMoment(e.startedAt) } : {}),
     status,
     ...(status === 'running' ? { day: describeProgress(progress) } : {}),
     ...(status === 'planned' ? { plannedDays: e.days } : {}),
@@ -271,10 +281,21 @@ export interface ExperimentPatchInput {
   expected?: string | null;
   /** The planned length, for one not started yet. */
   days?: number;
+  /** When it really began, `YYYY-MM-DDTHH:MM` in the person's time zone (or a full instant), on its first day. Null forgets it. */
+  startedAt?: string | null;
+}
+
+/** A start moment as a date: a local `YYYY-MM-DDTHH:MM` or a full instant, or a refusal naming the field. */
+function momentOf(value: string): Date {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
+    throw new Error(`startedAt: "${value}" is not a time I can read. Use YYYY-MM-DDTHH:MM, such as 2026-11-17T18:30.`);
+  }
+  return date;
 }
 export function updateExperiment(replica: Replica, id: string, patch: ExperimentPatchInput): { experiment: ExperimentRow } {
   if (Object.values(patch).every(v => v === undefined)) {
-    throw new Error('Nothing to change: give a label, dates, symptoms, what is expected or the planned length.');
+    throw new Error('Nothing to change: give a label, dates, symptoms, what is expected, the planned length or the start time.');
   }
   const existing = replica.experiments().find(e => e.id === id);
   if (existing && !existing.startDate && patch.startDate !== undefined) {
@@ -290,6 +311,7 @@ export function updateExperiment(replica: Replica, id: string, patch: Experiment
     ...(patch.symptoms !== undefined ? { symptoms: patch.symptoms } : {}),
     ...(patch.expected !== undefined ? { note: patch.expected } : {}),
     ...(patch.days !== undefined ? { days: patch.days } : {}),
+    ...(patch.startedAt !== undefined ? { startedAt: patch.startedAt === null ? null : momentOf(patch.startedAt) } : {}),
   });
   return { experiment: row(replica, experiment, replica.experiments()) };
 }
