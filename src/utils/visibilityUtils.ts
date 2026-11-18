@@ -1068,22 +1068,20 @@ export function isInboxTask(task: Task): boolean {
 }
 
 // True when a task carries none of the signals that gate its day-to-day
-// visibility (dueDate, deferUntil, windowStart) — the fields isTaskVisible/
-// isTaskDeferred check to decide whether a task is "scheduled" at all.
-// isInboxTask is a subset of this: a bare inbox task has no date signal AND no
-// other organizing metadata either.
+// visibility (dueDate, deferUntil) — the fields isTaskVisible/isTaskDeferred
+// check to decide whether a task is "scheduled" at all. isInboxTask is a
+// subset of this: a bare inbox task has no date signal AND no other organizing
+// metadata either.
 //
-// **A time of day (`timeSegments`) is deliberately not a signal.** It says when
-// in a day a task shows, not which day, so a task with only "evening" had no
-// day and sat on Today every day by accident. Clearing that time of day (or
-// editing it on a repeating task) then dropped it to Unscheduled with nothing
-// saying why. A task is placed by a date; its time of day refines that date.
+// **A time of day (`timeSegments`) and a time window (`windowStart`, like
+// `windowEnd`) are deliberately not signals.** Each says when in a day a task
+// shows, not which day, so a task with only one had no day and sat on Today
+// every day by accident. Clearing that time then dropped it to Unscheduled
+// with nothing saying why. A task is placed by a date; its time refines that
+// date. It follows that a task with no date cannot expire either: there is no
+// day for its window to have closed on.
 export function hasNoDateSignal(task: Task): boolean {
-  return (
-    task.dueDate == null &&
-    task.deferUntil == null &&
-    task.windowStart == null
-  );
+  return task.dueDate == null && task.deferUntil == null;
 }
 
 // True when a task is a "someday" item: organized (category, tags, priority,
