@@ -97,7 +97,7 @@ import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
 import { DEFAULT_SUGGESTION_LIMIT, unusedFeatures } from './adoptionTools';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
-import { createConfirmTokens, describeEffects, type ConfirmTokens } from './confirmWrites';
+import { createConfirmTokens, describeEffects, withBatchId, type ConfirmTokens } from './confirmWrites';
 import { confirmByElicitation } from './elicitConfirm';
 import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
@@ -376,7 +376,9 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       return result;
     }
     // One confirmed write is one batch in Activity (UnattendedEntry.batchId).
-    const result = replica.withBatch(generateId(), fn);
+    const batchId = generateId();
+    confirmedBatches?.push(batchId);
+    const result = replica.withBatch(batchId, fn);
     const written = Date.now();
     await gate.afterWrite();
     noteWait('push', Date.now() - written);
@@ -386,6 +388,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   /** Set while a write tool is previewing; collects what the write would record in Activity. */
   let previewing: AgentLedgerEntry[] | null = null;
+  /** Set while confirm_change runs; collects the Activity batch ids the write made, for `withBatchId`. */
+  let confirmedBatches: string[] | null = null;
 
   server.tool(
     'get_settings',
@@ -1453,7 +1457,18 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         if (!taken.ok) return json({ error: taken.reason });
         const target = writes.get(taken.tool);
         if (!target) return json({ error: `${taken.tool} is no longer available. Preview again.` });
-        return target.cb({ ...taken.args, apply: true }, extra);
+        // The batch id rides on the result so the app can undo exactly this
+        // request (its Ask Claude sheet, through revertBatch).
+        confirmedBatches = [];
+        let out: Awaited<ReturnType<WriteCallback>>;
+        let batches: string[];
+        try {
+          out = await target.cb({ ...taken.args, apply: true }, extra);
+        } finally {
+          batches = confirmedBatches ?? [];
+          confirmedBatches = null;
+        }
+        return { ...out, content: out.content.map(c => (c.type === 'text' ? { ...c, text: withBatchId(c.text, batches) } : c)) };
       },
     );
   }

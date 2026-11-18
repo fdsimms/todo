@@ -1872,3 +1872,25 @@ The journal lock is the same.
 ## Editing a follow-up task over MCP
 
 A follow-up task is added by a repeating task's rule, and the next one starts from that rule's draft, not from the row. In the app an edit asks "this task or this and future tasks". `get_task` shows `addedByFollowUp` (with `ruleLive`), `update_task` takes `futureFollowUps` for the second answer, and the replica writes the changed fields into the rule through the same `followUpDraftAfterEdit` the store uses. The rule is a row of its own, so it gets its own Activity entry and revert. The replica never wrote a generator's estimate back (that write is in the store), so there is no `futureFollowUps` for rule-written tasks.
+
+## Ask Claude: the app as the connector's client
+
+The app has a chat of its own (`src/utils/askClaudeChat.ts`, `AskClaudeSheet`), so the person can
+ask for a change without going to the Claude app. It reuses this server whole rather than running
+any tool on the phone: each message goes to the Messages API with the MCP connector pointed at
+`<sync server>/mcp` and the write token, and Anthropic's backend calls the tools. Three things make
+that fit the rules above rather than bend them:
+
+- **The person confirms, never the model.** The request switches `confirm_change` off in the
+  toolset, so Claude can only preview. The sheet shows `willDo` with Confirm and Cancel, and a
+  Confirm is the phone calling `confirm_change` here directly (plain JSON-RPC `tools/call`; the
+  transport is stateless, so no `initialize` first). A token is not tied to the session that issued
+  it, which is what lets the phone spend one the connector was handed.
+- **`confirm_change` returns the Activity batch it made** (`batchId`, added by `withBatchId` in
+  `confirmWrites.ts`). The sheet's Undo runs `revertBatch` on that batch, the path Activity's "Undo
+  all" takes, after a sync has brought the batch to the phone.
+- **Cost is the tool list.** About 250 tools are around 130K tokens of definitions, so the request
+  defers them all behind tool search and loads only a few reads up front
+  (`ASK_CLAUDE_LOADED_TOOLS`). A tool whose description grows makes every deferred search result
+  that loads it dearer, not every request.
+

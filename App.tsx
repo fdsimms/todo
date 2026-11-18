@@ -10,6 +10,7 @@ import { AppLockGate } from './src/components/AppLockGate';
 import { KeyboardDoneAccessory } from './src/components/KeyboardDoneAccessory';
 import { FirstRunHost } from './src/components/FirstRunSheet';
 import { FlagCopyHost } from './src/components/FlagCopyHost';
+import { AskClaudeHost } from './src/components/AskClaudeHost';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useAlarmStore } from './src/store/useAlarmStore';
 import { useSavedFocusStore } from './src/store/useSavedFocusStore';
@@ -50,6 +51,7 @@ import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useWakeUpTaskSync } from './src/hooks/useWakeUpTaskSync';
 import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
 import { useFrankiSync } from './src/hooks/useFrankiSync';
+import { useAskClaudeStore } from './src/store/useAskClaudeStore';
 import { removeLegacyYnabToken } from './src/utils/secureApiKey';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
@@ -139,6 +141,9 @@ function AppContent() {
       {/* TEMPORARY dev tooling: flag copy mode's capture sheet. Remove before
           the app opens to real users (see CopyFlag). */}
       <FlagCopyHost />
+      {/* Ask Claude's chat. Here rather than on a screen because Today's
+          header and the side menu both open it. */}
+      <AskClaudeHost />
       {/* Inside ThemeProvider (it's a themed screen) and last, so its overlay
           sits above the navigator. */}
       <AppLockGate />
@@ -403,6 +408,8 @@ function AppRoot() {
   // is switched on with an address and a key).
   useFrankiSync();
   useEffect(() => { void removeLegacyYnabToken(); }, []);
+  // Whether Ask Claude has its server's write token, for its entry points.
+  useEffect(() => { void useAskClaudeStore.getState().initialize(); }, []);
   // Re-runs the event rule sweep when the calendar windows land (including the
   // wider one the "after the event" rules read) or the rules change.
   useEventTaskSync();

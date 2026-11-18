@@ -21,7 +21,7 @@ describe('aiFeaturesFor', () => {
   it('drops the kitchen features when the area is off', () => {
     expect(aiFeaturesFor(false).map(f => f.id))
       .toEqual([
-        'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'backfillSuggestions',
+        'askClaude', 'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'backfillSuggestions',
         'calendarImport', 'taskImport', 'nutritionLabelPhoto', 'workoutDraft',
       ]);
   });
@@ -44,7 +44,7 @@ describe('aiFeaturesFor', () => {
   it('composes the two gates rather than letting one override the other', () => {
     expect(aiFeaturesFor(false, true).map(f => f.id))
       .toEqual([
-        'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'backfillSuggestions',
+        'askClaude', 'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'backfillSuggestions',
         'nutritionLabelPhoto', 'workoutDraft',
       ]);
   });

@@ -506,7 +506,8 @@ Open-Meteo forecast and geocoding in `weatherLookup.ts`/`geocode.ts`, and Apple 
 travel estimates in `placeSearch.ts`/`travelTime.ts`). **A new call that needs no
 key ships with its own switch, or rides an existing one that already means "don't do this"**
 (the recipe page answers to Recipe import's own `aiFeatureConfig.recipeExtraction.enabled`). The
-Anthropic key unlocks `aiSuggestions.ts` and nothing else, and every fetch the user didn't trigger
+Anthropic key unlocks `aiSuggestions.ts` and `askClaudeCalls.ts` (Ask Claude, which sends its
+requests through `aiSuggestions`' own `callAnthropic`) and nothing else, and every fetch the user didn't trigger
 by a tap is behind a setting that ships off.
 
 `src/services/onDeviceModel.ts` runs a model and reaches nothing: Apple's on-device

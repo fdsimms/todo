@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, useWindowDimensions, PanResponder, StyleSheet, View } from 'react-native';
+import { useAskClaudeStore } from '../store/useAskClaudeStore';
 import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
@@ -168,6 +169,14 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, o
     onClose();
   };
 
+  // Same order as Settings: the drawer is gone before the chat's sheet opens.
+  const handleAskClaude = () => {
+    haptics.tap();
+    fastCloseRef.current = true;
+    pendingActionRef.current = () => useAskClaudeStore.getState().show();
+    onClose();
+  };
+
   // Same order as Settings: the drawer is gone before the row's screen opens.
   const handleSettingsEntry = (entryId: string) => {
     haptics.tap();
@@ -232,6 +241,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, o
             activeTab={activeTab}
             onNavigate={handleNavigate}
             onOpenSettings={handleSettings}
+            onOpenAskClaude={handleAskClaude}
             onOpenSettingsEntry={onOpenSettingsEntry ? handleSettingsEntry : undefined}
             onSearchEverything={onSearchEverything ? handleSearchEverything : undefined}
           />

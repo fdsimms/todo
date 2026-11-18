@@ -7,13 +7,13 @@ export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
   | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions'
-  | 'recipeNutritionEstimate' | 'workoutDraft' | 'scanItemType' | 'taskImport';
+  | 'recipeNutritionEstimate' | 'workoutDraft' | 'scanItemType' | 'taskImport' | 'askClaude';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
   'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
-  'recipeNutritionEstimate', 'workoutDraft', 'scanItemType', 'taskImport',
+  'recipeNutritionEstimate', 'workoutDraft', 'scanItemType', 'taskImport', 'askClaude',
 ];
 
 export type AiModelId = 'claude-haiku-5-5' | 'claude-sonnet-5-5' | 'claude-opus-5-5';
@@ -68,6 +68,13 @@ export interface AiFeatureMeta {
 }
 
 export const AI_FEATURES: AiFeatureMeta[] = [
+  {
+    id: 'askClaude',
+    label: 'Ask Claude',
+    // Its write token and what it needs are in the expanded row
+    // (`AskClaudeSettingsRows`); the switch alone does nothing without them.
+    hint: 'A chat that changes your tasks, lists and plans for you. You see each change and confirm it before it happens',
+  },
   {
     id: 'taskBreakdown',
     label: 'Task breakdown',
@@ -315,5 +322,11 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // from a closed frame (one common noun), and the answer is only a chip the
     // person taps, so a mediocre one costs a glance.
     scanItemType: { enabled: true, model: DEFAULT_AI_MODEL },
+    // Off by default: it is the one feature that sends what the person types
+    // and their app's data, through the MCP connector, to Anthropic as a matter
+    // of course, and it needs a token of their own server besides. The default
+    // model because every change it proposes is shown and confirmed before it
+    // is made, so a weaker read costs a Cancel, and a chat sends many requests.
+    askClaude: { enabled: false, model: DEFAULT_AI_MODEL },
   };
 }

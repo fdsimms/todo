@@ -141,6 +141,14 @@ export const WANIKANI_TOKEN_SECURE_KEY = 'wanikaniApiToken';
  * what's due and nothing else. Device-local for the WaniKani token's reason.
  */
 export const FRANKI_TOKEN_SECURE_KEY = 'frankiStatusToken';
+/**
+ * The write token of the person's own MCP server (`MCP_WRITE_TOKEN` in
+ * `mcp/`), for Ask Claude (`src/services/askClaudeCalls.ts`): it goes to
+ * Anthropic with each request so the connector can call the server, and to the
+ * server when the person taps Confirm. Device-local for the sync token's
+ * reason, and never readable while locked: nothing in the background uses it.
+ */
+export const MCP_WRITE_TOKEN_SECURE_KEY = 'mcpWriteToken';
 
 export async function loadSecureKey(name: string): Promise<string> {
   try {
