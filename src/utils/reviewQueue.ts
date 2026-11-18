@@ -24,10 +24,11 @@ import type { Task } from '../types';
  *   to zero; ticking with thirty left asks for thirty plus N.
  * - **Nothing here completes a task.** A queue read as empty makes the row
  *   ready and drops the count from its title. The tap stays a person's.
- * - **A held task can move or go; a surfaced one only changes its count.**
- *   The hold follows the forecast until it arrives (reviews done elsewhere in
- *   the meantime push it later or take it away). Once on Today it stays until
- *   somebody checks it off, so it can't vanish out from under them.
+ * - **A held task can move or go; a surfaced one changes its count, and goes
+ *   once the queue is under the number.** The hold follows the forecast until
+ *   it arrives (reviews done elsewhere in the meantime push it later or take
+ *   it away). Once on Today its count follows the queue, and it is taken away
+ *   if reviews done elsewhere leave fewer than the number.
  */
 
 /** One read of a queue: what was waiting when it landed, and what arrives after. */
@@ -179,8 +180,17 @@ export function decideReviewWave(input: {
 
   if (live) {
     const state = { ...input.state, openSourceId: live.sourceId };
-    // On Today already: only its count follows the queue.
     if (live.heldUntil === null || live.heldUntil.getTime() <= now.getTime()) {
+      // On Today already, and the queue has fallen under the number (reviews
+      // done elsewhere): it no longer qualifies, so it goes quietly. Not a
+      // close, so the baseline follows the queue down.
+      if (queueNow < threshold) {
+        return {
+          state: { baseline: Math.min(state.baseline, queueNow), openSourceId: null },
+          action: { type: 'drop' },
+        };
+      }
+      // Still over the number: only its count follows the queue.
       return { state, action: { type: 'write', sourceId: live.sourceId, count: queueNow, holdUntil: null } };
     }
     const dueAt = reviewQueueDueAt(queue, state.baseline, threshold, now);

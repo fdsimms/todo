@@ -39,10 +39,11 @@ import {
  * - **Nothing here completes a task.** A queue read as empty makes the row
  *   *ready* (`isWaniKaniTaskReady`) and drops the count from its title. The
  *   tap stays a person's, the rule `healthTarget.ts` opens with.
- * - **A held task can move or go; a surfaced one only changes its count.** The
- *   hold follows the forecast until it arrives (reviews done on the website
- *   in the meantime push it later or take it away). Once on Today it stays
- *   until somebody checks it off, so it can't vanish out from under them.
+ * - **A held task can move or go; a surfaced one changes its count, and goes
+ *   once the queue is under the number.** The hold follows the forecast until
+ *   it arrives (reviews done on the website in the meantime push it later or
+ *   take it away). Once on Today its count follows the queue, and it is taken
+ *   away if reviews done elsewhere leave fewer than the number.
  */
 
 /** The hour-by-hour shape of one read. `src/services/wanikani.ts` builds it. */
@@ -246,6 +247,14 @@ export function wantsWaniKaniLessonsTask(input: {
     if (snapshot.apprentice === null || snapshot.apprentice >= apprenticeCap) return false;
   }
   return true;
+}
+
+/**
+ * Whether a live lessons task no longer qualifies: Apprentice has reached the
+ * cap. Unread (null) is not over it, so a task stays until a read says so.
+ */
+export function isWaniKaniLessonsOverCap(snapshot: WaniKaniSnapshot, apprenticeCap: number | null): boolean {
+  return apprenticeCap !== null && snapshot.apprentice !== null && snapshot.apprentice >= apprenticeCap;
 }
 
 /**

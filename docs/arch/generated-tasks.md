@@ -2211,9 +2211,10 @@ charger would read "no token".
   left would bring a new one back on the next read. The device notices the close by its
   `openSourceId` no longer being live, which is why a create the reconcile refused (vacation)
   never records one.
-- **A held task follows the forecast; one on Today only changes its count.** Reviews done on the
-  website before the hour move the hold later (same source id) or drop the task. Once on Today it
-  stays until somebody checks it off, so it can't vanish out from under them. The held hour is this
+- **A held task follows the forecast; one on Today follows the queue.** Reviews done on the
+  website before the hour move the hold later (same source id) or drop the task. Once on Today its
+  count follows the queue, and it is dropped if the queue falls under `wanikaniReviewThreshold`
+  (a drop is not a close, so the baseline follows the queue down). The held hour is this
   source's own date, so moving it keeps the #1953 rule.
 - **Nothing completes it.** An empty queue drops the count from the title and gives the row the
   green ready ring (`isWaniKaniTaskReady`, read in `TaskItem`), the `healthTarget.ts` rule.
@@ -2222,7 +2223,8 @@ charger would read "no token".
   interprets). The task asks for that many, fewer if fewer are available, and its count follows the lessons done today (the
   assignments started since the logical day began). It is written only while Apprentice is under
   `wanikaniApprenticeCap`, and the day is spent by writing it, never by declining to, so a level-up
-  or a review session later in the day can still bring it. Yesterday's goes at the day's first read.
+  or a review session later in the day can still bring it. Apprentice is read for as long as the cap
+  is on, and a written task is deleted once it reaches the cap (the day stays spent). Yesterday's goes at the day's first read.
 - **A held task gives up its window once its hour has come.** A window gates every day, not just
   the first, so a reviews task left undone overnight would otherwise hide again until that hour
   the next day. That step needs no read, so `checkWaniKaniTasks` is also in `maintenancePasses.ts`

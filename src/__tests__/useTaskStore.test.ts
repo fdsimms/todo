@@ -7089,18 +7089,16 @@ describe('checkWaniKaniTasks', () => {
     expect(live('')).toHaveLength(0);
   });
 
-  it('keeps one task, its count following the queue, and drops the count at zero', () => {
+  it('keeps one task, its count following the queue, and removes it once the queue is under the number', () => {
     setSnapshot({ reviewsNow: 12 });
     check();
     setSnapshot({ reviewsNow: 20 });
     check();
     expect(live('reviews:')).toHaveLength(1);
     expect(live('reviews:')[0].title).toBe('WaniKani: 20 reviews');
-    setSnapshot({ reviewsNow: 0, upcoming: [] });
+    setSnapshot({ reviewsNow: 3, upcoming: [] });
     check();
-    expect(live('reviews:')).toHaveLength(1);
-    expect(live('reviews:')[0].title).toBe('WaniKani reviews');
-    expect(live('reviews:')[0].completed).toBe(false);
+    expect(live('reviews:')).toHaveLength(0);
   });
 
   it('moves a held task when reviews are done elsewhere, and drops it when the forecast never gets there', () => {
@@ -23609,12 +23607,12 @@ describe('checkFrankiTasks', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(0);
   });
 
-  it('keeps a task on Today and only follows the count down as cards are studied', () => {
+  it('removes a task on Today once studying leaves fewer cards than the number', () => {
     check();
+    expect(live('reviews:')).toHaveLength(1);
     setSnapshot({ reviewsNow: 0, upcoming: [] });
     check();
-    const [task] = live('reviews:');
-    expect(task.title).toBe('Franki reviews');
+    expect(live('reviews:')).toHaveLength(0);
   });
 
   it('writes nothing while switched off or on vacation', () => {
