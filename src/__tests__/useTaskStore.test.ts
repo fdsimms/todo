@@ -13871,8 +13871,8 @@ describe('expiredTasks', () => {
   it('returns non-subtask tasks whose time window has closed, sorted by sortOrder', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'a', sortOrder: 2, windowStart: '08:00', windowEnd: '13:00' }),
-        makeTask({ id: 'b', sortOrder: 1, windowStart: '08:00', windowEnd: '13:00' }),
+        makeTask({ id: 'a', sortOrder: 2, dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '08:00', windowEnd: '13:00' }),
+        makeTask({ id: 'b', sortOrder: 1, dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '08:00', windowEnd: '13:00' }),
       ],
     });
     expect(useTaskStore.getState().expiredTasks().map(t => t.id)).toEqual(['b', 'a']);
@@ -13913,7 +13913,7 @@ describe('sweepExpiredTasks', () => {
       autoRemoveExpiredTasks: null,
       vacationMode: false,
     });
-    useTaskStore.setState({ tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'expired', dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '08:00', windowEnd: '13:00' })] });
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['expired']);
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
@@ -13930,7 +13930,7 @@ describe('sweepExpiredTasks', () => {
     });
     useTaskStore.setState({
       lastAction: null,
-      tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })],
+      tasks: [makeTask({ id: 'expired', dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '08:00', windowEnd: '13:00' })],
     });
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks).toHaveLength(0);
@@ -13946,7 +13946,7 @@ describe('sweepExpiredTasks', () => {
     });
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' }),
+        makeTask({ id: 'expired', dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '08:00', windowEnd: '13:00' }),
         makeTask({ id: 'active', windowStart: '08:00', windowEnd: '18:00' }),
       ],
     });
@@ -14035,7 +14035,7 @@ describe('sweepExpiredTasks', () => {
     });
     // Window closed at 1pm today (2025-06-10); "now" is mocked to 2pm the same day.
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })],
+      tasks: [makeTask({ id: 'expired', dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '08:00', windowEnd: '13:00' })],
     });
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['expired']);

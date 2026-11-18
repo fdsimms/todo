@@ -330,16 +330,16 @@ describe('isTaskVisible', () => {
   });
 
   it('shows tasks with morning segment at 10 AM (morning started at 6 AM)', () => {
-    expect(isTaskVisible({ ...baseTask, timeSegments: ['morning'] })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['morning'] })).toBe(true);
   });
 
   it('hides tasks with evening segment before 6 PM', () => {
-    expect(isTaskVisible({ ...baseTask, timeSegments: ['evening'] })).toBe(false);
+    expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['evening'] })).toBe(false);
   });
 
   it('shows tasks when earliest segment (morning) has started even if other segment (evening) has not', () => {
     // morning started at 6 AM — task is visible even though evening hasn't started
-    expect(isTaskVisible({ ...baseTask, timeSegments: ['morning', 'evening'] })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['morning', 'evening'] })).toBe(true);
   });
 
   it('hides tasks where all segments are in the future', () => {
@@ -390,7 +390,7 @@ describe('isTaskVisible', () => {
   });
 
   it('shows tasks currently inside their time window', () => {
-    expect(isTaskVisible({ ...baseTask, windowStart: '08:00', windowEnd: '13:00' })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '08:00', windowEnd: '13:00' })).toBe(true);
   });
 
   it('hides tasks whose time window has already closed', () => {
@@ -480,7 +480,7 @@ describe('isUpcomingToday', () => {
     mockSettingsState.dayResetTime = '04:00';
     mockSettingsState.morningStart = '04:00';
     jest.setSystemTime(new Date(2026, 6, 31, 1, 49, 0)); // Fri Jul 31, 1:49 AM
-    const task: Task = { ...baseTask, timeSegments: ['morning'] };
+    const task: Task = { ...baseTask, dueDate: new Date(2026, 6, 30, 12).toISOString(), timeSegments: ['morning'] };
     expect(isUpcomingToday(task)).toBe(false);
     expect(isTaskVisible(task)).toBe(true);
   });
@@ -493,11 +493,11 @@ describe('isUpcomingToday', () => {
     mockSettingsState.nightStart = '01:00';
     try {
       jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
-      expect(isTaskVisible({ ...baseTask, timeSegments: ['night'] })).toBe(false);
+      expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['night'] })).toBe(false);
       // Morning first thing is the one segment that must not roll: it has begun.
-      expect(isTaskVisible({ ...baseTask, timeSegments: ['morning'] })).toBe(true);
+      expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['morning'] })).toBe(true);
       jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0)); // still logical June 10
-      expect(isTaskVisible({ ...baseTask, timeSegments: ['night'] })).toBe(true);
+      expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['night'] })).toBe(true);
     } finally {
       mockSettingsState.dayResetTime = '00:00';
       mockSettingsState.morningStart = '06:00';
@@ -583,17 +583,17 @@ describe('isTaskExpired', () => {
   });
 
   it('is true once windowEnd has passed', () => {
-    expect(isTaskExpired({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(true);
+    expect(isTaskExpired({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '07:00', windowEnd: '09:00' })).toBe(true);
   });
 
   it('is true exactly at windowEnd', () => {
-    expect(isTaskExpired({ ...baseTask, windowStart: '07:00', windowEnd: '10:00' })).toBe(true);
+    expect(isTaskExpired({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '07:00', windowEnd: '10:00' })).toBe(true);
   });
 
   // Waiting on another task: not actionable, so not late. It used to read as
   // Waiting and Expired at once and was sweepable.
   it('is false for a task waiting on another, however long its window has been closed', () => {
-    const closed = { ...baseTask, windowStart: '07:00', windowEnd: '09:00' };
+    const closed = { ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '07:00', windowEnd: '09:00' };
     registerTaskSource(() => [{ ...baseTask, id: 'blocker' }]);
     try {
       const waiter = { ...closed, id: 'waiter', blockedById: 'blocker' };
@@ -611,7 +611,7 @@ describe('isTaskExpired', () => {
   // to one logical day, so taken literally the task is past 02:00 from 02:00
   // onward — expired before it ever opened, and never visible once.
   it('is false all day for a window whose end is not after its start', () => {
-    const nightly = { ...baseTask, windowStart: '22:00', windowEnd: '02:00' };
+    const nightly = { ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '22:00', windowEnd: '02:00' };
     expect(isTaskExpired(nightly)).toBe(false);
     jest.setSystemTime(new Date(2025, 5, 10, 23, 30, 0));
     expect(isTaskExpired(nightly)).toBe(false);
@@ -659,8 +659,10 @@ describe('isTaskExpired', () => {
     expect(isTaskExpired({ ...baseTask, projectId: 'p1', windowEnd: '09:00' })).toBe(false);
   });
 
-  it('still expires an undated task once it has a windowStart to place it', () => {
-    expect(isTaskExpired({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(true);
+  // A window says when in a day, not which day, so with no date there is no day
+  // for it to have closed on (see hasNoDateSignal).
+  it('does not expire an undated task, however long its window has been closed', () => {
+    expect(isTaskExpired({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(false);
   });
 
   it('is false for a completed task', () => {
@@ -853,13 +855,11 @@ describe('isTaskSweepable', () => {
   // A task carrying only windowStart/windowEnd (no dueDate/deferUntil) re-expires
   // every day rather than on one fixed day — see windowClosedAt's fallback.
   // With no day to measure a grace period from, only Immediately ever sweeps it.
-  it('never elapses a grace period for a window-only task with no anchor day', () => {
+  it('never sweeps a window-only task with no day, even Immediately', () => {
     const task = { ...baseTask, windowStart: '07:00', windowEnd: '09:00' };
-    expect(isTaskExpired(task)).toBe(true);
+    expect(isTaskExpired(task)).toBe(false);
+    expect(isTaskSweepable(task, 0)).toBe(false);
     expect(isTaskSweepable(task, 1)).toBe(false);
-    jest.setSystemTime(new Date(2030, 5, 10, 18, 0, 0));
-    expect(isTaskSweepable(task, 1)).toBe(false);
-    expect(isTaskSweepable(task, 0)).toBe(true);
   });
 
   it('respects the same "no day to be late for" gate isTaskExpired does', () => {
@@ -900,7 +900,7 @@ describe('isTaskDeferred', () => {
   });
 
   it('returns true when evening segment has not started yet', () => {
-    expect(isTaskDeferred({ ...baseTask, timeSegments: ['evening'] })).toBe(true);
+    expect(isTaskDeferred({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['evening'] })).toBe(true);
   });
 
   it('returns false when morning segment has already started', () => {
@@ -922,7 +922,7 @@ describe('isTaskDeferred', () => {
   });
 
   it('returns true for a task whose window has not started yet today', () => {
-    expect(isTaskDeferred({ ...baseTask, windowStart: '12:00', windowEnd: '18:00' })).toBe(true);
+    expect(isTaskDeferred({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), windowStart: '12:00', windowEnd: '18:00' })).toBe(true);
   });
 
   it('returns false for an undated project task (it belongs in its project, not Later)', () => {
@@ -1828,12 +1828,21 @@ describe('isUnscheduledTask', () => {
     expect(isUnscheduledTask({ ...baseTask, priority: 2 })).toBe(true);
   });
 
-  it('is false once the task has a due date, defer date, time segment or window', () => {
+  it('is false once the task has a due date or defer date', () => {
     const d = new Date(2025, 5, 12).toISOString();
     expect(isUnscheduledTask({ ...baseTask, category: 'Work', dueDate: d })).toBe(false);
     expect(isUnscheduledTask({ ...baseTask, category: 'Work', deferUntil: d })).toBe(false);
-    expect(isUnscheduledTask({ ...baseTask, category: 'Work', timeSegments: ['morning'] })).toBe(false);
-    expect(isUnscheduledTask({ ...baseTask, category: 'Work', windowStart: '09:00' })).toBe(false);
+  });
+
+  // A time of day says when in a day, not which day: a task with only one has no
+  // day, so it is Unscheduled and not on Today every day.
+  it('is true for a task with only a time of day or a time window, which is not on Today', () => {
+    for (const extra of [{ timeSegments: ['morning' as const] }, { windowStart: '08:00', windowEnd: '13:00' }]) {
+      const task = { ...baseTask, category: 'Work', ...extra };
+      expect(isUnscheduledTask(task)).toBe(true);
+      expect(isTaskVisible(task)).toBe(false);
+      expect(isTaskDeferred(task)).toBe(false);
+    }
   });
 
   it('is false for a task assigned to a project (it lives in the project instead)', () => {
