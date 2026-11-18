@@ -1,0 +1,1 @@
+{ "message": "Fixed API keys (Anthropic, FoodData Central, Go-UPC) going missing at random. They now stay readable when the app starts while the phone is locked, and are read again when you open the app.", "date": "2026-11-18" }

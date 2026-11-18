@@ -73,13 +73,16 @@ export async function loadAnthropicApiKey(): Promise<string> {
   }
 
   try {
-    await secureStore().setItemAsync(API_KEY_SECURE_KEY, legacy);
+    await secureStore().setItemAsync(API_KEY_SECURE_KEY, legacy, {
+      keychainAccessible: secureStore().AFTER_FIRST_UNLOCK,
+    });
   } catch {
     // Keep the row. A key we can't re-store is a key we mustn't drop — the
     // next launch tries the migration again.
     return legacy;
   }
   dbDeleteSetting(API_KEY_LEGACY_SETTING);
+  dbSetSetting(readableWhileLockedMarker(API_KEY_SECURE_KEY), '1');
   return legacy;
 }
 
@@ -91,17 +94,9 @@ export async function saveAnthropicApiKey(key: string): Promise<boolean> {
   // Every other setting changed during a demo is written to the throwaway
   // database and gone on exit. The keychain isn't per-database, so without
   // this someone handed the phone could clear or replace the owner's billing
-  // key for good. Reported as not stuck, which is true.
-  if (isDemoModeActive()) return false;
-  try {
-    if (key) {
-      await secureStore().setItemAsync(API_KEY_SECURE_KEY, key);
-    } else {
-      await secureStore().deleteItemAsync(API_KEY_SECURE_KEY);
-    }
-  } catch {
-    return false;
-  }
+  // key for good. Reported as not stuck, which is true (saveLockedReadableKey
+  // refuses in demo mode).
+  if (!(await saveLockedReadableKey(API_KEY_SECURE_KEY, key))) return false;
   // Covers the install whose migration couldn't write earlier and whose user
   // has now pasted a key by hand: the stale row goes with it.
   if (dbGetSetting(API_KEY_LEGACY_SETTING) !== null) dbDeleteSetting(API_KEY_LEGACY_SETTING);
@@ -223,6 +218,50 @@ export async function saveSecureKey(
   } catch {
     return false;
   }
+}
+
+/**
+ * Per-device mark that a key has been saved readable while locked. A device
+ * setting like `SYNC_TOKEN_READABLE_LOCKED_SETTING`: it stays off the sync
+ * allowlist because the keychain it describes is per device.
+ */
+export function readableWhileLockedMarker(name: string): string {
+  return `keyReadableWhileLocked:${name}`;
+}
+
+/**
+ * Saves a key the app reads into memory once and keeps (the Anthropic, FoodData
+ * Central and Go-UPC keys), readable from the first unlock after a restart.
+ * iOS starts the app in the background with the phone locked (a refresh, a
+ * widget, a notification), and a key saved the default way can't be read
+ * there: the read came back as "no key" and the app kept that for as long as
+ * the process lived. Clearing ('') deletes it.
+ */
+export async function saveLockedReadableKey(name: string, key: string): Promise<boolean> {
+  const saved = await saveSecureKey(name, key, { readableWhileLocked: true });
+  if (saved && key) dbSetSetting(readableWhileLockedMarker(name), '1');
+  return saved;
+}
+
+/**
+ * Moves a key saved before `saveLockedReadableKey` existed, once per device.
+ * Marked only after the move went through, so a launch on a locked phone (the
+ * read fails and nothing changes) leaves it for the next one.
+ */
+export async function ensureReadableWhileLocked(name: string): Promise<void> {
+  if (dbGetSetting(readableWhileLockedMarker(name)) === '1') return;
+  if (await makeSecureKeyReadableWhileLocked(name)) dbSetSetting(readableWhileLockedMarker(name), '1');
+}
+
+/**
+ * What a key field's blur should save, or null for nothing. A field shows the
+ * key held in memory, which is '' when the keychain couldn't be read, so
+ * saving whatever the field holds would delete a key that was never cleared.
+ * Only text that differs from what the app holds counts as an edit.
+ */
+export function keyEditToSave(draft: string, current: string): string | null {
+  const next = draft.trim();
+  return next === current ? null : next;
 }
 
 /**
