@@ -1217,7 +1217,8 @@ store's `addExperiment`/`startExperiment`). Entries logged on the first day befo
 neither stretch: the baseline ends the day before, and `experimentResult` drops them from "during" (a
 symptom's first-logged day still reads them, since it says when you began recording it). A backdated
 start, a move of the first day, and an experiment from before this existed have null, so the whole
-first day counts.
+first day counts. Claude can set or forget it afterwards (`update_experiment`'s `startedAt`, refused
+off the first day), the only way to give an experiment from before this existed its start time.
 
 **The baseline is the same number of days, ending the day before it starts.**
 There is no setting for it. Equal stretches compare like with like (a

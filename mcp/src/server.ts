@@ -2602,7 +2602,7 @@ function registerWriteTools(
 
   server.tool(
     'update_experiment',
-    'Change an experiment by its id from list_experiments: its name, first or last day, the symptoms it watches (the list given replaces the old one) or what is expected (null clears it), or the planned length (days) of one not started. Only what you name changes. To end one early, set endDate to today, or stop_experiment. A planned one is started with start_experiment, not by giving it a startDate.',
+    'Change an experiment by its id from list_experiments: its name, first or last day, the symptoms it watches (the list given replaces the old one) or what is expected (null clears it), or the planned length (days) of one not started, or startedAt, the time on its first day it really began (null forgets it). Entries logged on the first day before startedAt count as neither before nor during. Only what you name changes. To end one early, set endDate to today, or stop_experiment. A planned one is started with start_experiment, not by giving it a startDate.',
     {
       id: z.string().min(1),
       label: z.string().min(1).max(200).optional(),
@@ -2611,6 +2611,7 @@ function registerWriteTools(
       symptoms: z.array(z.string().min(1).max(60)).max(20).optional(),
       expected: z.string().max(300).nullable().optional(),
       days: z.number().int().min(1).max(365).optional().describe('The planned length of one not started yet.'),
+      startedAt: z.string().max(40).nullable().optional().describe('When it really began, YYYY-MM-DDTHH:MM in the person\'s time zone, on its first day. null forgets it.'),
     },
     async ({ id, ...patch }) => {
       try {

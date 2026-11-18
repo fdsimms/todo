@@ -78,6 +78,26 @@ export function startedAtFor(startDate: Date, now: Date, today: Date): string | 
   return dayKeyOf(startDate) === dayKeyOf(today) ? now.toISOString() : null;
 }
 
+/**
+ * Why a start moment can't be set, or null. It must belong to a started
+ * experiment and fall on its first day (as the logical day, so a 1 AM dose is
+ * the day before), the only day it can separate earlier entries from later ones.
+ */
+export function startedAtRefusal(
+  startDate: string | null,
+  startedAt: Date | null,
+  logicalDayKeyOf: (date: Date) => string,
+): string | null {
+  if (startedAt === null) return null;
+  if (Number.isNaN(startedAt.getTime())) return 'startedAt: that is not a time I can read.';
+  if (startDate === null) return 'That experiment has not started, so it has no start time to set.';
+  const firstDay = experimentDayKey(startDate);
+  if (logicalDayKeyOf(startedAt) !== firstDay) {
+    return `startedAt: the start time has to be on the experiment’s first day, ${firstDay}.`;
+  }
+  return null;
+}
+
 /** The experiment's days, and the baseline it is read against. Every bound is inclusive. */
 export interface ExperimentSpan {
   startKey: string;

@@ -1515,6 +1515,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
         ...(before && before.label !== experiment.label ? [`name from "${before.label}" to "${experiment.label}"`] : []),
         ...(before && before.startDate !== experiment.startDate ? [`first day from ${day(before.startDate)} to ${day(experiment.startDate)}`] : []),
         ...(before && before.endDate !== experiment.endDate ? [`last day from ${day(before.endDate)} to ${day(experiment.endDate)}`] : []),
+        ...(before && before.startedAt !== experiment.startedAt ? [experiment.startedAt ? 'the time it started' : 'forget the time it started'] : []),
         ...(before && before.days !== experiment.days ? [`planned length from ${before.days ?? 'none'} to ${experiment.days ?? 'none'} days`] : []),
         ...(before && before.symptoms.join('\n') !== experiment.symptoms.join('\n') ? [`symptoms to watch to ${experiment.symptoms.length ? experiment.symptoms.join(', ') : 'none'}`] : []),
         ...(before && before.note !== experiment.note ? ['what is expected'] : []),

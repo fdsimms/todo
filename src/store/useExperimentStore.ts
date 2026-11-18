@@ -8,8 +8,8 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { keepUnchanged } from '../utils/structuralSharing';
-import { DEFAULT_EXPERIMENT_DAYS, cleanExperimentSymptoms, endOfLength, experimentDayKey, experimentRefusal, startedAtFor } from '../utils/experiments';
-import { getLogicalToday } from '../utils/dateUtils';
+import { DEFAULT_EXPERIMENT_DAYS, cleanExperimentSymptoms, endOfLength, experimentDayKey, experimentRefusal, startedAtFor, startedAtRefusal } from '../utils/experiments';
+import { getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
 
 /**
  * Experiments: a change tried for a set stretch of days, read against the
@@ -36,7 +36,8 @@ export interface ExperimentDraft {
   note: string | null;
 }
 
-export type ExperimentPatch = Partial<ExperimentDraft>;
+/** `startedAt`: the moment it really began, on its first day; null forgets it, so the whole first day counts. */
+export type ExperimentPatch = Partial<ExperimentDraft> & { startedAt?: Date | null };
 
 interface ExperimentStore {
   experiments: Experiment[];
@@ -114,18 +115,23 @@ export const useExperimentStore = create<ExperimentStore>((set, get) => ({
       note: patch.note !== undefined ? patch.note : existing.note,
     };
     if (experimentRefusal(merged)) return null;
+    const startDate = patch.startDate !== undefined ? (patch.startDate ? noonIso(patch.startDate) : null) : existing.startDate;
+    // The recorded moment belongs to the day it was recorded for: moving the first day drops it.
+    const sameFirstDay = !!startDate && !!existing.startDate && experimentDayKey(startDate) === experimentDayKey(existing.startDate);
+    let startedAt = sameFirstDay ? existing.startedAt : null;
+    if (patch.startedAt !== undefined) {
+      if (startedAtRefusal(startDate, patch.startedAt, d => getLogicalDayKey(d))) return null;
+      startedAt = patch.startedAt ? patch.startedAt.toISOString() : null;
+    }
     const next: Experiment = {
       ...existing,
       label: merged.label.trim(),
-      startDate: patch.startDate !== undefined ? (patch.startDate ? noonIso(patch.startDate) : null) : existing.startDate,
+      startDate,
       endDate: patch.endDate !== undefined ? (patch.endDate ? noonIso(patch.endDate) : null) : existing.endDate,
       days: merged.days ?? null,
       symptoms: cleanExperimentSymptoms(merged.symptoms),
       note: cleanNote(merged.note),
-      // The recorded moment belongs to the day it was recorded for: moving the first day drops it.
-      startedAt: patch.startDate !== undefined && patch.startDate && existing.startDate
-        && experimentDayKey(noonIso(patch.startDate)) === experimentDayKey(existing.startDate)
-        ? existing.startedAt : (patch.startDate !== undefined ? null : existing.startedAt),
+      startedAt,
     };
     dbUpdateExperiment(next);
     set({ experiments: get().experiments.map(e => (e.id === id ? next : e)).sort(byStart) });

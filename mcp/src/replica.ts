@@ -4872,6 +4872,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         days: patch.days !== undefined ? patch.days : existing.days,
       });
       if (refusal) throw new Error(refusal);
+      if (patch.startedAt !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { startedAtRefusal } = require('../../src/utils/experiments') as typeof import('../../src/utils/experiments');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { getLogicalDayKey } = require('../../src/utils/dateUtils') as typeof import('../../src/utils/dateUtils');
+        const startDate = patch.startDate !== undefined ? (patch.startDate ? patch.startDate.toISOString() : null) : existing.startDate;
+        const startedRefusal = startedAtRefusal(startDate, patch.startedAt, d => getLogicalDayKey(d));
+        if (startedRefusal) throw new Error(startedRefusal);
+      }
       return store.updateExperiment(id, patch)!;
     },
     startExperiment(id, start) {

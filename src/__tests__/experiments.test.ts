@@ -11,6 +11,7 @@ import {
   experimentRefusal,
   experimentResult,
   startedAtFor,
+  startedAtRefusal,
   experimentSpan,
   experimentStatus,
   experimentSummary,
@@ -211,6 +212,16 @@ describe('experimentResult: mood', () => {
     const r = experimentResult(started, [...before, early], '2026-11-01');
     expect(r.picked[0].firstLoggedKey).toBe('2026-10-18');
     expect(r.picked[0].during.loggedDays).toBe(0);
+  });
+
+  it('startedAtRefusal accepts the first day, forgetting, and refuses anything else', () => {
+    const dayOf = (d: Date) => format(d, 'yyyy-MM-dd');
+    const start = noon('2026-11-01');
+    expect(startedAtRefusal(start, null, dayOf)).toBeNull();
+    expect(startedAtRefusal(start, new Date('2026-11-01T18:00'), dayOf)).toBeNull();
+    expect(startedAtRefusal(start, new Date('2026-11-02T09:00'), dayOf)).toMatch(/first day, 2026-11-01/);
+    expect(startedAtRefusal(null, new Date('2026-11-01T18:00'), dayOf)).toMatch(/has not started/);
+    expect(startedAtRefusal(start, new Date(NaN), dayOf)).toMatch(/not a time/);
   });
 
   it('startedAtFor records the moment only for a start today', () => {
