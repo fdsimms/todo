@@ -132,9 +132,7 @@ export function FrankiSettingsRows(): React.ReactElement {
         icon="book-outline"
         iconColor={s.readTasks ? colors.accent : undefined}
         label="Read & Listen"
-        hint={s.readTasks
-          ? 'A task each day for each language below while a text is waiting and none was read today.'
-          : 'No reading task'}
+        hint="Adds a task each day for each language below while a text is waiting and none was read today. When off, no reading task is added."
         toggle={s.readTasks}
         onPress={() => s.setReadTasks(!s.readTasks)}
       />
@@ -171,9 +169,7 @@ export function FrankiSettingsRows(): React.ReactElement {
         icon="headset-outline"
         iconColor={s.countReading ? colors.accent : undefined}
         label="Count Read & Listen time"
-        hint={s.countReading
-          ? 'Time reading and listening counts as study time: toward the goal, on the tasks and in Stats.'
-          : 'Only time answering cards counts as study time.'}
+        hint="Counts time reading and listening as study time: toward the goal, on the tasks and in Stats. When off, only time answering cards counts."
         toggle={s.countReading}
         onPress={() => s.setCountReading(!s.countReading)}
       />

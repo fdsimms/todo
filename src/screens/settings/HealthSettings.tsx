@@ -431,11 +431,9 @@ export function HealthSettings() {
         icon="heart-outline"
         iconColor={healthReadEnabled ? colors.accent : undefined}
         label="Read Apple Health"
-        hint={healthReadEnabled
-          ? workoutsEnabled
-            ? "Reads today’s steps, active calories and Activity rings for Today, other apps’ workouts for your workout history, and the heart rate your Apple Watch measured during a workout"
-            : "Reads today’s steps, active calories and Activity rings, and shows them on Today"
-          : 'Nothing is read from Health'}
+        hint={workoutsEnabled
+            ? "Reads today’s steps, active calories and Activity rings for Today, other apps’ workouts for your workout history, and the heart rate your Apple Watch measured during a workout. When off, nothing is read from Health."
+            : "Reads today’s steps, active calories and Activity rings, and shows them on Today. When off, nothing is read from Health."}
         toggle={healthReadEnabled}
         onPress={onToggle}
         accessibilityLabel="Read Apple Health"
@@ -703,9 +701,7 @@ export function HealthSettings() {
                 icon="barbell-outline"
                 iconColor={workoutHealthWrite ? colors.accent : undefined}
                 label="Workouts"
-                hint={workoutHealthWrite
-                  ? 'A workout you save is written to Health as strength training'
-                  : 'Saved workouts stay in this app'}
+                hint="Writes a workout you save to Health as strength training. When off, saved workouts stay in this app"
                 toggle={workoutHealthWrite}
                 onPress={onToggleWorkoutWrite}
                 accessibilityLabel="Write workouts to Health"
@@ -805,9 +801,7 @@ export function HealthSettings() {
             entryId="shortNightNote"
             icon="battery-half-outline"
             label="Short night note"
-            hint={shortNightNoteEnabled
-              ? 'Lighten today says when Apple Health recorded less sleep than the threshold below'
-              : undefined}
+            hint="Lighten today says when Apple Health recorded less sleep than the threshold below"
             toggle={shortNightNoteEnabled}
             onPress={() => setShortNightNoteEnabled(!shortNightNoteEnabled)}
             accessibilityLabel="Short night note"
