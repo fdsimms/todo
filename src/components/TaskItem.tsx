@@ -2791,10 +2791,10 @@ const TaskItemRow = React.memo(function TaskItem({
     if (!started) {
       Alert.alert(
         'Couldn’t start the experiment',
-        'It may have been started or deleted on another phone. Open the Mood screen to check.',
+        'It may have been started or deleted on another phone. Open Experiments to check.',
         [
           { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          { text: 'Open Mood', onPress: () => navigateToTab('Mood') },
+          { text: 'Open Experiments', onPress: () => navigateToTab('Experiments') },
         ],
       );
       return;

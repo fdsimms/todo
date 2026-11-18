@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — fourteen rows, four of which are hubs,
+ * What the side menu contains, as data — seventeen rows, five of which are hubs,
  * plus Screen Time wherever it can work and Workouts while that area is on.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
@@ -57,7 +57,7 @@ export interface NavContentCounts {
   workouts?: number;
 }
 
-export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
+export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health' | 'writing';
 
 export interface NavDestination {
   /** Route name in the bottom-tab navigator. */
@@ -148,7 +148,6 @@ const ORGANIZE_HUB: NavHub = {
     { route: 'People', label: 'People', icon: 'people-outline', keywords: ['contacts', 'birthdays', 'friends', 'family'] },
     { route: 'Stacks', label: 'Stacks', icon: 'layers-outline', keywords: ['groups', 'routines', 'bundles'] },
     { route: 'Templates', label: 'Templates', icon: 'copy-outline', keywords: ['presets', 'checklists', 'reusable'] },
-    { route: 'Notes', label: 'Notes', icon: 'document-text-outline', keywords: ['lyrics', 'song', 'ideas', 'snippets', 'jot', 'write', 'writing'] },
   ],
 };
 
@@ -192,17 +191,32 @@ const HEALTH_HUB: NavHub = {
   label: 'Health',
   icon: 'heart-outline',
   members: [
-    { route: 'Mood', label: 'Mood', icon: 'happy-outline', keywords: ['feelings', 'symptoms', 'how i feel'] },
+    { route: 'Mood', label: 'Mood', icon: 'happy-outline', keywords: ['feelings', 'how i feel'] },
+    { route: 'Insights', label: 'Insights', icon: 'analytics-outline', keywords: ['compare', 'correlation', 'patterns', 'what moves my mood', 'mood against'] },
+    { route: 'Symptoms', label: 'Symptoms', icon: 'pulse-outline', keywords: ['headache', 'fatigue', 'pain', 'side effects', 'how often'] },
+    { route: 'Experiments', label: 'Experiments', icon: 'flask-outline', keywords: ['trial', 'milestones', 'before and after', 'cutting out'] },
     { route: 'Medications', label: 'Medications', icon: 'medkit-outline', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'vitamin', 'inhaler', 'painkiller'] },
     { route: 'Weight', label: 'Weight', icon: 'scale-outline', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
     { route: 'BloodPressure', label: 'Blood pressure', icon: 'pulse-outline', keywords: ['bp', 'systolic', 'diastolic', 'mmhg', 'cuff', 'hypertension', 'heart'] },
     { route: 'Sleep', label: 'Sleep', icon: 'moon-outline', keywords: ['bedtime', 'asleep', 'night', 'rest', 'tired', 'woke'] },
-    { route: 'Journal', label: 'Journal', icon: 'book-outline', keywords: ['diary', 'write', 'writing', 'notes', 'reflect'] },
-    { route: 'Dreams', label: 'Dreams', icon: 'cloudy-night-outline', keywords: ['dream journal', 'nightmare', 'asleep', 'woke'] },
   ],
 };
 
-export const NAV_HUBS: readonly NavHub[] = [KITCHEN_HUB, ORGANIZE_HUB, HISTORY_HUB, HEALTH_HUB];
+// Journal and Dreams used to be Health pills and Notes an Organize one. All three are writing
+// kept in one store and one screen (`JournalScreen`, split by kind), and Health had grown to
+// eight pills of measurements and comparisons, so the writing has a hub of its own.
+const WRITING_HUB: NavHub = {
+  id: 'writing',
+  label: 'Writing',
+  icon: 'create-outline',
+  members: [
+    { route: 'Journal', label: 'Journal', icon: 'book-outline', keywords: ['diary', 'write', 'writing', 'notes', 'reflect'] },
+    { route: 'Dreams', label: 'Dreams', icon: 'cloudy-night-outline', keywords: ['dream journal', 'nightmare', 'asleep', 'woke'] },
+    { route: 'Notes', label: 'Notes', icon: 'document-text-outline', keywords: ['lyrics', 'song', 'ideas', 'snippets', 'jot', 'write', 'writing'] },
+  ],
+};
+
+export const NAV_HUBS: readonly NavHub[] = [KITCHEN_HUB, ORGANIZE_HUB, HISTORY_HUB, HEALTH_HUB, WRITING_HUB];
 
 export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   {
@@ -329,6 +343,7 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   { kind: 'hub', hub: ORGANIZE_HUB },
   { kind: 'hub', hub: HISTORY_HUB },
   { kind: 'hub', hub: HEALTH_HUB },
+  { kind: 'hub', hub: WRITING_HUB },
   {
     kind: 'screen',
     destination: { route: 'Tips', label: 'Tips', icon: 'bulb-outline', keywords: ['help', 'how to', 'guide'] },

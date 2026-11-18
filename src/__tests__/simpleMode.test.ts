@@ -206,6 +206,14 @@ describe('screenShown', () => {
     expect(screenShown('Templates', true, { stacks: 0, templates: 1 })).toBe(true);
   });
 
+  // They were sections of the Mood screen, which already hid with its own count.
+  it('keeps Insights, Symptoms and Experiments exactly while Mood is kept', () => {
+    for (const name of ['Mood', 'Insights', 'Symptoms', 'Experiments']) {
+      expect(screenShown(name, true, none)).toBe(false);
+      expect(screenShown(name, true, { ...none, mood: 1 })).toBe(true);
+    }
+  });
+
   it('leaves the screens simplified mode has no opinion about', () => {
     for (const name of ['Today', 'Search', 'Groceries', 'Projects', 'Logbook',
       'Categories', 'Tags', 'Archived']) {
