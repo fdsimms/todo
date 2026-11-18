@@ -1,0 +1,1 @@
+{ "message": "Changing a repeating task's time of day from the date picker now has a Future tasks only choice. It sets the new time for the repeats after this one and leaves today's task where it is, so it no longer drops off Today.", "date": "2026-11-18" }

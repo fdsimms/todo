@@ -528,7 +528,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/removedBeforeEating.ts` — isUsuallyRemovedBeforeEating
 - `src/utils/reopenTask.ts` — reopenWithExplanation
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
-- `src/utils/rescheduleLabel.ts` — movedDayLabel, describeReschedule
+- `src/utils/rescheduleLabel.ts` — movedDayLabel, describeFutureTimeOfDay, describeReschedule
 - `src/utils/resumeDate.ts` — ResumeDate, hasStaleDate, resumeDueDateFor
 - `src/utils/resumePrompt.ts` — confirmResume, resumeTasks
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, projectsKeptFromPurge, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, +2 more
@@ -565,7 +565,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scanPermission.ts` — scanPermissionMessage
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, servingMillilitres, packSizeGrams, servingsIn, packageChoices, packageFractions, servingDescription, hasServingMl, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, variantFor, ScanBoxSource, scanBoxChoice, scannedItemFor, +11 more
-- `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
+- `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, SegmentScope, confirmSegmentScope, confirmBulkSetWhen
 - `src/utils/screenLinks.ts` — screenKey, resolveScreen, quickActionScreens, quickActionScreenList, screenSymbol
 - `src/utils/screenSettingControls.ts` — ScreenSettingRead, ScreenSettingState, SCREEN_SETTING_TOGGLE_IDS, generatorKindOf, aiFeatureOf, MEALS_ON_TODAY_LABELS, screenSettingRead
 - `src/utils/screenSettings.ts` — SCREEN_SETTINGS, screenSettingsEntries
@@ -670,7 +670,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskSkip.ts` — reminderOnto, deadlineOnto, skipPatch
 - `src/utils/taskSummary.ts` — SummaryPart, TaskSummaryInput, inSentence, buildTaskSummary
 - `src/utils/taskTypeFilter.ts` — TaskTypeFilter, TASK_TYPE_FILTERS, taskTypeFilterLabel, taskTypesOf, matchesTaskTypes, filterByTaskTypes, parseTaskTypeFilters
-- `src/utils/taskUpdate.ts` — CONTENT_FIELDS, hasLaterRows, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, comparePinned, captureField, TaskUpdateContext, +2 more
+- `src/utils/taskUpdate.ts` — CONTENT_FIELDS, hasLaterRows, futureOnlySegmentsPatch, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, comparePinned, captureField, +3 more
 - `src/utils/templateApply.ts` — TemplateRunOptions, RunDraft, TemplateRunSink, applyTemplateRun
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop, templateMatchesQuery
 - `src/utils/templateLink.ts` — TemplateLinkState, templateLinkState, runTemplateLabel, linkedTaskCounts, linkedTasksNote, anchorsForRun
