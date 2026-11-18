@@ -305,9 +305,7 @@ export function KitchenSettings() {
             icon="phone-portrait-outline"
             iconColor={tripLiveActivity ? colors.accent : undefined}
             label="Live Activity while shopping"
-            hint={tripLiveActivity
-              ? 'Shows the store you’re at and how long you’ve been there on the Lock Screen and Dynamic Island'
-              : 'A trip stays in the app only'}
+            hint="Shows the store you’re at and how long you’ve been there on the Lock Screen and Dynamic Island. When off, a trip stays in the app only"
             toggle={tripLiveActivity}
             onPress={() => setTripLiveActivity(!tripLiveActivity)}
           />
@@ -320,9 +318,7 @@ export function KitchenSettings() {
           icon="eye-off-outline"
           iconColor={hideGroceryRecipeNames ? colors.accent : undefined}
           label="Hide recipe names on the list"
-          hint={hideGroceryRecipeNames
-            ? 'Rows don’t show which recipe an item is for. Open a row to see it.'
-            : 'Rows show which recipe an item is for'}
+          hint="Hides which recipe an item is for on each row. Open a row to see it. When off, rows show it"
           toggle={hideGroceryRecipeNames}
           onPress={() => setHideGroceryRecipeNames(!hideGroceryRecipeNames)}
           accessibilityLabel="Hide recipe names on the list"

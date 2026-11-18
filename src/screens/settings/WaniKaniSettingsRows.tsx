@@ -177,9 +177,7 @@ export function WaniKaniSettingsRows(): React.ReactElement {
         icon="notifications-outline"
         iconColor={s.notify ? colors.accent : undefined}
         label="Notify when reviews arrive"
-        hint={s.notify
-          ? 'A notification at the hour a held task appears.'
-          : 'The task appears without a notification'}
+        hint="Sends a notification at the hour a held task appears. When off, the task appears without a notification"
         toggle={s.notify}
         onPress={() => s.setNotify(!s.notify)}
       />

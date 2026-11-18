@@ -238,9 +238,7 @@ export function PrivacyAiSettings() {
               ? lockSupport.capability === 'passcode'
                 ? `No ${lockSupport.label} set up. The lock would ask for this device’s passcode`
                 : `Set up ${lockSupport.label} or a passcode in Settings first`
-              : appLockEnabled
-                ? 'Asks when you open the app, and when you come back to it'
-                : 'Anyone holding an unlocked phone can read your tasks'
+              : 'Asks when you open the app, and when you come back to it. When off, anyone holding an unlocked phone can read your tasks'
           }
           toggle={appLockEnabled}
           onPress={() => onToggleAppLock(!appLockEnabled)}
@@ -252,9 +250,7 @@ export function PrivacyAiSettings() {
           icon="book-outline"
           iconColor={journalLockEnabled ? colors.accent : undefined}
           label={`Require ${lockLabel} for the journal`}
-          hint={journalLockEnabled
-            ? 'Asks each time you open the journal or dreams, and shows nothing written until then'
-            : 'An extra check before the journal, dreams and their previews on the Mood screen'}
+          hint="An extra check before the journal, dreams and their previews on the Mood screen. Asks each time you open the journal or dreams, and shows nothing written until then"
           toggle={journalLockEnabled}
           onPress={() => onToggleJournalLock(!journalLockEnabled)}
           tight={appLockEnabled}

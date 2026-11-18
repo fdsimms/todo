@@ -16,8 +16,14 @@ import {
   windowCloseDayPatch,
   negativeHoldFor,
   oneDayEndPatch,
+  isOffScheduleDay,
   type NegativeHabitFields,
 } from '../utils/negativeHabits';
+import { scheduledDaysBetween } from '../utils/negativeSchedule';
+
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '02:00', weekStartsOn: 0, holidaySet: 'none', customHolidays: [] }) },
+}));
 
 // A logical day start, the shape every function here takes. 02:00 rather than
 // midnight throughout, so a test that quietly reasons in calendar days instead
@@ -367,5 +373,47 @@ describe('oneDayEndPatch', () => {
     expect(oneDayEndPatch(oneOff({ recurrenceType: 'daily' }), day(20), day(9))).toBeNull();
     expect(oneDayEndPatch(oneOff({ completed: true }), day(20), day(9))).toBeNull();
     expect(oneDayEndPatch(oneOff({ polarity: 'positive' }), day(20), day(9))).toBeNull();
+  });
+});
+
+describe('a weekly habit', () => {
+  // 2026-01-06 is a Tuesday.
+  const weekly = {
+    polarity: 'negative' as const,
+    recurrenceType: 'weekly' as const,
+    recurrenceInterval: 1,
+    recurrenceDays: [2],
+    recurrenceMonthDay: null,
+    recurrenceMonth: null,
+    recurrenceWeekOrdinal: null,
+    recurrenceAnchorDay: null,
+    recurrenceAnchorDate: null,
+    recurrenceFromCompletion: false,
+    recurrenceEndDate: null,
+    recurrenceCount: null,
+    dueDate: day(6).toISOString(),
+  };
+
+  it('counts only its own days when the rollover credits a gap', () => {
+    // Tuesday the 6th through Monday the 12th: one Tuesday.
+    expect(scheduledDaysBetween(weekly, day(6), day(12), '02:00')).toBe(1);
+    // Through Tuesday the 13th: two.
+    expect(scheduledDaysBetween(weekly, day(6), day(13), '02:00')).toBe(2);
+    // Wednesday the 7th through Monday the 12th: none.
+    expect(scheduledDaysBetween(weekly, day(7), day(12), '02:00')).toBe(0);
+  });
+
+  it('credits one clean day, not six, for the week that went by', () => {
+    const task = { ...habit({ streakDate: iso(5), streakCount: 3 }), ...weekly };
+    const patch = cleanDayPatch(task, day(8), {
+      scheduledDays: (a, t) => scheduledDaysBetween(task, a, t, '02:00'),
+    });
+    expect(patch?.streakCount).toBe(4);
+  });
+
+  it('is off schedule on any day but its own, and a daily habit never is', () => {
+    expect(isOffScheduleDay(weekly, day(13), day(8))).toBe(true);
+    expect(isOffScheduleDay(weekly, day(8), day(8))).toBe(false);
+    expect(isOffScheduleDay({ ...weekly, recurrenceType: 'daily' }, day(7), day(8))).toBe(false);
   });
 });

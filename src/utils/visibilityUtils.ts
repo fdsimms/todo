@@ -12,7 +12,7 @@ import { blockerIdsOf, isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } fr
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
-import { isNegativeTask } from './negativeHabits';
+import { isNegativeTask, isOffScheduleDay } from './negativeHabits';
 import { isProjectPaused, projectPausedUntil } from './projectPause';
 import { windowBounds, type SunLocation, type WindowFields } from './sunTimes';
 
@@ -898,7 +898,12 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   // the date it was pushed to was never read.
   if (isInPausedProject(task)) return false;
   if (isNegativeTask(task)) {
-    return !deferBlocksNow(task, new Date(), useSettingsStore.getState().dayResetTime);
+    const { dayResetTime } = useSettingsStore.getState();
+    // A weekly or monthly habit is owed on its own days only: off them it is
+    // in Later, dated to its next occurrence, like any other repeating task.
+    const dueDay = task.dueDate ? getTaskDayStart(new Date(task.dueDate), dayResetTime) : null;
+    if (isOffScheduleDay(task, dueDay, getCurrentDayStart())) return false;
+    return !deferBlocksNow(task, new Date(), dayResetTime);
   }
 
   // Ahead of the time gates deliberately: being blocked isn't a "not yet" that

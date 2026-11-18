@@ -379,13 +379,9 @@ export function RemindersCaptureSettings() {
         icon="arrow-down-circle-outline"
         iconColor={remindersImportEnabled ? colors.accent : undefined}
         label="Import from Reminders"
-        hint={remindersImportEnabled
-          ? selectedReminderList
-            ? remindersImportDelete
-              ? `Anything in “${selectedReminderList.title}” is added to your Inbox and removed from the Reminders app`
-              : `Anything in “${selectedReminderList.title}” is added to your Inbox and left in the Reminders app`
-            : 'The list it was importing from is no longer available'
-          : 'Nothing is read from the Reminders app'}
+        hint={remindersImportEnabled && !selectedReminderList
+          ? 'The list it was importing from is no longer available'
+          : 'Adds each reminder in the list you pick to your Inbox. When off, nothing is read from the Reminders app'}
         toggle={remindersImportEnabled}
         onPress={onToggleRemindersImport}
         accessibilityLabel="Import from the Reminders app"
@@ -499,9 +495,7 @@ export function RemindersCaptureSettings() {
             icon="checkmark-circle-outline"
             iconColor={remindersImportReview ? colors.accent : undefined}
             label="Review before applying"
-            hint={remindersImportReview
-              ? 'A reminder’s date, repeat and alarm wait on the task in your Inbox until you accept them'
-              : 'They’re applied on import, so a dated reminder goes straight to Today or Later'}
+            hint="A reminder’s date, repeat and alarm wait on the task in your Inbox until you accept them. When off, they’re applied on import, so a dated reminder goes straight to Today or Later"
             toggle={remindersImportReview}
             onPress={() => setRemindersImportReview(!remindersImportReview)}
             accessibilityLabel="Review a reminder’s date and repeat before applying them"
@@ -512,9 +506,7 @@ export function RemindersCaptureSettings() {
             icon={remindersImportDelete ? 'trash-outline' : 'archive-outline'}
             iconColor={remindersImportDelete ? colors.accent : undefined}
             label="Delete after importing"
-            hint={remindersImportDelete
-              ? `Each reminder is removed from “${selectedReminderList.title}” once its task exists`
-              : 'Reminders stay in the list. Any whose name matches a task (finished or not) is skipped.'}
+            hint="Removes each reminder from the list once its task exists. When off, reminders stay in the list, and any whose name matches a task (finished or not) is skipped."
             toggle={remindersImportDelete}
             onPress={() => setRemindersImportDelete(!remindersImportDelete)}
             accessibilityLabel="Delete each reminder from the Reminders app after importing it"
@@ -534,13 +526,7 @@ export function RemindersCaptureSettings() {
         icon="cart-outline"
         iconColor={groceryImportEnabled ? colors.accent : undefined}
         label="Send a list to Groceries"
-        hint={groceryImportEnabled
-          ? groceryImportTwoWay
-            ? 'This list and your grocery list are kept the same, in both directions.'
-            : groceryImportDelete
-              ? 'Reminders in this list become grocery items instead of tasks.'
-              : 'Reminders in this list become grocery items instead of tasks, and stay where they are.'
-          : 'Point a second list at your grocery list, so “add milk to my Groceries list” lands there.'}
+        hint="Reminders in the list you pick become grocery items instead of tasks. Point a second list at your grocery list, so “add milk to my Groceries list” lands there."
         toggle={groceryImportEnabled}
         onPress={onToggleGroceryImport}
       />
@@ -582,9 +568,7 @@ export function RemindersCaptureSettings() {
             icon="swap-horizontal-outline"
             iconColor={groceryImportTwoWay ? colors.accent : undefined}
             label="Two-way sync"
-            hint={groceryImportTwoWay
-              ? `Your grocery list and “${selectedGroceryList.title}” are kept the same in both directions. Share “${selectedGroceryList.title}” in the Reminders app to keep one grocery list with someone else.`
-              : 'Changes go from Reminders to your grocery list only. Turn this on and share the list in the Reminders app to keep one grocery list with someone else.'}
+            hint="Keeps your grocery list and the Reminders list the same in both directions. Share the list in the Reminders app to keep one grocery list with someone else. When off, changes go from Reminders to your grocery list only."
             toggle={groceryImportTwoWay}
             onPress={onToggleTwoWay}
             accessibilityLabel="Keep the grocery list and this Reminders list the same in both directions"
@@ -597,9 +581,7 @@ export function RemindersCaptureSettings() {
                 icon="cart-outline"
                 iconColor={groceryImportAutoBought ? colors.accent : undefined}
                 label="Count cleared items as bought"
-                hint={groceryImportAutoBought
-                  ? 'An item you checked off in Reminders and then cleared is recorded as bought, as if you had finished a trip. Items cleared without being checked are still asked about.'
-                  : 'After you clear checked items in Reminders, Groceries asks which ones you bought. Turn this on to record the checked ones without asking.'}
+                hint="Records an item you checked off in Reminders and then cleared as bought, as if you had finished a trip. Items cleared without being checked are still asked about. When off, Groceries asks which ones you bought after you clear checked items."
                 toggle={groceryImportAutoBought}
                 onPress={() => setGroceryImportAutoBought(!groceryImportAutoBought)}
                 accessibilityLabel="Record items checked off and cleared in Reminders as bought without asking"
@@ -622,9 +604,7 @@ export function RemindersCaptureSettings() {
             icon={groceryImportDelete ? 'trash-outline' : 'archive-outline'}
             iconColor={groceryImportDelete ? colors.accent : undefined}
             label="Delete after adding to Groceries"
-            hint={groceryImportDelete
-              ? `Each reminder is removed from “${selectedGroceryList.title}” once it’s on your grocery list`
-              : 'Reminders stay in the list. A name your grocery list already knows is skipped instead.'}
+            hint="Removes each reminder from the list once it’s on your grocery list. When off, reminders stay in the list, and a name your grocery list already knows is skipped instead."
             toggle={groceryImportDelete}
             onPress={() => setGroceryImportDelete(!groceryImportDelete)}
             accessibilityLabel="Delete each reminder from the Reminders app after adding it to groceries"

@@ -111,9 +111,7 @@ export function FocusSettings() {
           icon="cafe-outline"
           iconColor={focusBreaksEnabled ? colors.accent : undefined}
           label="Breaks in focus sessions"
-          hint={focusBreaksEnabled
-            ? 'Sessions add breaks using the settings below. Turn off to start every session with no breaks. Your break settings are kept.'
-            : 'New sessions have no breaks. Turn on to use your break settings again.'}
+          hint="Sessions add breaks using the settings below. When off, new sessions have no breaks, and your break settings are kept."
           toggle={focusBreaksEnabled}
           onPress={() => setFocusBreaksEnabled(!focusBreaksEnabled)}
         />
@@ -236,9 +234,7 @@ export function FocusSettings() {
           icon="eye-off-outline"
           iconColor={focusHideTimers ? colors.accent : undefined}
           label="Hide timers while focusing"
-          hint={focusHideTimers
-            ? 'The countdown is hidden on the running session screen, the strip on Today, and the Lock Screen. Steps still end and chime on schedule. Change it per session from the start screen.'
-            : 'The countdown shows everywhere a session runs. Change it per session from the start screen.'}
+          hint="Hides the countdown on the running session screen, the strip on Today, and the Lock Screen. Steps still end and chime on schedule. When off, the countdown shows everywhere a session runs. Change it per session from the start screen."
           toggle={focusHideTimers}
           onPress={() => setFocusHideTimers(!focusHideTimers)}
         />
@@ -251,9 +247,7 @@ export function FocusSettings() {
               icon="phone-portrait-outline"
               iconColor={focusLiveActivity ? colors.accent : undefined}
               label="Live Activity while focusing"
-              hint={focusLiveActivity
-                ? 'The step you’re on shows on the Lock Screen and Dynamic Island, with a button to pause it or move to the next one'
-                : 'Sessions stay in the app only'}
+              hint="Shows the step you’re on on the Lock Screen and Dynamic Island, with a button to pause it or move to the next one. When off, sessions stay in the app only"
               toggle={focusLiveActivity}
               onPress={() => setFocusLiveActivity(!focusLiveActivity)}
             />
@@ -288,9 +282,7 @@ export function FocusSettings() {
             icon="phone-portrait-outline"
             iconColor={timerLiveActivity ? colors.accent : undefined}
             label="Live Activity while timing"
-            hint={timerLiveActivity
-              ? 'A running task timer, recipe cook/prep timer, completion timer reminder, or an unlock’s play time shows on the Lock Screen and Dynamic Island'
-              : 'Timers stay in the app only'}
+            hint="Shows a running task timer, recipe cook/prep timer, completion timer reminder, or an unlock’s play time on the Lock Screen and Dynamic Island. When off, timers stay in the app only"
             toggle={timerLiveActivity}
             onPress={() => setTimerLiveActivity(!timerLiveActivity)}
           />

@@ -39,7 +39,7 @@ export const WIDE_LIST_ROUTES: ReadonlySet<string> = new Set([
  * A route belongs here only if its screen renders a `WideScroll` (a test checks):
  * listed without one, it would be a single column stretched to 1040.
  */
-export const DASHBOARD_ROUTES: ReadonlySet<string> = new Set(['Stats', 'Mood', 'Sleep']);
+export const DASHBOARD_ROUTES: ReadonlySet<string> = new Set(['Stats', 'Mood', 'Insights', 'Sleep']);
 
 /** A cap too wide for any window to reach, in place of "no cap" (see `AppFrame`). */
 export const UNCAPPED_WIDTH = 100000;

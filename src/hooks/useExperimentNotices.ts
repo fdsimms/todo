@@ -7,7 +7,7 @@ import { syncExperimentNotices } from '../utils/notifications';
 /**
  * Keeps each experiment's finish notice in step with the rows and with the
  * settings that place it (`syncExperimentNotices`). App-level rather than on
- * the Mood screen, because an experiment can be added, moved or deleted from
+ * the Experiments screen, because an experiment can be added, moved or deleted from
  * another phone or by an agent while that screen is frozen or never opened.
  */
 export function useExperimentNotices(): void {

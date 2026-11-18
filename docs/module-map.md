@@ -377,8 +377,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nameTaken.ts` — categoryRenameTaken, projectCategoryTakenBy, recipeRenameTaken, cookbookRenameTaken, choiceGroupRenameTaken, ingredientLineClash
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
 - `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +35 more
-- `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +9 more
+- `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +10 more
 - `src/utils/negativeHold.ts` — negativeHoldNow, negativeHoldOffered
+- `src/utils/negativeSchedule.ts` — scheduledDaysBetween
 - `src/utils/nfcBridge.ts` — NfcBridge, nfcBridge, isNfcSupported, NfcScanResult, parseScanAnswer, scanKeyTag
 - `src/utils/nfcKey.ts` — NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, NfcKeyKind, NfcKey, MAX_NFC_KEYS, MAX_KEY_NAME_LENGTH, normalizeTagUid, newLinkToken, normalizeLinkToken, keyLinkUrl, +12 more
 - `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
@@ -514,7 +515,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, isCookTimerRunning, cookTimerElapsed, isPrepTimerRunning, prepTimerElapsed, KitchenTimerKind, activeKitchenTimer, showsPrepRow, startCookingPlan, +3 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, recipeImportedFrom, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, parseRecipeMicrodata, focusRecipeText, +3 more
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, AndSplitPart, splitIngredientAnd, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, alreadyInRecipeNote, blockedReviewRows, +67 more
-- `src/utils/recordTasks.ts` — isAnsweredByRecord, recordLogUrl, recordGlyph, recordMicUrl, RecordContext, isRecordAnswered
+- `src/utils/recordTasks.ts` — isAnsweredByRecord, recordLogUrl, recordMicUrl, RecordContext, isRecordAnswered
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, MONTH_NAMES, MONTH_ABBREVIATIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/releaseBlocks.ts` — releaseAllBlocks, applyKeyScan

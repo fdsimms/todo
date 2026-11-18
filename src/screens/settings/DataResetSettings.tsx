@@ -365,9 +365,7 @@ export function DataResetSettings() {
           icon={demoActive ? 'flask' : 'flask-outline'}
           iconColor={demoActive ? colors.accent : undefined}
           label="Demo mode"
-          hint={demoActive
-            ? 'Showing sample data. Your own tasks are hidden'
-            : 'Replaces your list with sample data so you can show the app to someone'}
+          hint="Replaces your list with sample data so you can show the app to someone. Your own tasks are hidden until you turn it off"
           toggle={demoActive}
           onPress={onToggleDemo}
         />
