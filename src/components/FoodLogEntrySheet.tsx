@@ -2558,7 +2558,11 @@ export function FoodLogEntrySheet({
                 {editing ? 'What was it?' : 'What did you eat?'}
               </Text>
             )}
-            <SheetHeaderButton label={editing ? BUTTON_LABEL.save : 'Add'} onPress={handleSave} disabled={!built} minWidth={64} />
+            {/* While the Estimate panel is open there is no picked food for Add to
+                log, so it runs the same action as the pinned Log button. */}
+            {!editing && !picked && estimateOpen && !!estimateLog
+              ? <SheetHeaderButton label="Add" onPress={estimateLog.run} disabled={estimateLog.loading} minWidth={64} />
+              : <SheetHeaderButton label={editing ? BUTTON_LABEL.save : 'Add'} onPress={handleSave} disabled={!built} minWidth={64} />}
           </View>
           {/* Full width of the header rather than squeezed between the two
               buttons, so a long scanned product name gets far more room
