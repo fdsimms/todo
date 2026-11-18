@@ -111,6 +111,7 @@ import { readSavedPlaces, savedPlaceKey, type SavedPlace } from '../../utils/sav
 import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { TASK_SETTINGS_SPECS, describeGeneratedTaskSettings, hasTaskSettingsSheet } from '../../utils/generatedTaskSettings';
 import { GeneratedTaskSettingsSheet } from '../../components/GeneratedTaskSettingsSheet';
 import { useSheetSubject } from '../../hooks/useSheetSubject';
@@ -1394,11 +1395,9 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 tight={s.leaveLiveActivity}
               />
               {s.leaveLiveActivity && (
-                <>
-                  <View style={styles.sep} />
+                <SettingsNested>
                   <SettingsRow
                     entryId="leaveWindowMinutes"
-                    icon="hourglass-outline"
                     label="Start window"
                     hint="The Live Activity can start this long before you need to leave. It only starts while the app is open."
                     value={`${describeLeaveWindow(s.leaveWindowMinutes)} before leaving`}
@@ -1416,7 +1415,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                       describeValue={n => `${describeLeaveWindow(n ?? LEAVE_WINDOW_MINUTES_DEFAULT)} before leaving`}
                     />
                   </View>
-                </>
+                </SettingsNested>
               )}
             </>
           )}
@@ -1453,53 +1452,43 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             />
           )}
           {s.travelEstimates && (
-            <>
-              <View style={styles.sep} />
+            <SettingsNested>
               <SettingsRow
                 entryId="travelCompareModes"
-                icon="git-compare-outline"
-                iconColor={s.travelCompareModes ? colors.accent : undefined}
                 label="Compare ways to get there"
                 hint="Each leave-by task lists the trip by car, transit and on foot, with the shortest marked. Tap one to use it for that event. Asks Apple Maps for all three, so it sends the same addresses up to three times. When off, each leave-by task shows only the mode above."
                 toggle={s.travelCompareModes}
                 onPress={() => s.setTravelCompareModes(!s.travelCompareModes)}
               />
-            </>
-          )}
-          {s.travelEstimates && s.travelMode !== 'walking' && (
-            <>
-              <View style={styles.sep} />
-              <SettingsRow
-                entryId="travelWalkUnder"
-                icon="walk-outline"
-                iconColor={s.travelWalkUnderMinutes > 0 ? colors.accent : undefined}
-                label="Walk if close"
-                hint={s.travelWalkUnderMinutes > 0
-                  ? `Estimates the trip on foot when the walk is ${s.travelWalkUnderMinutes} minutes or less. Otherwise it uses the mode above. A mode set on an event is never changed. Asks Apple Maps twice for events that are farther away.`
-                  : 'Off. Every event uses the mode above.'}
-                value={s.travelWalkUnderMinutes > 0 ? `${s.travelWalkUnderMinutes} min or less` : 'Off'}
-                tight
-              />
-              <View style={styles.cadenceRow}>
-                <CountStepper
-                  value={s.travelWalkUnderMinutes}
-                  onChange={next => s.setTravelWalkUnderMinutes(next ?? 0)}
-                  min={0}
-                  max={TRAVEL_WALK_UNDER_MAX}
-                  step={TRAVEL_WALK_UNDER_STEP}
-                  format={n => (n === 0 ? 'Off' : `${n}m`)}
-                  label="Walk if the walk takes at most"
-                  describeValue={n => (n ? `Walk when the walk takes ${n} minutes or less` : 'Walk if close is off')}
-                />
-              </View>
-            </>
-          )}
-          {s.travelEstimates && (
-            <>
+              {s.travelMode !== 'walking' && (
+                <>
+                  <View style={styles.sep} />
+                  <SettingsRow
+                    entryId="travelWalkUnder"
+                    label="Walk if close"
+                    hint={s.travelWalkUnderMinutes > 0
+                      ? `Estimates the trip on foot when the walk is ${s.travelWalkUnderMinutes} minutes or less. Otherwise it uses the mode above. A mode set on an event is never changed. Asks Apple Maps twice for events that are farther away.`
+                      : 'Off. Every event uses the mode above.'}
+                    value={s.travelWalkUnderMinutes > 0 ? `${s.travelWalkUnderMinutes} min or less` : 'Off'}
+                    tight
+                  />
+                  <View style={styles.cadenceRow}>
+                    <CountStepper
+                      value={s.travelWalkUnderMinutes}
+                      onChange={next => s.setTravelWalkUnderMinutes(next ?? 0)}
+                      min={0}
+                      max={TRAVEL_WALK_UNDER_MAX}
+                      step={TRAVEL_WALK_UNDER_STEP}
+                      format={n => (n === 0 ? 'Off' : `${n}m`)}
+                      label="Walk if the walk takes at most"
+                      describeValue={n => (n ? `Walk when the walk takes ${n} minutes or less` : 'Walk if close is off')}
+                    />
+                  </View>
+                </>
+              )}
               <View style={styles.sep} />
               <SettingsRow
                 entryId="travelOrigin"
-                icon="home-outline"
                 label="Start from"
                 hint={travelOrigin
                   ? `Estimates the trip from ${travelOrigin.name}, whatever time the app checks. Sends that place’s coordinates to Apple.`
@@ -1552,7 +1541,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                   />
                 </View>
               )}
-            </>
+            </SettingsNested>
           )}
           {s.calendarIds.length > 1 && (
             <>
@@ -1607,11 +1596,9 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             onPress={() => s.setTransitAlerts(!s.transitAlerts)}
           />
           {s.transitAlerts && (
-            <>
-              <View style={styles.sep} />
+            <SettingsNested>
               <SettingsRow
                 entryId="transitLines"
-                icon="train-outline"
                 label="Lines"
                 hint="Only alerts on these lines are added to a task."
                 value={lines.length === 0 ? 'None' : lines.join(', ')}
@@ -1635,7 +1622,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                   }))}
                 />
               </View>
-            </>
+            </SettingsNested>
           )}
         </>
       );
@@ -1853,11 +1840,9 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             onPress={toggleLimitsOnToday}
           />
           {s.limitsTodayCategory !== null && (
-            <>
-              <View style={styles.sep} />
+            <SettingsNested>
               <SettingsRow
                 entryId="limitsTodayCategory"
-                icon="pricetag-outline"
                 label="Show them under"
                 value={categoryOptions.find(o => o.value === s.limitsTodayCategory)?.label ?? s.limitsTodayCategory}
                 tight
@@ -1877,7 +1862,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                   <View style={styles.sep} />
                   <SettingsRow
                     entryId="limitsTodayNutrients"
-                    icon="list-outline"
                     label="Nutrients shown"
                     hint="Turn off a nutrient to leave its row off Today. Its limit still applies everywhere else."
                     tight
@@ -1905,7 +1889,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                   </View>
                 </>
               )}
-            </>
+            </SettingsNested>
           )}
           {goalNutrients.length > 0 && (
             <>
@@ -1920,11 +1904,9 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 onPress={toggleGoalsOnToday}
               />
               {s.goalsTodayCategory !== null && (
-                <>
-                  <View style={styles.sep} />
+                <SettingsNested>
                   <SettingsRow
                     entryId="goalsTodayCategory"
-                    icon="pricetag-outline"
                     label="Show goals under"
                     value={categoryOptions.find(o => o.value === s.goalsTodayCategory)?.label ?? s.goalsTodayCategory}
                     tight
@@ -1942,7 +1924,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                   <View style={styles.sep} />
                   <SettingsRow
                     entryId="goalsTodayNutrients"
-                    icon="list-outline"
                     label="Goals shown"
                     tight
                   />
@@ -1967,7 +1948,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                       })}
                     />
                   </View>
-                </>
+                </SettingsNested>
               )}
             </>
           )}
