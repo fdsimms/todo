@@ -1149,6 +1149,25 @@ describe('createTask and updateTask', () => {
     expect(scaleFirstWeek).toHaveBeenCalledWith('today-new');
   });
 
+  // create_task takes no target, so a new task's target arrives through
+  // update_task and has to get the same smaller first week.
+  it('scales the first week when update_task gives a task its first weekly target', () => {
+    const plain = task({ id: 'today-plain', title: 'Run' });
+    const weekly = task({ id: 'today-weekly', title: 'Swim', targetCount: 2, quotaPeriod: 'week' });
+    const scaleFirstWeek = jest.fn();
+    const r = withTasks([plain, weekly], {
+      taskPatch: () => ({ targetCount: 3 }),
+      updateTask: () => ({ task: plain, alsoUpdated: 0 }),
+      scaleFirstWeek,
+    });
+    updateTask(r, 'today-plain', { target: { count: 3, per: 'week' } });
+    updateTask(r, 'today-plain', { target: { count: 3, per: 'week', firstWeek: 'full' } });
+    updateTask(r, 'today-weekly', { target: { count: 3, per: 'week' } });
+    updateTask(r, 'today-plain', { target: { count: 8, per: 'day' } });
+    expect(scaleFirstWeek).toHaveBeenCalledTimes(1);
+    expect(scaleFirstWeek).toHaveBeenCalledWith('today-plain');
+  });
+
   it('refuses a subtask of a task that does not exist, before writing anything', () => {
     const r = stubReplica({ taskPatch: () => ({}) });
     expect(() => createTask(r, { title: 'Child', parentId: 'nope' })).toThrow(/No task with id nope/);

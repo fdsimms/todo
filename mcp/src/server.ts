@@ -1737,7 +1737,7 @@ const taskFieldsShape = {
     }).nullable().optional()
       .describe('Raise the count as it keeps being met ("10 push-ups a day, add 2 after every 3 days I hit it, up to 30"). A missed day neither counts nor resets. Not with allowOvershoot. null turns it off.'),
     firstWeek: z.enum(['fewer', 'full']).optional()
-      .describe('create_task, weekly only: "fewer" (default) scales the first week to the days left (3 a week set on Thursday asks for 2); "full" asks the whole count.'),
+      .describe('When a weekly target is first set: "fewer" (default) scales the first week to the days left (3 a week set on Thursday asks for 2); "full" asks the whole count.'),
   }).nullable().optional()
     .describe('Done several times: "water 8 times a day", "run 3 times a week". Makes the task repeat daily or weekly if it did not. null removes it.'),
   timed: z.object({
@@ -1862,6 +1862,15 @@ const {
   ...coreTaskFieldsShape
 } = taskFieldsShape;
 const ADVANCED_TASK_FIELDS_NOTE = 'Repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, logsMeal and onlyIfAnswer are not accepted here; set them with update_task.';
+/**
+ * create_task takes the plain fields too: the advanced ones are set with
+ * update_task on the new task, so their 20 KB of schema is sent once rather
+ * than with both tools. They stay in its schema as bare names so a call that
+ * sends one is refused with what to do, since a tool's top level drops a field
+ * it doesn't list without a word.
+ */
+const ADVANCED_TASK_FIELD_NAMES = Object.keys(taskFieldsShape).filter(k => !(k in coreTaskFieldsShape));
+const refusedAdvancedTaskFields = Object.fromEntries(ADVANCED_TASK_FIELD_NAMES.map(k => [k, z.unknown().optional()]));
 
 /** What one variant (a brand and variant pair) can change, shared by save_grocery_box and the `variants` of update_grocery_item. */
 const GROCERY_BOX_EDIT = {
@@ -1911,13 +1920,18 @@ function registerWriteTools(
 ): void {
   server.tool(
     'create_task',
-    "Add a task. Beyond the basics it can repeat (any rule the app has), be a chain of steps, have a daily or weekly target, a countdown (timed), a weekly rotation of named things, an Apple Health target, a supply that counts down, a time window, blockers it waits on, a follow-up every Nth completion, or be a habit of not doing something. It needs a category (see list_categories) unless its project has a default one; the app's other defaults apply (its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
+    "Add a task with the plain fields: dates, category, tags, project, priority, a reminder, a time window, blockers it waits on, a habit of not doing something and the rest. To make it repeat, a chain of steps, a daily or weekly target, a countdown (timed), a weekly rotation, an Apple Health target, a supply, a follow-up, a medication or meal it logs, or a branch on an answer, create it and then set those with update_task on its id, in the person's same request. It needs a category (see list_categories) unless its project has a default one; the app's other defaults apply (its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
     {
       title: z.string().min(1),
-      ...taskFieldsShape,
+      ...coreTaskFieldsShape,
       parentId: z.string().nullable().optional().describe('Makes this a subtask (a checklist item) of that task.'),
+      ...refusedAdvancedTaskFields,
     },
     async input => {
+      const sent = ADVANCED_TASK_FIELD_NAMES.filter(k => (input as Record<string, unknown>)[k] !== undefined);
+      if (sent.length > 0) {
+        return json({ error: `create_task does not take ${sent.join(', ')}. Create the task without ${sent.length === 1 ? 'it' : 'them'}, then set ${sent.length === 1 ? 'it' : 'them'} with update_task on the new task's id.` });
+      }
       try {
         const result = await withWrite(() => createTask(replica, input as Parameters<typeof createTask>[1]));
         return json(withLink(result, LINKS?.task(result.task.id)));
