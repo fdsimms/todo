@@ -1,11 +1,14 @@
 import * as SecureStore from 'expo-secure-store';
-import { dbDeleteSetting, dbGetSetting } from '../db/database';
+import { dbDeleteSetting, dbGetSetting, dbSetSetting } from '../db/database';
 import {
   API_KEY_LEGACY_SETTING,
   API_KEY_SECURE_KEY,
+  ensureReadableWhileLocked,
+  keyEditToSave,
   loadAnthropicApiKey,
   makeSecureKeyReadableWhileLocked,
   saveAnthropicApiKey,
+  saveLockedReadableKey,
   saveSecureKey,
   SYNC_TOKEN_SECURE_KEY,
 } from '../utils/secureApiKey';
@@ -20,6 +23,7 @@ jest.mock('expo-secure-store', () => ({
 jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbDeleteSetting: jest.fn(),
+  dbSetSetting: jest.fn(),
 }));
 
 const getItem = SecureStore.getItemAsync as jest.Mock;
@@ -63,7 +67,7 @@ describe('migrating the plaintext key', () => {
 
     await expect(loadAnthropicApiKey()).resolves.toBe('sk-ant-plaintext');
 
-    expect(setItem).toHaveBeenCalledWith(API_KEY_SECURE_KEY, 'sk-ant-plaintext');
+    expect(setItem).toHaveBeenCalledWith(API_KEY_SECURE_KEY, 'sk-ant-plaintext', { keychainAccessible: 0 });
     expect(dbDeleteSetting).toHaveBeenCalledWith(API_KEY_LEGACY_SETTING);
   });
 
@@ -106,9 +110,10 @@ describe('migrating the plaintext key', () => {
 // ─── saving ──────────────────────────────────────────────────────────────────
 
 describe('saveAnthropicApiKey', () => {
-  it('writes to the keychain, never to the settings table', async () => {
+  it('writes to the keychain, readable while locked, never to the settings table', async () => {
     await expect(saveAnthropicApiKey('sk-ant-new')).resolves.toBe(true);
-    expect(setItem).toHaveBeenCalledWith(API_KEY_SECURE_KEY, 'sk-ant-new');
+    expect(setItem).toHaveBeenCalledWith(API_KEY_SECURE_KEY, 'sk-ant-new', { keychainAccessible: 0 });
+    expect(dbSetSetting).not.toHaveBeenCalledWith(API_KEY_LEGACY_SETTING, expect.anything());
   });
 
   it('deletes the keychain item when the key is cleared', async () => {
@@ -148,6 +153,61 @@ describe('saveSecureKey', () => {
   it('reports a keychain that refused the write', async () => {
     setItem.mockRejectedValue(new Error('locked'));
     await expect(saveSecureKey('wanikaniApiToken', 'token', { readableWhileLocked: true })).resolves.toBe(false);
+  });
+});
+
+describe('saveLockedReadableKey', () => {
+  it('adds the key afresh, readable after the first unlock, and marks the device', async () => {
+    await expect(saveLockedReadableKey('fdcApiKey', 'k')).resolves.toBe(true);
+    expect(deleteItem).toHaveBeenCalledWith('fdcApiKey');
+    expect(setItem).toHaveBeenCalledWith('fdcApiKey', 'k', { keychainAccessible: 0 });
+    expect(dbSetSetting).toHaveBeenCalledWith('keyReadableWhileLocked:fdcApiKey', '1');
+  });
+
+  it('marks nothing when the keychain refuses, or when the key is cleared', async () => {
+    setItem.mockRejectedValue(new Error('locked'));
+    await expect(saveLockedReadableKey('fdcApiKey', 'k')).resolves.toBe(false);
+    await expect(saveLockedReadableKey('fdcApiKey', '')).resolves.toBe(true);
+    expect(dbSetSetting).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensureReadableWhileLocked', () => {
+  it('moves a key once, then leaves it alone', async () => {
+    getItem.mockResolvedValue('k');
+    await ensureReadableWhileLocked('fdcApiKey');
+    expect(setItem).toHaveBeenCalledWith('fdcApiKey', 'k', { keychainAccessible: 0 });
+    expect(dbSetSetting).toHaveBeenCalledWith('keyReadableWhileLocked:fdcApiKey', '1');
+
+    jest.clearAllMocks();
+    getSetting.mockImplementation((k: string) => (k === 'keyReadableWhileLocked:fdcApiKey' ? '1' : null));
+    await ensureReadableWhileLocked('fdcApiKey');
+    expect(deleteItem).not.toHaveBeenCalled();
+  });
+
+  it('is retried on the next launch when the phone was locked', async () => {
+    getItem.mockRejectedValue(new Error('interaction not allowed'));
+    await ensureReadableWhileLocked('fdcApiKey');
+    expect(dbSetSetting).not.toHaveBeenCalled();
+    expect(deleteItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('keyEditToSave', () => {
+  it('saves nothing when the field still holds what the app holds', () => {
+    expect(keyEditToSave('sk-ant-a', 'sk-ant-a')).toBeNull();
+    expect(keyEditToSave(' sk-ant-a ', 'sk-ant-a')).toBeNull();
+  });
+
+  // The app holds '' after a keychain read that failed; a blur must not
+  // turn that into a delete of a key nobody cleared.
+  it('saves nothing for an empty field over an empty key', () => {
+    expect(keyEditToSave('', '')).toBeNull();
+  });
+
+  it('saves a new key, and an emptied field as a clear', () => {
+    expect(keyEditToSave('sk-ant-b', 'sk-ant-a')).toBe('sk-ant-b');
+    expect(keyEditToSave('', 'sk-ant-a')).toBe('');
   });
 });
 

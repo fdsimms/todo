@@ -18,6 +18,9 @@ jest.mock('../utils/secureApiKey', () => ({
   saveAnthropicApiKey: jest.fn().mockResolvedValue(true),
   loadSecureKey: jest.fn().mockResolvedValue(''),
   saveSecureKey: jest.fn().mockResolvedValue(true),
+  saveLockedReadableKey: jest.fn().mockResolvedValue(true),
+  ensureReadableWhileLocked: jest.fn().mockResolvedValue(undefined),
+  API_KEY_SECURE_KEY: 'anthropicApiKey',
   FDC_KEY_SECURE_KEY: 'fdcApiKey',
   GO_UPC_KEY_SECURE_KEY: 'goUpcApiKey',
 }));

@@ -123,7 +123,7 @@ import { bumpChipUses, parseChipUses, type ChipUses } from '../utils/chipUses';
 import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, clearTabSlot, DEFAULT_TAB_ROUTES, EMPTY_MENU_ARRANGEMENT, parseMenuArrangement, type MenuArrangement } from '../utils/navHubs';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
-import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
+import { API_KEY_SECURE_KEY, ensureReadableWhileLocked, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveLockedReadableKey } from '../utils/secureApiKey';
 import {
   AI_FEATURE_IDS, currentAiModelId, defaultAiFeatureConfig,
   type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
@@ -4698,6 +4698,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
    * A key the user typed while this was in flight wins: the write has already
    * gone to the keychain, and clobbering it with the value we set out to read
    * would silently undo it.
+   *
+   * A read on a locked phone comes back empty, so this runs again each time the
+   * app comes to the front while a key is empty (`useRetrySecrets`).
    */
   async initializeSecrets() {
     const anthropicApiKey = await loadAnthropicApiKey();
@@ -4708,6 +4711,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set(state => (state.fdcApiKey ? {} : { fdcApiKey }));
     const goUpcApiKey = await loadSecureKey(GO_UPC_KEY_SECURE_KEY);
     set(state => (state.goUpcApiKey ? {} : { goUpcApiKey }));
+    // Keys saved before they were readable while locked are moved, one at a
+    // time (each is a delete and an add), and only ones that were read here.
+    for (const [name, value] of [
+      [API_KEY_SECURE_KEY, anthropicApiKey],
+      [FDC_KEY_SECURE_KEY, fdcApiKey],
+      [GO_UPC_KEY_SECURE_KEY, goUpcApiKey],
+    ] as const) {
+      if (value) await ensureReadableWhileLocked(name);
+    }
   },
 
   setDayResetTime(time: string) {
@@ -4897,12 +4909,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   setFdcApiKey(key: string) {
     set({ fdcApiKey: key });
-    saveSecureKey(FDC_KEY_SECURE_KEY, key);
+    saveLockedReadableKey(FDC_KEY_SECURE_KEY, key);
   },
 
   setGoUpcApiKey(key: string) {
     set({ goUpcApiKey: key });
-    saveSecureKey(GO_UPC_KEY_SECURE_KEY, key);
+    saveLockedReadableKey(GO_UPC_KEY_SECURE_KEY, key);
   },
 
   setAiFeatureConfig(id: AiFeatureId, patch: Partial<AiFeatureConfig>) {

@@ -56,6 +56,7 @@ import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
 import { usePlaceGateRefresh } from './src/hooks/usePlaceGateRefresh';
 import { useReminderWithholdSync } from './src/hooks/useReminderWithholdSync';
 import { useForegroundCatchUp } from './src/hooks/useForegroundCatchUp';
+import { useRetrySecrets } from './src/hooks/useRetrySecrets';
 import { useExperimentNotices } from './src/hooks/useExperimentNotices';
 import { useScreenTimeSync } from './src/store/useScreenTimeStore';
 import { useHealthSync } from './src/store/useHealthStore';
@@ -414,6 +415,7 @@ function AppRoot() {
   // The day-rollover passes on every return to the front, whichever tab is
   // open. Lived on Today until a frozen Today skipped them.
   useForegroundCatchUp();
+  useRetrySecrets();
   // Keeps the OS usage monitor armed against the current rules and drains
   // what it has reported. Inert until screenTimeTasks is switched on.
   useScreenTimeSync();
