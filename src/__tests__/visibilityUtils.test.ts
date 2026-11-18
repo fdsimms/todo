@@ -330,16 +330,16 @@ describe('isTaskVisible', () => {
   });
 
   it('shows tasks with morning segment at 10 AM (morning started at 6 AM)', () => {
-    expect(isTaskVisible({ ...baseTask, timeSegments: ['morning'] })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['morning'] })).toBe(true);
   });
 
   it('hides tasks with evening segment before 6 PM', () => {
-    expect(isTaskVisible({ ...baseTask, timeSegments: ['evening'] })).toBe(false);
+    expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['evening'] })).toBe(false);
   });
 
   it('shows tasks when earliest segment (morning) has started even if other segment (evening) has not', () => {
     // morning started at 6 AM — task is visible even though evening hasn't started
-    expect(isTaskVisible({ ...baseTask, timeSegments: ['morning', 'evening'] })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['morning', 'evening'] })).toBe(true);
   });
 
   it('hides tasks where all segments are in the future', () => {
@@ -480,7 +480,7 @@ describe('isUpcomingToday', () => {
     mockSettingsState.dayResetTime = '04:00';
     mockSettingsState.morningStart = '04:00';
     jest.setSystemTime(new Date(2026, 6, 31, 1, 49, 0)); // Fri Jul 31, 1:49 AM
-    const task: Task = { ...baseTask, timeSegments: ['morning'] };
+    const task: Task = { ...baseTask, dueDate: new Date(2026, 6, 30, 12).toISOString(), timeSegments: ['morning'] };
     expect(isUpcomingToday(task)).toBe(false);
     expect(isTaskVisible(task)).toBe(true);
   });
@@ -493,11 +493,11 @@ describe('isUpcomingToday', () => {
     mockSettingsState.nightStart = '01:00';
     try {
       jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
-      expect(isTaskVisible({ ...baseTask, timeSegments: ['night'] })).toBe(false);
+      expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['night'] })).toBe(false);
       // Morning first thing is the one segment that must not roll: it has begun.
-      expect(isTaskVisible({ ...baseTask, timeSegments: ['morning'] })).toBe(true);
+      expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['morning'] })).toBe(true);
       jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0)); // still logical June 10
-      expect(isTaskVisible({ ...baseTask, timeSegments: ['night'] })).toBe(true);
+      expect(isTaskVisible({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['night'] })).toBe(true);
     } finally {
       mockSettingsState.dayResetTime = '00:00';
       mockSettingsState.morningStart = '06:00';
@@ -900,7 +900,7 @@ describe('isTaskDeferred', () => {
   });
 
   it('returns true when evening segment has not started yet', () => {
-    expect(isTaskDeferred({ ...baseTask, timeSegments: ['evening'] })).toBe(true);
+    expect(isTaskDeferred({ ...baseTask, dueDate: new Date(2025, 5, 10, 12).toISOString(), timeSegments: ['evening'] })).toBe(true);
   });
 
   it('returns false when morning segment has already started', () => {
@@ -1828,12 +1828,20 @@ describe('isUnscheduledTask', () => {
     expect(isUnscheduledTask({ ...baseTask, priority: 2 })).toBe(true);
   });
 
-  it('is false once the task has a due date, defer date, time segment or window', () => {
+  it('is false once the task has a due date, defer date or window', () => {
     const d = new Date(2025, 5, 12).toISOString();
     expect(isUnscheduledTask({ ...baseTask, category: 'Work', dueDate: d })).toBe(false);
     expect(isUnscheduledTask({ ...baseTask, category: 'Work', deferUntil: d })).toBe(false);
-    expect(isUnscheduledTask({ ...baseTask, category: 'Work', timeSegments: ['morning'] })).toBe(false);
     expect(isUnscheduledTask({ ...baseTask, category: 'Work', windowStart: '09:00' })).toBe(false);
+  });
+
+  // A time of day says when in a day, not which day: a task with only one has no
+  // day, so it is Unscheduled and not on Today every day.
+  it('is true for a task with only a time of day, which is not on Today', () => {
+    const task = { ...baseTask, category: 'Work', timeSegments: ['morning' as const] };
+    expect(isUnscheduledTask(task)).toBe(true);
+    expect(isTaskVisible(task)).toBe(false);
+    expect(isTaskDeferred(task)).toBe(false);
   });
 
   it('is false for a task assigned to a project (it lives in the project instead)', () => {
