@@ -852,11 +852,11 @@ describe('scheduleTripReminder', () => {
     expect(msOut).toBe(2 * 60 * 60 * 1000);
   });
 
-  it('is a gentle backstop, not a moment the user set — passive, not time-sensitive', async () => {
+  it('is time-sensitive, because a passive one makes no banner or sound and goes unseen', async () => {
     mockSettings.tripReminderEnabled = true;
     await scheduleTripReminder('Costco', new Date().toISOString());
     const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
-    expect(call.content.interruptionLevel).toBe('passive');
+    expect(call.content.interruptionLevel).toBe('timeSensitive');
   });
 
   it('cancels rather than schedules once the two-hour mark has already passed', async () => {
