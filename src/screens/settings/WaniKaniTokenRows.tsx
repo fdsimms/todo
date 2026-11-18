@@ -42,8 +42,10 @@ function problemText(problem: WaniKaniProblem): string {
   }
 }
 
-export function WaniKaniTokenRows({ entryId, linkToPrivacy = false }: {
+export function WaniKaniTokenRows({ entryId, linkToPrivacy = false, nested = false }: {
   entryId: string;
+  /** Drawn inside `SettingsNested`, where a row has no icon of its own. */
+  nested?: boolean;
   /** Offers a jump to the Privacy & AI copy while no token is saved. */
   linkToPrivacy?: boolean;
 }): React.ReactElement {
@@ -75,8 +77,8 @@ export function WaniKaniTokenRows({ entryId, linkToPrivacy = false }: {
     <>
       <SettingsRow
         entryId={entryId}
-        icon="key-outline"
-        iconColor={account.hasToken ? colors.accent : undefined}
+        icon={nested ? undefined : 'key-outline'}
+        iconColor={nested || !account.hasToken ? undefined : colors.accent}
         label="API token"
         hint={tokenHint(account.hasToken, account.user, account.refreshing)}
         alwaysShowHint
@@ -131,8 +133,8 @@ export function WaniKaniTokenRows({ entryId, linkToPrivacy = false }: {
         <>
           <View style={styles.sep} />
           <SettingsRow
-            icon="alert-circle-outline"
-            iconColor={colors.red}
+            icon={nested ? undefined : 'alert-circle-outline'}
+            iconColor={nested ? undefined : colors.red}
             label={problemText(account.problem)}
             labelColor={colors.redText}
           />

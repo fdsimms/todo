@@ -56,7 +56,6 @@ export function FrankiReadLanguageRows(): React.ReactElement {
         <View style={styles.sep} />
         <SettingsRow
           entryId="frankiReadLanguages"
-          icon="language-outline"
           label="Languages"
           hint="Languages appear here once Franki has a text waiting in them."
           alwaysShowHint
@@ -72,7 +71,6 @@ export function FrankiReadLanguageRows(): React.ReactElement {
           <View style={styles.sep} />
           <SettingsRow
             entryId={language.language === shown[0].language ? 'frankiReadLanguages' : undefined}
-            icon="language-outline"
             label={language.name}
             value={plural(language.waiting, 'text waiting', 'texts waiting')}
             tight
@@ -90,7 +88,6 @@ export function FrankiReadLanguageRows(): React.ReactElement {
       <View style={styles.sep} />
       <SettingsRow
         entryId="frankiReadRotateCount"
-        icon="repeat-outline"
         label="Rotating languages a day"
         hint="Every day always gets a task while a text is waiting. Rotate languages take turns, up to this many a day, the one read least recently first. Off gets none."
         value={plural(s.rotateCount, 'language', 'languages')}

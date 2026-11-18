@@ -557,10 +557,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     onChange: (segment: TimeOfDay | null) => void,
   ): React.ReactNode => (
     <>
-      <View style={styles.sep} />
       <SettingsRow
         entryId={entryId}
-        icon="time-outline"
         label="Show the task"
         hint="Held back until this part of the day arrives, like a task’s Time of day field."
         value={timeSegmentChoices.find(o => o.value === value)?.label ?? 'Any time'}
@@ -603,10 +601,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           .join(', ');
     return (
       <>
-        <View style={styles.sep} />
         <SettingsRow
           entryId={entryId}
-          icon="time-outline"
           label="Show the task"
           hint={hint}
           value={summary}
@@ -643,10 +639,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'groceryUseUp') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="groceryUseUpLeadDays"
-            icon="calendar-outline"
             label="Show the task"
             hint="How many days before the use-by date the task falls due."
             value={
@@ -676,10 +670,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'mealShortfall') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="mealShortfallLeadDays"
-            icon="calendar-outline"
             label="Show the task"
             hint="How many days before the meal the shopping task falls due."
             value={
@@ -709,10 +701,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'birthday') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="birthdayLeadDays"
-            icon="calendar-outline"
             label="Show the task"
             hint="How many days before the birthday the task falls due."
             value={
@@ -746,10 +736,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'backfill') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="backfillThreshold"
-            icon="albums-outline"
             label="Cards before the task"
             hint="Each Backfill area adds its own task once it has this many cards waiting, at most once a week."
             value={`${s.backfillThreshold}`}
@@ -772,10 +760,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'weekendNudge') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="weekendNudgeLeadDays"
-            icon="calendar-outline"
             label="Show the task"
             hint="Which day the task appears on. It never appears once the weekend has started."
             value={describeWeekendNudgeLead(s.weekendNudgeLeadDays)}
@@ -795,7 +781,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="weekendNudgePlanThreshold"
-            icon="checkmark-done-outline"
             label="How much counts as open"
             hint="How many things can already be planned for Friday evening, Saturday or Sunday while the weekend still counts as open."
             value={describeWeekendNudgePlanThreshold(s.weekendNudgePlanThreshold)}
@@ -818,10 +803,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'weighIn') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="weighInEveryDays"
-            icon="calendar-outline"
             label="Ask after"
             hint="How long without a weight in Apple Health before the task appears. It doesn’t appear on a day you’ve already recorded one."
             value={s.weighInEveryDays === 1 ? '1 day' : `${s.weighInEveryDays} days`}
@@ -845,10 +828,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'bloodPressureLog') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="bloodPressureEveryDays"
-            icon="calendar-outline"
             label="Ask after"
             hint="How long without a reading in Apple Health before the task appears. It doesn’t appear on a day you’ve already recorded one."
             value={s.bloodPressureEveryDays === 1 ? '1 day' : `${s.bloodPressureEveryDays} days`}
@@ -877,10 +858,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       if (nutrients.length === 0) return null;
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId={isLimit ? 'limitWarningNutrients' : 'goalTargetNutrients'}
-            icon="list-outline"
             label="Nutrients with a task"
             hint={`Turn off a nutrient to stop its ${isLimit ? 'Stay under' : 'Aim for'} task. Its ${isLimit ? 'limit' : 'goal'} still applies everywhere else.`}
             tight
@@ -911,10 +890,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'snackNudge') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="snackNudgeFromHour"
-            icon="time-outline"
             label="Start suggesting at"
             hint="The task never appears before this time of day."
             value={describeSnackNudgeHour(s.snackNudgeFromHour)}
@@ -934,7 +911,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="snackNudgeSharePercent"
-            icon="nutrition-outline"
             label="Suggest when below"
             hint="Adds the task when the calories logged today are under this share of your calorie target."
             value={`${s.snackNudgeSharePercent}% of target`}
@@ -959,10 +935,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'produceFloor') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="produceFloorCount"
-            icon="basket-outline"
             label="Keep at least"
             hint="Adds the task when the pantry lists fewer than this many vegetables and fruit. Frozen and canned count; anything past its use-by day does not."
             value={`${s.produceFloorCount} items`}
@@ -986,10 +960,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'produceNudge') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="produceNudgeFromHour"
-            icon="time-outline"
             label="Start suggesting at"
             hint="The task never appears before this time of day."
             value={describeProduceNudgeHour(s.produceNudgeFromHour)}
@@ -1009,7 +981,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="produceNudgeGoal"
-            icon="leaf-outline"
             label="Servings goal"
             hint="Adds the task when the vegetable and fruit servings estimated from today’s food log are under this number. A serving is 80 g."
             value={`${s.produceNudgeGoal} servings`}
@@ -1033,10 +1004,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'birthdayGift') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="birthdayGiftLeadDays"
-            icon="calendar-outline"
             label="Show the task"
             hint="How many days before the birthday the gift task falls due."
             value={
@@ -1066,11 +1035,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'mealSlot') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="mealSlotsEnabled"
-            icon="restaurant-outline"
-            iconColor={s.mealSlotsEnabled.length > 0 ? colors.accent : undefined}
             label="Meals you eat"
             hint={
               s.mealSlotsEnabled.length === 0
@@ -1088,8 +1054,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             return (
               <SettingsRow
                 key={slot}
-                icon={MEAL_SLOT_ICONS[slot]}
-                iconColor={on ? colors.accent : undefined}
                 label={MEAL_SLOT_LABELS[slot]}
                 toggle={on}
                 onPress={() => {
@@ -1119,8 +1083,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'mealPlanNudge') {
       return (
         <>
-          <View style={styles.sep} />
-          <SettingsRow entryId="mealPlanNudgeTime" icon="calendar-outline" iconColor={colors.accent} label="Add the task on" tight />
+          <SettingsRow entryId="mealPlanNudgeTime" label="Add the task on" tight />
           <SettingsSegments
             attached
             options={weekdaySegmentOptions}
@@ -1130,8 +1093,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           />
           <View style={styles.sep} />
           <SettingsRow
-            icon="alarm-outline"
-            iconColor={colors.accent}
             label="At"
             value={formatHHMM(s.mealPlanNudgeTime)}
             onPress={() => {
@@ -1151,8 +1112,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="mealPlanNudgeIgnoresVacation"
-            icon="airplane-outline"
-            iconColor={s.mealPlanNudgeIgnoresVacation ? colors.accent : undefined}
             label="Also during vacation"
             hint="Vacation mode pauses this along with other automatic tasks. Turn this on to keep adding the weekly task."
             toggle={s.mealPlanNudgeIgnoresVacation}
@@ -1161,8 +1120,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="mealPlanNudgeSlots"
-            icon="restaurant-outline"
-            iconColor={s.mealPlanNudgeSlots.length > 0 ? colors.accent : undefined}
             label="Meals to plan for"
             hint={
               s.mealPlanNudgeSlots.length === 0
@@ -1176,8 +1133,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             return (
               <SettingsRow
                 key={slot}
-                icon={MEAL_SLOT_ICONS[slot]}
-                iconColor={on ? colors.accent : undefined}
                 label={MEAL_SLOT_LABELS[slot]}
                 toggle={on}
                 onPress={() => {
@@ -1208,10 +1163,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'moodNudge') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="moodNudgeAfterDays"
-            icon="trending-down-outline"
             label="Low days before the task"
             hint="How many low-mood days in a row before the task is offered, at most once a week."
             value={describeLowDays(s.moodNudgeAfterDays)}
@@ -1245,11 +1198,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'weather') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="weatherRules"
-            icon="list-outline"
-            iconColor={activeWeatherRuleCount > 0 ? colors.accent : undefined}
             label="Rules"
             hint="What weather adds which task, like sunscreen on a sunny day."
             value={
@@ -1266,11 +1216,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'eventTask') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="eventRules"
-            icon="list-outline"
-            iconColor={activeEventRuleCount > 0 ? colors.accent : undefined}
             label="Rules"
             hint="Which word in an event’s title adds which task, and how far ahead."
             value={
@@ -1287,10 +1234,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'wakeUp') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="wakeUpUsualMinutes"
-            icon="sunny-outline"
             label="Usual wake-up"
             hint="Adds a task only when you need to be up before this time."
             value={formatMinutesOfDay(s.wakeUpUsualMinutes, s.use24HourTime)}
@@ -1311,7 +1256,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="wakeUpGetReadyMinutes"
-            icon="time-outline"
             label="Getting ready takes"
             hint="Added to the trip and the arrive-early time from Leave-by reminders."
             value={`${s.wakeUpGetReadyMinutes} min`}
@@ -1337,10 +1281,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       const lines = s.transitLines;
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="travelLeadMinutes"
-            icon="time-outline"
             label="Remind me"
             hint={s.travelEstimates
               ? "Used for events where Apple Maps can’t estimate the trip."
@@ -1363,7 +1305,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="travelArriveEarlyMinutes"
-            icon="flag-outline"
             label="Arrive early"
             hint="Added to the time above for every event. An event can set its own in the event sheet."
             value={describeArrival(s.travelArriveEarlyMinutes)}
@@ -1383,11 +1324,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           </View>
           {Platform.OS === 'ios' && (
             <>
-              <View style={styles.sep} />
               <SettingsRow
                 entryId="leaveLiveActivity"
-                icon="phone-portrait-outline"
-                iconColor={s.leaveLiveActivity ? colors.accent : undefined}
                 label="Live Activity before leaving"
                 hint="Counts down to when to leave on the Lock Screen and Dynamic Island. Starts when you open the app within the start window below, and ends when you finish the task. Requires iOS 17. When off, the countdown stays in the app only."
                 toggle={s.leaveLiveActivity}
@@ -1422,8 +1360,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="travelEstimates"
-            icon="navigate-outline"
-            iconColor={s.travelEstimates ? colors.accent : undefined}
             label="Estimate travel time"
             hint="Sets each reminder from Apple Maps’ estimate of the trip, plus 5 minutes. Sends the event’s address and where the trip starts to Apple while the app is open. When off, reminders use the time above and nothing is sent."
             toggle={s.travelEstimates}
@@ -1462,7 +1398,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               />
               {s.travelMode !== 'walking' && (
                 <>
-                  <View style={styles.sep} />
                   <SettingsRow
                     entryId="travelWalkUnder"
                     label="Walk if close"
@@ -1545,10 +1480,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           )}
           {s.calendarIds.length > 1 && (
             <>
-              <View style={styles.sep} />
               <SettingsRow
                 entryId="travelLeadByCalendar"
-                icon="calendar-outline"
                 label="Per calendar"
                 hint="A different reminder time for events on one calendar. A calendar left on Default uses the time above."
                 tight
@@ -1589,7 +1522,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
           <View style={styles.sep} />
           <SettingsRow
             entryId="transitAlerts"
-            icon="subway-outline"
             label="Subway alerts"
             hint="Adds MTA delays and planned work on your lines to the task, like “L delayed”. Reads the MTA’s service alerts over the internet while the app is open."
             toggle={s.transitAlerts}
@@ -1631,11 +1563,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'screenTime') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="screenTimeRules"
-            icon="list-outline"
-            iconColor={activeScreenTimeRuleCount > 0 ? colors.accent : undefined}
             label="Rules"
             hint="How long on which apps adds which task. The apps are picked in here too."
             value={
@@ -1652,11 +1581,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'blockOffer') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="blockOfferRules"
-            icon="list-outline"
-            iconColor={activeBlockOfferRuleCount > 0 ? colors.accent : undefined}
             label="Rules"
             hint="Which apps, for how long, and how many coins. Needs Rewards on."
             value={
@@ -1673,11 +1599,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     if (kind === 'health') {
       return (
         <>
-          <View style={styles.sep} />
           <SettingsRow
             entryId="healthRules"
-            icon="list-outline"
-            iconColor={activeHealthRuleCount > 0 ? colors.accent : undefined}
             label="Rules"
             hint="Which reading falling under which number adds which task."
             value={
@@ -1734,6 +1657,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       {shown.map((spec, i) => {
         const on = enabledOf(spec.kind);
         const open = on && isOpen(spec.kind);
+        const extras = open ? extrasFor(spec.kind) : null;
         return (
           <React.Fragment key={spec.kind}>
             {/* A band, not the hairline the rows inside a generator use. With
@@ -1768,27 +1692,31 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 </TouchableOpacity>
               ) : undefined}
             />
-            {open && extrasFor(spec.kind)}
-            {/* Its category, defaults and the rest of what each task starts
-                with, beside the fields the generator writes itself. */}
-            {open && hasTaskSettingsSheet(spec.kind) && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  entryId={`gen:${spec.kind}:taskSettings`}
-                  icon="create-outline"
-                  label="Task settings"
-                  hint={describeGeneratedTaskSettings(
-                    categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? null,
-                    s.generatedTaskDefaults[spec.kind],
-                    s.generatedTaskExtras[spec.kind],
-                  ) ?? 'Category, tags, priority and more for the tasks this adds'}
-                  alwaysShowHint
-                  chevron
-                  tight
-                  onPress={() => setTaskSettingsKind(spec.kind)}
-                />
-              </>
+            {/* The generator's own options, nested under its switch. */}
+            {open && (extras != null || hasTaskSettingsSheet(spec.kind)) && (
+              <SettingsNested>
+                {extras}
+                {/* Its category, defaults and the rest of what each task starts
+                    with, beside the fields the generator writes itself. */}
+                {hasTaskSettingsSheet(spec.kind) && (
+                  <>
+                    {extras != null && <View style={styles.sep} />}
+                    <SettingsRow
+                      entryId={`gen:${spec.kind}:taskSettings`}
+                      label="Task settings"
+                      hint={describeGeneratedTaskSettings(
+                        categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? null,
+                        s.generatedTaskDefaults[spec.kind],
+                        s.generatedTaskExtras[spec.kind],
+                      ) ?? 'Category, tags, priority and more for the tasks this adds'}
+                      alwaysShowHint
+                      chevron
+                      tight
+                      onPress={() => setTaskSettingsKind(spec.kind)}
+                    />
+                  </>
+                )}
+              </SettingsNested>
             )}
           </React.Fragment>
         );
