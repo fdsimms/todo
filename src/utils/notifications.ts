@@ -1683,9 +1683,14 @@ export async function scheduleTripReminder(shopName: string, startedAt: string):
       body: `Tap to finish your trip at ${shopName}.`,
       data: { activeTripReminder: true },
       sound: true,
-      // A gentle backstop two hours in, not a moment the user set — see
-      // NUDGE_INTERRUPTION_LEVEL.
-      interruptionLevel: NUDGE_INTERRUPTION_LEVEL,
+      // Not passive: this exists to catch a trip the user forgot, which means
+      // they aren't looking at the phone, and a passive notification makes no
+      // banner or sound and just sits in the list (a trip was finished five
+      // hours late with the setting on and nothing noticed). It is opt-in, so
+      // the "nobody asked for this" reason the nudges are passive doesn't
+      // apply, and time-sensitive also gets through a Focus, which people are
+      // often in while shopping.
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
