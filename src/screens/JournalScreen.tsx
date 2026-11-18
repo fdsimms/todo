@@ -103,7 +103,7 @@ function EntryMeta({ entry, personName, onTag, styles }: {
 /** What each kind's screen calls itself, by kind. The copy that varies with the writing is `JOURNAL_KIND_COPY`. */
 const KIND_UI: Record<JournalKind, {
   route: 'Journal' | 'Dreams' | 'Notes';
-  hub: 'health' | 'organize';
+  hub: 'writing';
   icon: 'book-outline' | 'cloudy-night-outline' | 'document-text-outline';
   settingsTitle: string;
   shareTitle: string;
@@ -114,17 +114,17 @@ const KIND_UI: Record<JournalKind, {
   lockedTitle: string;
 }> = {
   journal: {
-    route: 'Journal', hub: 'health', icon: 'book-outline', settingsTitle: 'Journal settings', shareTitle: 'Share your journal',
+    route: 'Journal', hub: 'writing', icon: 'book-outline', settingsTitle: 'Journal settings', shareTitle: 'Share your journal',
     randomLabel: 'Read a random journal page', writeLabel: 'Write in your journal', emptyAction: 'Write an entry',
     searchLabel: 'Search your journal', lockedTitle: 'Journal is locked',
   },
   dream: {
-    route: 'Dreams', hub: 'health', icon: 'cloudy-night-outline', settingsTitle: 'Dream settings', shareTitle: 'Share your dreams',
+    route: 'Dreams', hub: 'writing', icon: 'cloudy-night-outline', settingsTitle: 'Dream settings', shareTitle: 'Share your dreams',
     randomLabel: 'Read a random dream page', writeLabel: 'Write down a dream', emptyAction: 'Write down a dream',
     searchLabel: 'Search your dreams', lockedTitle: 'Dreams are locked',
   },
   note: {
-    route: 'Notes', hub: 'organize', icon: 'document-text-outline', settingsTitle: 'Notes settings', shareTitle: 'Share your notes',
+    route: 'Notes', hub: 'writing', icon: 'document-text-outline', settingsTitle: 'Notes settings', shareTitle: 'Share your notes',
     randomLabel: 'Read a random notes page', writeLabel: 'Write a note', emptyAction: 'Write a note',
     searchLabel: 'Search your notes', lockedTitle: 'Notes are locked',
   },

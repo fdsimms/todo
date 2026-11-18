@@ -26,8 +26,8 @@ goes in the Journal.
 `'dream'`, in one table (`journal_entries`) and one store. They are one shape,
 so two tables would be two copies of every db function, sync entry, backup row
 and MCP tool for no difference a person can see. The screens split them:
-`Journal` and `Dreams` are two routes onto one component, two members of the
-Health hub, and two content screens in simplified mode (each hidden only while
+`Journal`, `Dreams` and `Notes` are three routes onto one component, the three members of the
+Writing hub (Journal and Dreams were Health pills, Notes an Organize one), and three content screens in simplified mode (each hidden only while
 it holds nothing, for the reason Mood is).
 
 - **`dayKey` is stamped, never derived**, and the day is fixed once written:

@@ -6,7 +6,7 @@
  *
  * Neither invents a rule. `habit_patterns` is the Stats screen's rhythm and
  * estimate reads (`rhythms.ts`, `estimateCalibration.ts`) plus the streak and
- * pace the rows already carry; `mood_insights` is the Mood screen's card list
+ * pace the rows already carry; `mood_insights` is the Insights screen's card list
  * (`moodInsights.ts`), composed the way `MoodScreen` composes it, with the same
  * retention clipping and the same kitchen gate. So every refusal those modules
  * make (a floor of paired days, a coefficient never shown, an unlogged day

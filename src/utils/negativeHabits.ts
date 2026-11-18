@@ -203,7 +203,7 @@ export function undoSlipPatch(task: NegativeHabitFields, todayStart: Date): Part
 export function cleanDayPatch(
   task: NegativeHabitFields,
   todayStart: Date,
-  opts: { paused?: boolean } = {},
+  opts: { paused?: boolean; scheduledDays?: (afterDay: Date, throughDay: Date) => number } = {},
 ): Partial<Task> | null {
   if (!isNegativeTask(task)) return null;
 
@@ -224,8 +224,13 @@ export function cleanDayPatch(
   // Nothing has completed since the anchor: `diff` of 1 means the anchor *is*
   // yesterday, so the run is already up to date and the write below would be a
   // no-op. This is the branch the pass takes on almost every launch.
-  const cleanDays = diff - 1;
-  if (cleanDays === 0) return null;
+  const elapsedDays = diff - 1;
+  if (elapsedDays === 0) return null;
+  // A habit that repeats less often than daily only has days on its schedule:
+  // the rest were never shown, so they aren't clean days to credit.
+  const cleanDays = opts.scheduledDays
+    ? opts.scheduledDays(addDays(new Date(task.streakDate), 1), subDays(todayStart, 1))
+    : elapsedDays;
 
   // Everything up to yesterday is now accounted for, whether it was credited or
   // paused past. Anchoring at yesterday rather than today is what keeps this
@@ -386,4 +391,22 @@ export function oneDayEndPatch(
   if (!isNegativeTask(task) || task.completed || task.recurrenceType !== 'none') return null;
   if (coveredDayStart >= todayStart) return null;
   return { completed: true, completedAt: addDays(coveredDayStart, 1).toISOString() };
+}
+
+/**
+ * Whether a repeating "don't" habit is on a day it isn't scheduled for. A daily
+ * habit is owed every day, so it never is. Any other repeat is owed only on its
+ * own days: the row sits on its next occurrence (`rolloverNegativeStreaks`
+ * moves it there once its day has passed), so a date after today means "not
+ * today", and a date before today means the move hasn't run yet.
+ */
+export function isOffScheduleDay(
+  task: Pick<Task, 'polarity' | 'recurrenceType' | 'recurrenceInterval'>,
+  dueDay: Date | null,
+  todayStart: Date,
+): boolean {
+  if (!isNegativeTask(task) || !dueDay) return false;
+  if (task.recurrenceType === 'none' || task.recurrenceType === 'hours') return false;
+  if (task.recurrenceType === 'daily' && task.recurrenceInterval <= 1) return false;
+  return dueDay.getTime() !== todayStart.getTime();
 }

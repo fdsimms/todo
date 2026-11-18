@@ -333,6 +333,7 @@ import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKin
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
 import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch, cleanDaysCredited, isClosedToday, oneDayEndPatch } from '../utils/negativeHabits';
+import { scheduledDaysBetween } from '../utils/negativeSchedule';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, slipUndoLabel, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
@@ -5716,7 +5717,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         deferDay !== null && !heldByDefer && t.streakDate && deferDay > new Date(t.streakDate)
           ? { ...t, streakDate: addDays(deferDay, -1).toISOString() }
           : t;
-      const streak = cleanDayPatch(counted, todayStart, { paused });
+      const streak = cleanDayPatch(counted, todayStart, {
+        paused,
+        scheduledDays: (after, through) => scheduledDaysBetween(counted, after, through, resetTime),
+      });
       const rolled = streak ? { ...counted, ...streak } : t;
       // The habit's own end time counts today as clean once it passes, on the
       // rolled row so a catch-up and a close land in one write.

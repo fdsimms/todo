@@ -25,6 +25,9 @@ import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { FoodLogScreen } from '../screens/FoodLogScreen';
 import { MoodScreen } from '../screens/MoodScreen';
+import { MoodInsightsScreen } from '../screens/MoodInsightsScreen';
+import { SymptomsScreen } from '../screens/SymptomsScreen';
+import { ExperimentsScreen } from '../screens/ExperimentsScreen';
 import { MedicationScreen } from '../screens/MedicationScreen';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useJournalStore } from '../store/useJournalStore';
@@ -160,6 +163,9 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Logbook: freezeWhenBlurred(LogbookScreen),
   Stats: freezeWhenBlurred(StatsScreen),
   Mood: freezeWhenBlurred(MoodScreen),
+  Insights: freezeWhenBlurred(MoodInsightsScreen),
+  Symptoms: freezeWhenBlurred(SymptomsScreen),
+  Experiments: freezeWhenBlurred(ExperimentsScreen),
   Medications: freezeWhenBlurred(MedicationScreen),
   Weight: freezeWhenBlurred(WeightScreen),
   BloodPressure: freezeWhenBlurred(BloodPressureScreen),
@@ -218,12 +224,14 @@ const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail', 'StackDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
   // Reached from the Mood screen rather than from the menu. Both are the mood
-  // log read at a narrower grain — every entry there is, and one symptom —
-  // which is a place you go *from* Mood rather than a destination of its own,
-  // and neither would survive a cold-launch restore with nothing to say what
-  // it was showing.
-  'MoodHistory', 'MoodDay', 'SymptomDetail',
-  // One experiment's read, reached from Mood the same way.
+  // log read at a narrower grain, every entry there is and one day, which is
+  // a place you go *from* Mood rather than a destination of its own, and
+  // neither would survive a cold-launch restore with nothing to say what it
+  // was showing.
+  'MoodHistory', 'MoodDay',
+  // One symptom's read, reached from Symptoms (or an Insights row) the same way.
+  'SymptomDetail',
+  // One experiment's read, reached from Experiments the same way.
   'ExperimentDetail',
   // One medication's page, reached from Medications for the same reason.
   'MedicationDetail',
