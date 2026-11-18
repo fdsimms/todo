@@ -141,9 +141,7 @@ export function WorkoutsSettings() {
           icon="images-outline"
           iconColor={exerciseImagesEnabled ? colors.accent : undefined}
           label="Exercise photos"
-          hint={exerciseImagesEnabled
-            ? 'An exercise’s page shows a photo of each end of the movement, downloaded from free-exercise-db on GitHub when you open it. Your workouts aren’t sent.'
-            : 'Exercise pages show no photos and the app makes no requests for them'}
+          hint="An exercise’s page shows a photo of each end of the movement, downloaded from free-exercise-db on GitHub when you open it. Your workouts aren’t sent. When off, exercise pages show no photos and the app makes no requests for them"
           toggle={exerciseImagesEnabled}
           onPress={() => setExerciseImagesEnabled(!exerciseImagesEnabled)}
         />
@@ -157,9 +155,7 @@ export function WorkoutsSettings() {
               icon="phone-portrait-outline"
               iconColor={workoutLiveActivity ? colors.accent : undefined}
               label="Live Activity while working out"
-              hint={workoutLiveActivity
-                ? 'The set you’re on and the rest countdown show on the Lock Screen and Dynamic Island, with buttons to finish a set or skip the rest'
-                : 'Workouts stay in the app only'}
+              hint="Shows the set you’re on and the rest countdown on the Lock Screen and Dynamic Island, with buttons to finish a set or skip the rest. When off, workouts stay in the app only"
               toggle={workoutLiveActivity}
               onPress={() => setWorkoutLiveActivity(!workoutLiveActivity)}
             />

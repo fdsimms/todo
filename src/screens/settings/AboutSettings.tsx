@@ -46,9 +46,7 @@ export function AboutSettings() {
           icon="bug-outline"
           iconColor={tabDiag ? colors.accent : undefined}
           label="Show tab diagnostics"
-          hint={tabDiag
-            ? 'Shows a line of debug text over every screen'
-            : 'Debug text for the blank screen bug is hidden'}
+          hint="Shows a line of debug text over every screen, for tracking down the blank screen bug"
           toggle={tabDiag}
           onPress={() => setTabDiagEnabled(!tabDiag)}
         />
@@ -67,9 +65,7 @@ export function AboutSettings() {
           icon="flag-outline"
           iconColor={flagMode ? colors.accent : undefined}
           label="Flag copy"
-          hint={flagMode
-            ? 'Long-press any text to flag it for a rewrite'
-            : 'Turns on long-press flagging for text on every screen'}
+          hint="Long-press any text on any screen to flag it for a rewrite"
           toggle={flagMode}
           onPress={() => setFlagMode(!flagMode)}
         />

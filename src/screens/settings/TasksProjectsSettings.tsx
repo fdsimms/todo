@@ -209,9 +209,7 @@ export function TasksProjectsSettings() {
           icon="create-outline"
           iconColor={newTaskDefaults.openEditorAfterQuickAdd ? colors.accent : undefined}
           label="Open editor after quick add"
-          hint={newTaskDefaults.openEditorAfterQuickAdd
-            ? 'The full editor opens right after you create a task'
-            : 'A quick-added task is filed and the sheet closes'}
+          hint="Opens the full editor right after you create a task. When off, a quick-added task is filed and the sheet closes"
           toggle={newTaskDefaults.openEditorAfterQuickAdd}
           onPress={() => setNewTaskDefaults({ openEditorAfterQuickAdd: !newTaskDefaults.openEditorAfterQuickAdd })}
         />
@@ -248,9 +246,7 @@ export function TasksProjectsSettings() {
           icon="remove-outline"
           iconColor={simpleTaskForm ? colors.accent : undefined}
           label="Show fewer fields"
-          hint={simpleTaskForm
-            ? 'Quick add shows Date, Time of day and Repeat, and names its buttons'
-            : 'Quick add shows every field it has'}
+          hint="Quick add shows only Date, Time of day and Repeat, and names its buttons. When off, it shows every field it has"
           toggle={simpleTaskForm}
           onPress={() => setSimpleTaskForm(!simpleTaskForm)}
         />
@@ -265,7 +261,7 @@ export function TasksProjectsSettings() {
           icon="eye-off-outline"
           iconColor={hideCategories ? colors.accent : undefined}
           label="Hide categories"
-          hint={hideCategories ? 'Showing one flat list of tasks' : 'Group tasks under category headers'}
+          hint="Shows one flat list of tasks instead of grouping them under category headers"
           toggle={hideCategories}
           onPress={() => setHideCategories(!hideCategories)}
         />
@@ -277,9 +273,7 @@ export function TasksProjectsSettings() {
           icon="briefcase-outline"
           iconColor={autoCompleteProjectsOnDone ? colors.accent : undefined}
           label="Auto-complete projects"
-          hint={autoCompleteProjectsOnDone
-            ? 'A project marks itself complete once every task in it is done. You can still archive it afterward'
-            : 'A finished project sits at 100% until you mark it complete'}
+          hint="A project marks itself complete once every task in it is done. You can still archive it afterward. When off, a finished project sits at 100% until you mark it complete"
           toggle={autoCompleteProjectsOnDone}
           onPress={() => setAutoCompleteProjectsOnDone(!autoCompleteProjectsOnDone)}
         />
@@ -340,9 +334,7 @@ export function TasksProjectsSettings() {
           icon="repeat-outline"
           iconColor={postponeCheckEnabled ? colors.accent : undefined}
           label="Suggest an action after repeated reschedules"
-          hint={postponeCheckEnabled
-            ? `Shows a suggestion once you’ve moved a task ${postponeCheckThreshold} times`
-            : 'Off. No suggestion, however many times you reschedule a task'}
+          hint={`Shows a suggestion once you’ve moved a task ${postponeCheckThreshold} times. When off, there is no suggestion, however many times you reschedule a task`}
           toggle={postponeCheckEnabled}
           onPress={() => setPostponeCheckEnabled(!postponeCheckEnabled)}
         />

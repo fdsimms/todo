@@ -396,32 +396,37 @@ describe('refreshPast', () => {
 });
 
 describe('markHistoryHandled', () => {
+  // Relative to today: a fixed date ages out of the past window the store prunes to,
+  // and the window edge moves with the time zone (CI runs in UTC+14).
+  const answered = dayKeyOf(addDays(new Date(), -20));
+  const earlier = dayKeyOf(addDays(new Date(), -27));
+
   it('hydrates from the settings table once, records the answer, and persists it', () => {
     // Relative to today: a fixed date ages out of the past window the store prunes to.
     const recent = dayKeyOf(addDays(new Date(), -7));
     (dbGetSetting as jest.Mock).mockReturnValue(JSON.stringify({ 'e-old': recent }));
-    useCalendarStore.getState().markHistoryHandled('e-1', '2026-08-27');
+    useCalendarStore.getState().markHistoryHandled('e-1', answered);
     const state = useCalendarStore.getState();
     expect(state.handledLoaded).toBe(true);
-    expect(state.handledHistory['e-1']).toBe('2026-08-27');
+    expect(state.handledHistory['e-1']).toBe(answered);
     expect(state.handledHistory['e-old']).toBe(recent);
     expect(dbSetSetting).toHaveBeenCalledWith('calendarHistoryHandled', expect.any(String));
   });
 
   it('does not re-hydrate once the record is already loaded', () => {
-    useCalendarStore.setState({ handledHistory: { 'e-1': '2026-08-20' }, handledLoaded: true });
-    useCalendarStore.getState().markHistoryHandled('e-2', '2026-08-27');
+    useCalendarStore.setState({ handledHistory: { 'e-1': earlier }, handledLoaded: true });
+    useCalendarStore.getState().markHistoryHandled('e-2', answered);
     expect(dbGetSetting).not.toHaveBeenCalled();
     expect(useCalendarStore.getState().handledHistory).toEqual({
-      'e-1': '2026-08-20',
-      'e-2': '2026-08-27',
+      'e-1': earlier,
+      'e-2': answered,
     });
   });
 
   it('keeps the in-memory record even if persisting throws', () => {
     (dbSetSetting as jest.Mock).mockImplementation(() => { throw new Error('disk full'); });
-    expect(() => useCalendarStore.getState().markHistoryHandled('e-1', '2026-08-27')).not.toThrow();
-    expect(useCalendarStore.getState().handledHistory['e-1']).toBe('2026-08-27');
+    expect(() => useCalendarStore.getState().markHistoryHandled('e-1', answered)).not.toThrow();
+    expect(useCalendarStore.getState().handledHistory['e-1']).toBe(answered);
   });
 });
 

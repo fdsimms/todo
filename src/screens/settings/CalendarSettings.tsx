@@ -520,9 +520,7 @@ export function CalendarSettings() {
             icon="notifications-outline"
             iconColor={reminderMeetingNudgeEnabled ? colors.accent : undefined}
             label="Move reminders out of meetings"
-            hint={reminderMeetingNudgeEnabled
-              ? 'A reminder due during an event fires right after it ends instead'
-              : 'Reminders fire at the time you set, even during an event'}
+            hint="A reminder due during an event fires right after it ends instead. When off, reminders fire at the time you set"
             toggle={reminderMeetingNudgeEnabled}
             onPress={() => setReminderMeetingNudgeEnabled(!reminderMeetingNudgeEnabled)}
             accessibilityLabel="Move reminders out of meetings"
@@ -538,9 +536,7 @@ export function CalendarSettings() {
             icon="people-outline"
             iconColor={calendarPeopleHistory ? colors.accent : undefined}
             label="Match events to people"
-            hint={calendarPeopleHistory
-              ? "A person’s screen lists past events with their name in the title"
-              : undefined}
+            hint="A person’s screen lists past events with their name in the title"
             toggle={calendarPeopleHistory}
             onPress={() => setCalendarPeopleHistory(!calendarPeopleHistory)}
             accessibilityLabel="Match events to people"
@@ -576,9 +572,7 @@ export function CalendarSettings() {
         icon="location-outline"
         iconColor={placeSuggestionsEnabled ? colors.accent : undefined}
         label="Suggest places"
-        hint={placeSuggestionsEnabled
-          ? "Typing a new event’s location looks it up in Apple Maps. What you type is sent to Apple."
-          : "A new event’s location is saved as you type it. Nothing is looked up."}
+        hint="Looks up a new event’s location in Apple Maps as you type it, which sends what you type to Apple. When off, the location is saved as you type it and nothing is looked up."
         toggle={placeSuggestionsEnabled}
         onPress={() => setPlaceSuggestionsEnabled(!placeSuggestionsEnabled)}
         accessibilityLabel="Suggest places"
