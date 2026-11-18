@@ -594,6 +594,7 @@ Where each component can appear.
 - `src/screens/settings/SettingsChoiceTray.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsDisclosure.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsFocus.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
+- `src/screens/settings/SettingsNested.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsRow.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/screens/settings/SettingsSection.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/screens/settings/SettingsSegments.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
