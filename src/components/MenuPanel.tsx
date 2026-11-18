@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SearchField } from './SearchField';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useAskClaudeReady } from '../hooks/useAskClaudeReady';
 import { NamedIcon } from './CoinIcon';
 import { useColors } from '../theme/ThemeContext';
 import { animation, font, fontWeight, interaction, radius, spacing } from '../theme';
@@ -44,6 +45,12 @@ interface Props {
   /** Called with the route a row or a result opens. The caller owns the haptic and any closing. */
   onNavigate: (route: string) => void;
   onOpenSettings: () => void;
+  /**
+   * Opens Ask Claude (`AskClaudeHost`). Its row sits above Settings, beside it
+   * rather than among `navHubs.ts`' rows because it opens a sheet, not a
+   * screen, and shows only while the chat could send (`useAskClaudeReady`).
+   */
+  onOpenAskClaude: () => void;
   /** Opens one settings row a search found, where it lives. Omit to search screens only. */
   onOpenSettingsEntry?: (entryId: string) => void;
   /** Hands the query to the Search screen, for everything else it might mean. */
@@ -62,7 +69,8 @@ const SETTINGS_RESULT_LIMIT = 4;
  * the surface and the column are the sidebar's, so this draws on no background
  * of its own.
  */
-export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSettings, onOpenSettingsEntry, onSearchEverything }: Props) {
+export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSettings, onOpenAskClaude, onOpenSettingsEntry, onSearchEverything }: Props) {
+  const askClaudeReady = useAskClaudeReady();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const animate = variant === 'drawer';
@@ -468,7 +476,23 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
       </View>
 
       <View style={[styles.footer, { borderTopColor: colors.separator, paddingBottom: spacing.md + insets.bottom }]}>
-        <ItemAppear animate={animate} index={menuRows.length}>
+        {askClaudeReady && (
+          <ItemAppear animate={animate} index={menuRows.length}>
+            <TouchableOpacity
+              style={rowStyle(compact, false, colors)}
+              onPress={onOpenAskClaude}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel="Ask Claude"
+            >
+              <View style={iconWrapStyle(compact, false, colors)}>
+                <Ionicons name="sparkles" size={compact ? COMPACT_ICON : 20} color={colors.purple} />
+              </View>
+              <Text style={[styles.itemLabel, { color: colors.text }]}>Ask Claude</Text>
+            </TouchableOpacity>
+          </ItemAppear>
+        )}
+        <ItemAppear animate={animate} index={menuRows.length + (askClaudeReady ? 1 : 0)}>
           <TouchableOpacity
             style={rowStyle(compact, false, colors)}
             onPress={onOpenSettings}

@@ -87,7 +87,7 @@ const ADDITIONAL_IMAGE_TIMEOUT_MS = 15_000;
  */
 const LONG_REPLY_TIMEOUT_MS = 40_000;
 
-interface AnthropicResponse {
+export interface AnthropicResponse {
   stop_reason?: string;
   content?: Array<{ type: string; name?: string; input?: unknown }>;
 }
@@ -97,7 +97,7 @@ interface AnthropicResponse {
  * way an absent key already did, so describeAIError has one place to map both
  * to user-facing copy.
  */
-function requireFeature(id: AiFeatureId): { apiKey: string; model: AiModelId } {
+export function requireFeature(id: AiFeatureId): { apiKey: string; model: AiModelId } {
   const { anthropicApiKey: apiKey, aiFeatureConfig } = useSettingsStore.getState();
   // The switch is checked before the key, which matters now that a missing key
   // is no longer the end of the road for every feature (see aiRouting.ts).
@@ -156,12 +156,17 @@ function isRefusal(status: number): boolean {
   return status !== 401 && status !== 429 && status < 500;
 }
 
-/** POSTs to the Messages API with a timeout and flags a max_tokens truncation as an error. */
-async function callAnthropic(
+/**
+ * POSTs to the Messages API with a timeout and flags a max_tokens truncation as
+ * an error. `betas` are sent as the `anthropic-beta` header (Ask Claude's MCP
+ * connector, `askClaudeChat.ts`).
+ */
+export async function callAnthropic(
   body: Record<string, unknown>,
   apiKey: string,
   model: AiModelId,
   timeoutMs: number = REQUEST_TIMEOUT_MS,
+  betas: readonly string[] = [],
 ): Promise<AnthropicResponse> {
   // The one request every AI feature makes, so the one place demo mode is
   // refused. Entering a demo doesn't reload settings, so the owner's real key
@@ -180,6 +185,7 @@ async function callAnthropic(
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          ...(betas.length ? { 'anthropic-beta': betas.join(',') } : {}),
         },
         // No `temperature` override — Opus 5/Sonnet 5 reject a non-default
         // value, and the tool-forced extraction below doesn't need one.

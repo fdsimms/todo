@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createConfirmTokens, describeEffects, CONFIRM_TTL_MS } from '../confirmWrites';
+import { createConfirmTokens, describeEffects, withBatchId, CONFIRM_TTL_MS } from '../confirmWrites';
 
 describe('confirm tokens', () => {
   it('hand back the previewed request, once', () => {
@@ -105,5 +105,23 @@ describe('describeEffects, field changes', () => {
       .toEqual(['Change "Pay rent": title from "A" to "B" (also applies to 2 later dates)']);
     const same = { action: 'cleared' as const, subject: 'task' as const, title: 'Take meds', taskId: null, note: 'Delete the 2026-09-14 entry of "Take meds"' };
     expect(describeEffects([same, same, same], dayOf)).toEqual(['Delete the 2026-09-14 entry of "Take meds" (3 times)']);
+  });
+});
+
+describe('withBatchId', () => {
+  it('adds the batch a confirmed write made, so the app can undo that request', () => {
+    expect(JSON.parse(withBatchId(JSON.stringify({ task: { id: 't1' } }), ['b1']))).toEqual({ task: { id: 't1' }, batchId: 'b1' });
+  });
+
+  it('reports the last batch when a write made several', () => {
+    expect(JSON.parse(withBatchId('{}', ['b1', 'b2']))).toEqual({ batchId: 'b2' });
+  });
+
+  it('leaves a failure, a write that made no batch, and text that is not an object alone', () => {
+    const failed = JSON.stringify({ error: 'No task has that id.' });
+    expect(withBatchId(failed, ['b1'])).toBe(failed);
+    expect(withBatchId('{"ok":true}', [])).toBe('{"ok":true}');
+    expect(withBatchId('Done', ['b1'])).toBe('Done');
+    expect(withBatchId('[1,2]', ['b1'])).toBe('[1,2]');
   });
 });

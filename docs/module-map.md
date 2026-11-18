@@ -56,6 +56,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/applyToAllOffer.ts` — ApplyOffer, setApplyOffer, clearApplyOffer, getApplyOffer, subscribeApplyOffer, resetApplyOffer
 - `src/utils/archiveMatch.ts` — findArchivedMatch
 - `src/utils/askClaude.ts` — NOTES_LIMIT, taskChatPrompt, projectChatPrompt, claudeChatUrl
+- `src/utils/askClaudeChat.ts` — ASK_CLAUDE_SERVER, ASK_CLAUDE_BETA, ASK_CLAUDE_LOADED_TOOLS, ASK_CLAUDE_SYSTEM, AskTurn, mcpUrlFor, AskRequestInput, buildAskRequest, userTurn, AskPreview, +10 more
 - `src/utils/autoComplete.ts` — autoCompleteReason
 - `src/utils/autoCompleteScope.ts` — setAutoCompleteAttended, runUnattended, setAutoCompleteRowsLive, autoCompleteRowsLive, canAutoComplete
 - `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, departureFromAnswer, departureMoveFromAnswer, awaySpanOf, liveAwaySpans, isAwayDay, awayNights, +13 more
@@ -168,6 +169,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/dictation.ts` — DICTATION_BARS, joinDictation, transcriptRestarted, dictationJoiner, pushLevel, barHeight, DictationRefusal, dictationRefusal
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
+- `src/utils/discussWithClaude.ts` — discussWithClaude, discussProjectHint
 - `src/utils/doseRecording.ts` — allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, deleteDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
 - `src/utils/dumbbellLoad.ts` — DumbbellEntry, dumbbellsUsed, entryFor, weightScale, shownKg, storedKgFromTyped, storedKgFromShown, formatScaledWeight, weightHeadingSuffix, DUMBBELL_ENTRY_LABELS, +1 more
@@ -585,7 +587,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/searchSnippet.ts` — HiddenSnippet, SNIPPET_CONTEXT, hiddenSnippet
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
-- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, FRANKI_TOKEN_SECURE_KEY, +8 more
+- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, FRANKI_TOKEN_SECURE_KEY, +9 more
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsActiveRows.ts` — SettingsGateState, SyncGateState, activeSettingsEntryIds, searchableSettingsEntries
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
@@ -780,6 +782,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useAlarmStore.ts` — AlarmSetup, AlarmInput, ImportSoundResult, useAlarmStore
 - `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, allowGroupsNow, resolveGroupNow, expandGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
+- `src/store/useAskClaudeStore.ts` — useAskClaudeStore
 - `src/store/useBlockTimerStore.ts` — useBlockTimerStore
 - `src/store/useBulkBarPresenceStore.ts` — useBulkBarPresenceStore
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, vacationReturnCalendarIds, useCalendarStore, useCalendarSync
@@ -860,6 +863,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useAmountOperators.ts` — useAmountOperators
 - `src/hooks/useAnswerFirstCompletion.ts` — useAnswerFirstCompletion
 - `src/hooks/useAppShieldSync.ts` — useAppShieldSync
+- `src/hooks/useAskClaudeReady.ts` — useAskClaudeReady
 - `src/hooks/useBottomBarHeight.ts` — useBottomBarHeight
 - `src/hooks/useBulkBarEntrance.ts` — useBulkBarEntrance
 - `src/hooks/useClipboardImage.ts` — useClipboardImage
@@ -972,7 +976,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — forgetToolChoiceRefusals, describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, +31 more
+- `src/services/aiSuggestions.ts` — AnthropicResponse, requireFeature, forgetToolChoiceRefusals, callAnthropic, describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, +34 more
+- `src/services/askClaudeCalls.ts` — askClaude, describeAskError, confirmPreview, UndoOutcome, undoConfirmed
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/franki.ts` — FrankiProblem, FrankiRead, frankiSnapshotFrom, fetchFranki
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace

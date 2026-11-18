@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useAskClaudeStore } from '../store/useAskClaudeStore';
 import { MenuPanel } from './MenuPanel';
 import { useColors } from '../theme/ThemeContext';
 import { SIDEBAR_WIDTH } from '../utils/frameWidth';
@@ -34,6 +35,7 @@ export function Sidebar({ activeTab, onNavigate, onOpenSettings, onOpenSettingsE
         activeTab={activeTab}
         onNavigate={onNavigate}
         onOpenSettings={onOpenSettings}
+        onOpenAskClaude={() => useAskClaudeStore.getState().show()}
         onOpenSettingsEntry={onOpenSettingsEntry}
         onSearchEverything={onSearchEverything}
       />

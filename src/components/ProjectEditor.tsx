@@ -54,8 +54,9 @@ import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
-import { openExternalUrl } from '../utils/openExternalUrl';
-import { claudeChatUrl, projectChatPrompt } from '../utils/askClaude';
+import { projectChatPrompt } from '../utils/askClaude';
+import { discussProjectHint, discussWithClaude } from '../utils/discussWithClaude';
+import { useAskClaudeReady } from '../hooks/useAskClaudeReady';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { changedList } from '../utils/editorChangeSummary';
 import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
@@ -119,6 +120,7 @@ interface Props {
 }
 
 export function ProjectEditor({ visible, project: liveProject, isNew, onClose }: Props) {
+  const askClaudeReady = useAskClaudeReady();
   // ==== setup and the project held while closing ====
   // Held past the host clearing it, so the `return null` below can't tear the
   // presented sheet out of the tree while it is still closing: every host
@@ -1450,7 +1452,13 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           <View style={styles.sepIcon} />
           <TouchableOpacity
             style={styles.optionRow}
-            onPress={() => { if (liveProject) openExternalUrl(claudeChatUrl(projectChatPrompt(liveProject))); }}
+            onPress={() => {
+              if (!liveProject) return;
+              // Saved first, as the other actions here are, so Claude reads
+              // what is on screen. Ask Claude's sheet waits for this one to go.
+              commitEdits();
+              if (discussWithClaude(projectChatPrompt(liveProject)) === 'askClaude') onClose();
+            }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel="Discuss with Claude"
@@ -1458,7 +1466,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.textSecondary} />
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Discuss with Claude</Text>
-              <Text style={styles.optionHint}>Start a chat about this project in the Claude app</Text>
+              <Text style={styles.optionHint}>{discussProjectHint(askClaudeReady)}</Text>
             </View>
           </TouchableOpacity>
         </View>

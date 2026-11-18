@@ -380,7 +380,7 @@ is capped** (`cappedDetails`): a write that answers with a whole list made every
 A write-scoped connection sends every tool's description and input schema in front of the first message, so their size is a cost on every conversation: the server was about 490 KB (around 120k tokens) at 213 tools. Two rules keep it from growing back.
 
 - **Say the confirm flow once.** The full explanation is in the server instructions and `preview_change`. A write tool's description ends with the one-line `CONFIRM_NOTE`. It sits on 158 tools, so a sentence added to it is paid 158 times.
-- **A task nested inside another tool takes `coreTaskFieldsShape`, not `taskFieldsShape`.** A project step and a batch `update` hold a task, and the whole-object fields (repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, onlyIfAnswer) are about 30 KB of schema that each tool would repeat. Those are set with `update_task`. The nested objects are `.strict()`, so naming one is an error that says so rather than a field quietly dropped. Only `create_task` and `update_task` take the full shape.
+- **A task nested inside another tool takes `coreTaskFieldsShape`, not `taskFieldsShape`.** A project step and a batch `update` hold a task, and the whole-object fields (repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, onlyIfAnswer) are about 30 KB of schema that each tool would repeat. Those are set with `update_task`. The nested objects are `.strict()`, so naming one is an error that says so rather than a field quietly dropped. **`create_task` takes the core shape too**, so the 20 KB is sent once rather than with both tools: an advanced task is created and then given its repeat, target or chain with `update_task`. Its schema still lists the advanced names, as bare `unknown`s, because a tool's top level drops an unlisted field without a word; naming one is refused with that instruction (`ADVANCED_TASK_FIELD_NAMES`). `update_task` scales a new weekly target's first week (`firstWeek`), since that is now where a new task's target is set. Only `update_task` takes the full shape.
 
 To measure a change, run the server with `MCP_AUTH_TOKEN`, `MCP_WRITE_TOKEN` and `TODO_DB_PATH` set and POST `tools/list` to `/mcp` with the write token.
 
@@ -1121,8 +1121,8 @@ judge what belongs where. A checklist item is exempt: it has no section of its o
 
 ### The task kinds it can set, and the two it can only read about
 
-`create_task`/`update_task` take `timed`, `rotation`, `healthTarget` and `supply` beside the older
-`chain` and `target`, translated in `mcp/src/taskFields.ts` by the rules the editor applies at kind
+`update_task` takes `timed`, `rotation`, `healthTarget` and `supply` beside the older `chain` and
+`target` (`create_task` takes none of them; see the core shape above), translated in `mcp/src/taskFields.ts` by the rules the editor applies at kind
 switch (`bakedFields`). Four things are not obvious from the code:
 
 - **A task is one kind.** A call that would leave it two (a timer on a chain) is refused, naming the
@@ -1589,7 +1589,7 @@ left the device they were set on, and `set_automation`'s `category` never reache
 all. They are on the list now. `nutritionTargets` syncs with the health record
 (`HEALTH_SYNC_SETTING_KEYS`), since a calorie target says something about a body.
 
-`set_medication_limit` and `set_medication_supply` are the page's Limit and Left fields (`useMedicationStore.setLimit`/`setSupply`). A limit is the person's own (`docs/arch/mood-log.md`), so the tool descriptions say it is set only from figures they gave, and the notify switch is left alone because turning it on needs the phone's notification permission. `add_medication`, `delete_medication` (only with no doses, as in the app) and `set_medication_profile` are the app's Add medication and the page's How you take it and Usual amounts (`useMedicationStore.addMedication`/`setAsNeeded`/`setUsualDose`), plus `setStrength` for what one capsule holds and `setSchedule` for the days it is taken on (`medicationSchedule.ts`; `list_medication_logs` reports `schedule` and `scheduleStatus`); a task completed through the replica records the usual amount when it names none, the same `useUsualDose` rule as the phone; a medicine added by name lives in `medication_registered`, so the replica's name lookups union it with the logged names. A task taking several medicines together is `medication.also` on `create_task`/`update_task` (`Task.medicationExtras`; `get_task` reports it as `onCompletion.alsoLogsMedication`). `archive_medication` is the medicines list's own archive (`medication_archived`, which already
+`set_medication_limit` and `set_medication_supply` are the page's Limit and Left fields (`useMedicationStore.setLimit`/`setSupply`). A limit is the person's own (`docs/arch/mood-log.md`), so the tool descriptions say it is set only from figures they gave, and the notify switch is left alone because turning it on needs the phone's notification permission. `add_medication`, `delete_medication` (only with no doses, as in the app) and `set_medication_profile` are the app's Add medication and the page's How you take it and Usual amounts (`useMedicationStore.addMedication`/`setAsNeeded`/`setUsualDose`), plus `setStrength` for what one capsule holds and `setSchedule` for the days it is taken on (`medicationSchedule.ts`; `list_medication_logs` reports `schedule` and `scheduleStatus`); a task completed through the replica records the usual amount when it names none, the same `useUsualDose` rule as the phone; a medicine added by name lives in `medication_registered`, so the replica's name lookups union it with the logged names. A task taking several medicines together is `medication.also` on `update_task` (`Task.medicationExtras`; `get_task` reports it as `onCompletion.alsoLogsMedication`). `archive_medication` is the medicines list's own archive (`medication_archived`, which already
 synced with the health record), and `rename_mood_tag` renames a context tag across every mood
 entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. `rename_medication` is the medication page's Rename (`useMedicationStore.renameMedication`, rules in `docs/arch/mood-log.md`), with the tasks and templates that record the medicine rewritten through `db` as the rest of the replica writes; naming an existing medicine combines the two. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
 person's to set on the phone.
@@ -1872,3 +1872,25 @@ The journal lock is the same.
 ## Editing a follow-up task over MCP
 
 A follow-up task is added by a repeating task's rule, and the next one starts from that rule's draft, not from the row. In the app an edit asks "this task or this and future tasks". `get_task` shows `addedByFollowUp` (with `ruleLive`), `update_task` takes `futureFollowUps` for the second answer, and the replica writes the changed fields into the rule through the same `followUpDraftAfterEdit` the store uses. The rule is a row of its own, so it gets its own Activity entry and revert. The replica never wrote a generator's estimate back (that write is in the store), so there is no `futureFollowUps` for rule-written tasks.
+
+## Ask Claude: the app as the connector's client
+
+The app has a chat of its own (`src/utils/askClaudeChat.ts`, `AskClaudeSheet`), so the person can
+ask for a change without going to the Claude app. It reuses this server whole rather than running
+any tool on the phone: each message goes to the Messages API with the MCP connector pointed at
+`<sync server>/mcp` and the write token, and Anthropic's backend calls the tools. Three things make
+that fit the rules above rather than bend them:
+
+- **The person confirms, never the model.** The request switches `confirm_change` off in the
+  toolset, so Claude can only preview. The sheet shows `willDo` with Confirm and Cancel, and a
+  Confirm is the phone calling `confirm_change` here directly (plain JSON-RPC `tools/call`; the
+  transport is stateless, so no `initialize` first). A token is not tied to the session that issued
+  it, which is what lets the phone spend one the connector was handed.
+- **`confirm_change` returns the Activity batch it made** (`batchId`, added by `withBatchId` in
+  `confirmWrites.ts`). The sheet's Undo runs `revertBatch` on that batch, the path Activity's "Undo
+  all" takes, after a sync has brought the batch to the phone.
+- **Cost is the tool list.** About 250 tools are around 130K tokens of definitions, so the request
+  defers them all behind tool search and loads only a few reads up front
+  (`ASK_CLAUDE_LOADED_TOOLS`). A tool whose description grows makes every deferred search result
+  that loads it dearer, not every request.
+

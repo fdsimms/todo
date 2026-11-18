@@ -245,6 +245,8 @@ import {
 } from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
+import { useAskClaudeReady } from '../hooks/useAskClaudeReady';
+import { useAskClaudeStore } from '../store/useAskClaudeStore';
 import { EmptyState } from '../components/EmptyState';
 import { TodayGlance } from '../components/TodayGlance';
 import { AgentSuggestionCards, useSuggestionCount } from '../components/AgentSuggestionCards';
@@ -2101,6 +2103,7 @@ export function TodayScreen() {
   const filterEfforts = useSettingsStore(useShallow(s => s.filterEfforts));
   const setFilterEfforts = useSettingsStore(s => s.setFilterEfforts);
   const hideCategories = useSettingsStore(s => s.hideCategories);
+  const askClaudeReady = useAskClaudeReady();
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   // Counted in every mode now, not just simplified: it's the badge on the
@@ -5294,6 +5297,14 @@ export function TodayScreen() {
   const goalSavings = useMemo(() => (goalPlan ? savingsBalance(coinEntries, goalPlan) : 0), [goalPlan, coinEntries]);
   const goalHave = goalPlan ? goalSavings : coinTotal;
   const headerActions: ScreenHeaderAction[] = [
+    // Ask Claude, first so it sits apart from the list's own tools. Drawn only
+    // while a message could go out (useAskClaudeReady); the sheet is the app
+    // root's, so the side menu opens the same conversation.
+    ...(askClaudeReady ? [{
+      icon: 'sparkles' as const,
+      onPress: () => useAskClaudeStore.getState().show(),
+      accessibilityLabel: 'Ask Claude',
+    }] : []),
     // The same quick search a pull opens, on all four lenses: a pull is a
     // gesture nothing on screen points to, and this is the screen people
     // land on.

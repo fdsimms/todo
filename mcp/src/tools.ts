@@ -1285,7 +1285,12 @@ export function updateTask(
   const patch = replica.taskPatch(input, current, !!current.parentId);
   if (Object.keys(patch).length === 0) throw new Error('Nothing to change: name at least one field.');
   const ruleCleared = hasRelativeDeadline(current) && 'deadline' in patch && patch.deadlineOffsetDays === null && patch.deadlineMonthDay === null;
+  // A weekly target set up partway through a week gets the app's smaller first
+  // week, as createTask gives one. create_task takes no target (it is set here
+  // on the new task), so this is where a new target starts, not only an edit.
+  const startsWeeklyTarget = input.target?.per === 'week' && input.target.firstWeek !== 'full' && current.targetCount == null;
   const { alsoUpdated, followUpRule } = replica.updateTask(id, patch, options);
+  if (startsWeeklyTarget) replica.scaleFirstWeek(id);
   return {
     ...getTask(replica, id)!,
     ...(alsoUpdated > 0 ? { alsoUpdatedLaterDates: alsoUpdated } : {}),

@@ -77,6 +77,27 @@ export function createConfirmTokens(now: () => number = Date.now, path = ':memor
   };
 }
 
+/**
+ * The confirmed write's result with the Activity batch it made added as
+ * `batchId`, so a caller can take back exactly that request (the app's Ask
+ * Claude sheet undoes it with `revertBatch`, the same path Activity's
+ * "Undo all" runs). Left as it was when the write failed or made no batch;
+ * a write that made several batches reports the last, which is what a
+ * single confirm records today.
+ */
+export function withBatchId(text: string, batchIds: readonly string[]): string {
+  const batchId = batchIds[batchIds.length - 1];
+  if (!batchId) return text;
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value) || 'error' in value) return text;
+  return JSON.stringify({ ...(value as Record<string, unknown>), batchId });
+}
+
 // ---------------------------------------------------------------------------
 // Plain words for an effect
 // ---------------------------------------------------------------------------

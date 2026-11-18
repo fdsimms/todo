@@ -25,6 +25,7 @@ import { TextField } from '../../components/TextField';
 import { BUTTON_LABEL } from '../../copy/shared';
 import { WaniKaniTokenRows } from './WaniKaniTokenRows';
 import { FrankiTokenRows } from './FrankiTokenRows';
+import { AskClaudeTokenRows } from './AskClaudeTokenRows';
 
 const GRACE_OPTIONS: SegmentOption<number>[] =
   APP_LOCK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -344,6 +345,11 @@ export function PrivacyAiSettings() {
                     onSelect={model => setAiFeatureConfig(feature.id, { model })}
                     accessibilityLabelFor={o => `${feature.label} model: ${o.label}`}
                   />
+                )}
+                {feature.id === 'askClaude' && config.enabled && (
+                  <SettingsNested>
+                    <AskClaudeTokenRows />
+                  </SettingsNested>
                 )}
                 {feature.id === 'nutritionEstimate' && config.enabled && (
                   <SettingsNested>

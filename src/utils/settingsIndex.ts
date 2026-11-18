@@ -274,6 +274,7 @@ export interface SettingsEntry {
  */
 const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   taskBreakdown: ['claude', 'model', 'subtasks', 'steps', 'split', 'suggestions', 'postpone'],
+  askClaude: ['model', 'chat', 'assistant', 'mcp', 'write token', 'change tasks', 'talk to', 'sparkles'],
   templateSuggestions: ['claude', 'model', 'checklist'],
   projectTaskSuggestions: ['claude', 'model', 'checklist', 'fill', 'generate', 'description'],
   backfillSuggestions: [
@@ -1056,6 +1057,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: 'On-device suggestions', kitchen: true, requires: 'onDeviceAiEnabled',
     keywords: ['claude', 'model', 'on device', 'grocery', 'offline', 'foundation models',
       'apple intelligence'] },
+
+  { id: 'ai:askClaude:token', groupId: 'privacyAi', label: 'Server write token',
+    section: 'Ask Claude', requires: 'ai:askClaude',
+    keywords: ['claude', 'mcp', 'key', 'chat', 'mcp_write_token', 'password'] },
 
   { id: 'ai:nutritionEstimate:webSearch', groupId: 'privacyAi', label: 'Search the web for brand figures',
     section: 'Meal estimates', kitchen: true, simple: true, requires: 'ai:nutritionEstimate',
