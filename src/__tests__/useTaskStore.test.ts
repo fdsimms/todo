@@ -13483,6 +13483,22 @@ describe('bulkSetWhen', () => {
     expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', pinned: false }));
   });
 
+  it('dates a dateless repeating task today when only its time of day is cleared, so it stays on Today', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'weekly', recurrenceInterval: 1, dueDate: null, timeSegments: [] })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], undefined, []);
+    const row = useTaskStore.getState().tasks[0];
+    expect(row.timeSegments).toEqual([]);
+    expect(row.dueDate).not.toBeNull();
+  });
+
+  it('does not date a one-off whose time of day is cleared', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', dueDate: null, timeSegments: [] })] });
+    useTaskStore.getState().bulkSetWhen(['a'], undefined, []);
+    expect(useTaskStore.getState().tasks[0].dueDate).toBeNull();
+  });
+
   it('leaves a pinned task alone when the day is unchanged', () => {
     const sameDay = new Date(2025, 5, 10);
     useTaskStore.setState({

@@ -1,5 +1,5 @@
 import type { GeneratedKind, Task } from '../types';
-import { getNextDueDate, getTaskDayStart, recurrenceAnchorDayFor } from './dateUtils';
+import { getLogicalToday, getNextDueDate, getTaskDayStart, recurrenceAnchorDayFor } from './dateUtils';
 import { isNoticeTask } from './generatedTasks';
 import { eventTaskStartOf } from './eventTasks';
 
@@ -33,6 +33,36 @@ import { eventTaskStartOf } from './eventTasks';
  */
 export function dropsTimeOfDayOnMove(task: Pick<Task, 'recurrenceType' | 'seriesId'>): boolean {
   return task.recurrenceType === 'none' && !task.seriesId;
+}
+
+/**
+ * What to write alongside a time of day that clears the last thing placing a
+ * repeating task on Today.
+ *
+ * A task with no date is on Today only through its time of day (or a window),
+ * so clearing that leaves nothing to place it: it drops to Unscheduled and the
+ * edit reads as the task vanishing. A weekly target with no date of its own
+ * (`Read`, evening only) is the usual case. Dating it today keeps this
+ * occurrence where it is; the repeats after it are dated by the schedule as
+ * they always are. Written at noon, as every other day pick is.
+ *
+ * Only for a repeating task: a one-off with its time of day cleared and no
+ * date is an ordinary "any time" task, and filing it away is what that means.
+ * Only when no day was picked, since a picked day is already the placement.
+ */
+export function keepsPlaceOnToday(
+  task: Pick<Task, 'recurrenceType' | 'dueDate' | 'deferUntil' | 'windowStart' | 'projectId' | 'polarity' | 'completed'>,
+  timeSegments: readonly string[],
+  dayResetTime?: string,
+): Partial<Task> {
+  if (task.recurrenceType === 'none' || task.completed || task.polarity === 'negative') return {};
+  if (timeSegments.length > 0) return {};
+  // A project's task lives in its project until it is dated on purpose.
+  if (task.projectId) return {};
+  if (task.dueDate != null || task.deferUntil != null || task.windowStart != null) return {};
+  const noon = getLogicalToday(dayResetTime);
+  noon.setHours(12, 0, 0, 0);
+  return { dueDate: noon.toISOString() };
 }
 
 /** Why a task is blocked outright, or merely unchecked by default. */

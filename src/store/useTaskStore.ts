@@ -230,7 +230,7 @@ import {
   weekendSourceProjects,
 } from '../utils/weekendTasks';
 import { buildDayBuckets } from '../utils/calendarMonth';
-import { scheduleMoveUpdates } from '../utils/taskMoves';
+import { keepsPlaceOnToday, scheduleMoveUpdates } from '../utils/taskMoves';
 import { BUSY_DAY_MINUTES, assumedMinutesFor, buildDayLoads, weightFor } from '../utils/dayLoad';
 import { hasLogOnDay, hasLoggedSince, ratedLogs } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
@@ -12197,7 +12197,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         get().updateTask(
           snapshot.id,
           {
-            ...(date === undefined ? {} : scheduleMoveUpdates(snapshot, date, dayResetTime, { restartSchedule: options?.restartSchedules })),
+            ...(date === undefined ? keepsPlaceOnToday(snapshot, timeSegments, dayResetTime) : scheduleMoveUpdates(snapshot, date, dayResetTime, { restartSchedule: options?.restartSchedules })),
             timeSegments,
             ...(moved ? { pinned: false } : {}),
           },
