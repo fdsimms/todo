@@ -409,12 +409,15 @@ describe('markHistoryHandled', () => {
   });
 
   it('does not re-hydrate once the record is already loaded', () => {
-    useCalendarStore.setState({ handledHistory: { 'e-1': '2026-08-20' }, handledLoaded: true });
-    useCalendarStore.getState().markHistoryHandled('e-2', '2026-08-27');
+    // Relative to today, as above: a fixed date ages out of the window the store prunes to.
+    const first = dayKeyOf(addDays(new Date(), -14));
+    const second = dayKeyOf(addDays(new Date(), -7));
+    useCalendarStore.setState({ handledHistory: { 'e-1': first }, handledLoaded: true });
+    useCalendarStore.getState().markHistoryHandled('e-2', second);
     expect(dbGetSetting).not.toHaveBeenCalled();
     expect(useCalendarStore.getState().handledHistory).toEqual({
-      'e-1': '2026-08-20',
-      'e-2': '2026-08-27',
+      'e-1': first,
+      'e-2': second,
     });
   });
 
