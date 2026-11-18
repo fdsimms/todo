@@ -1388,9 +1388,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 icon="phone-portrait-outline"
                 iconColor={s.leaveLiveActivity ? colors.accent : undefined}
                 label="Live Activity before leaving"
-                hint={s.leaveLiveActivity
-                  ? 'Counts down to when to leave on the Lock Screen and Dynamic Island. Starts when you open the app within the start window below, and ends when you finish the task. Requires iOS 17.'
-                  : 'The countdown stays in the app only'}
+                hint="Counts down to when to leave on the Lock Screen and Dynamic Island. Starts when you open the app within the start window below, and ends when you finish the task. Requires iOS 17. When off, the countdown stays in the app only."
                 toggle={s.leaveLiveActivity}
                 onPress={() => s.setLeaveLiveActivity(!s.leaveLiveActivity)}
                 tight={s.leaveLiveActivity}
@@ -1428,9 +1426,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             icon="navigate-outline"
             iconColor={s.travelEstimates ? colors.accent : undefined}
             label="Estimate travel time"
-            hint={s.travelEstimates
-              ? "Sets each reminder from Apple Maps’ estimate of the trip, plus 5 minutes. Sends the event’s address and where the trip starts to Apple while the app is open."
-              : 'Reminders use the time above. Nothing is sent anywhere.'}
+            hint="Sets each reminder from Apple Maps’ estimate of the trip, plus 5 minutes. Sends the event’s address and where the trip starts to Apple while the app is open. When off, reminders use the time above and nothing is sent."
             toggle={s.travelEstimates}
             onPress={async () => {
               if (s.travelEstimates) { s.setTravelEstimates(false); return; }
@@ -1464,9 +1460,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 icon="git-compare-outline"
                 iconColor={s.travelCompareModes ? colors.accent : undefined}
                 label="Compare ways to get there"
-                hint={s.travelCompareModes
-                  ? 'Each leave-by task lists the trip by car, transit and on foot, with the shortest marked. Tap one to use it for that event. Asks Apple Maps for all three, so it sends the same addresses up to three times.'
-                  : 'Each leave-by task shows only the mode above.'}
+                hint="Each leave-by task lists the trip by car, transit and on foot, with the shortest marked. Tap one to use it for that event. Asks Apple Maps for all three, so it sends the same addresses up to three times. When off, each leave-by task shows only the mode above."
                 toggle={s.travelCompareModes}
                 onPress={() => s.setTravelCompareModes(!s.travelCompareModes)}
               />
@@ -1854,11 +1848,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             icon="nutrition-outline"
             iconColor={s.limitsTodayCategory !== null ? colors.accent : undefined}
             label="Stay under limits on Today"
-            hint={
-              s.limitsTodayCategory !== null
-                ? 'Shows how much of each Stay under limit is used so far today.'
-                : undefined
-            }
+            hint="Shows how much of each Stay under limit is used so far today."
             toggle={s.limitsTodayCategory !== null}
             onPress={toggleLimitsOnToday}
           />
@@ -1925,11 +1915,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 icon="trending-up-outline"
                 iconColor={s.goalsTodayCategory !== null ? colors.accent : undefined}
                 label="Nutrient goals on Today"
-                hint={
-                  s.goalsTodayCategory !== null
-                    ? 'Shows how much of each nutrient goal is reached so far today.'
-                    : undefined
-                }
+                hint="Shows how much of each nutrient goal is reached so far today."
                 toggle={s.goalsTodayCategory !== null}
                 onPress={toggleGoalsOnToday}
               />

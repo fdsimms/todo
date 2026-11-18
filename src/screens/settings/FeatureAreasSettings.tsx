@@ -78,9 +78,7 @@ export function FeatureAreasSettings() {
         icon="cart-outline"
         iconColor={kitchenEnabled ? colors.accent : undefined}
         label="Groceries & meals"
-        hint={!kitchenEnabled
-          ? 'Hides groceries, recipes, the meal plan, the pantry and the food log from the menu and the tab bar'
-          : tabRoutes.includes('Groceries') ? 'Shown in the menu and the tab bar' : 'Shown in the menu'}
+        hint="Groceries, recipes, the meal plan, the pantry and the food log. When off, they are hidden from the menu and the tab bar"
         toggle={kitchenEnabled}
         onPress={() => setKitchenEnabled(!kitchenEnabled)}
       />
@@ -90,9 +88,7 @@ export function FeatureAreasSettings() {
         icon={COIN_ICON}
         iconColor={rewardsEnabled ? colors.accent : undefined}
         label="Coins and rewards"
-        hint={rewardsEnabled
-          ? 'Finishing a task earns coins you can spend on rewards you set'
-          : 'Off. No coins are earned or shown'}
+        hint="Finishing a task earns coins you can spend on rewards you set. When off, no coins are earned or shown"
         toggle={rewardsEnabled}
         onPress={() => setRewardsEnabled(!rewardsEnabled)}
       />
@@ -102,9 +98,7 @@ export function FeatureAreasSettings() {
         icon="barbell-outline"
         iconColor={workoutsEnabled ? colors.accent : undefined}
         label="Workouts"
-        hint={!workoutsEnabled
-          ? 'Hidden from the menu and the tab bar'
-          : tabRoutes.includes('Workouts') ? 'Shown in the menu and the tab bar' : 'Shown in the menu'}
+        hint="Workouts and their history. When off, they are hidden from the menu and the tab bar"
         toggle={workoutsEnabled}
         onPress={() => setWorkoutsEnabled(!workoutsEnabled)}
       />
@@ -114,9 +108,7 @@ export function FeatureAreasSettings() {
         icon="contract-outline"
         iconColor={simpleMode ? colors.accent : undefined}
         label="Simplified mode"
-        hint={simpleMode
-          ? `${SIMPLE_FEATURES.length} advanced features are hidden`
-          : 'Every feature is available'}
+        hint={`Hides ${SIMPLE_FEATURES.length} advanced features. When off, every feature is available`}
         toggle={simpleMode}
         onPress={() => setSimpleMode(!simpleMode)}
       />

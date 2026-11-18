@@ -30,10 +30,14 @@ interface Props {
    * say what it does — a toggle labelled "24-hour time" doesn't need a hint
    * reading "Times read as 5:30 PM".
    *
-   * A hint that changes with a toggle follows the same rule for each state:
-   * the off text is the opposite of the on text, so give it only when it says
-   * something the label and the on text don't (a contrast, a consequence).
-   * "Nothing in the app vibrates" under "Haptic feedback" is not one.
+   * A toggle's hint never changes with the switch. A hint that flipped with
+   * the state read as "what is happening now" in one position and "what this
+   * is for" in the other, and nobody could tell which. It says what turning
+   * the setting on does, and where the off behavior matters (a privacy
+   * difference, what gets sent) adds a sentence starting "When off,". Live
+   * status (a count, a chosen list) may be appended to it, since that is
+   * about the data and not the switch. Don't give a hint only while the
+   * switch is on either.
    */
   hint?: string;
   /**

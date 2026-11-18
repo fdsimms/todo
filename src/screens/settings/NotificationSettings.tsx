@@ -267,9 +267,7 @@ export function NotificationSettings() {
         icon="newspaper-outline"
         iconColor={dailyAgendaEnabled ? colors.accent : undefined}
         label="Daily agenda"
-        hint={dailyAgendaEnabled
-          ? 'One notification each morning with the day’s count, dinner and birthdays'
-          : 'Nothing arrives unless a task has its own reminder'}
+        hint="One notification each morning with the day’s count, dinner and birthdays. When off, nothing arrives unless a task has its own reminder"
         toggle={dailyAgendaEnabled}
         onPress={() => onToggleDailyAgenda(!dailyAgendaEnabled)}
       />
@@ -303,9 +301,7 @@ export function NotificationSettings() {
             icon="volume-high-outline"
             iconColor={dailyAgendaSpoken ? colors.accent : undefined}
             label="Read it aloud"
-            hint={dailyAgendaSpoken
-              ? 'Tapping the notification reads the agenda aloud'
-              : 'Tapping the notification opens the app without sound'}
+            hint="Tapping the notification reads the agenda aloud. When off, tapping it opens the app without sound"
             toggle={dailyAgendaSpoken}
             onPress={() => setDailyAgendaSpoken(!dailyAgendaSpoken)}
           />
@@ -320,9 +316,7 @@ export function NotificationSettings() {
         icon="storefront-outline"
         iconColor={tripReminderEnabled ? colors.accent : undefined}
         label="Trip reminder"
-        hint={tripReminderEnabled
-          ? 'One notification if a shopping trip is still running two hours after it started'
-          : undefined}
+        hint="One notification if a shopping trip is still running two hours after it started"
         toggle={tripReminderEnabled}
         onPress={() => onToggleTripReminder(!tripReminderEnabled)}
       />
@@ -335,9 +329,7 @@ export function NotificationSettings() {
         icon="moon-outline"
         iconColor={quietHoursEnabled ? colors.accent : undefined}
         label="Quiet hours"
-        hint={quietHoursEnabled
-          ? 'Reminders and the daily agenda wait until this window ends. Timer alarms in it are skipped'
-          : 'Reminders, the daily agenda and timer alarms arrive at any hour'}
+        hint="Reminders and the daily agenda wait until this window ends. Timer alarms in it are skipped. When off, they arrive at any hour"
         toggle={quietHoursEnabled}
         onPress={() => onToggleQuietHours(!quietHoursEnabled)}
       />

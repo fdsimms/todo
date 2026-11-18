@@ -170,9 +170,7 @@ export function AppearanceSettings() {
           icon="phone-portrait-outline"
           iconColor={hapticsEnabled ? colors.accent : undefined}
           label="Haptic feedback"
-          hint={hapticsEnabled
-            ? 'Vibrates when you complete a task, drag a row, or swipe'
-            : undefined}
+          hint="Vibrates when you complete a task, drag a row, or swipe"
           toggle={hapticsEnabled}
           // The row's own tick runs before the flip, so switching haptics on
           // would be silent: tick again once they're on, to confirm it.
@@ -188,9 +186,7 @@ export function AppearanceSettings() {
           icon="phone-portrait-outline"
           iconColor={shakeToUndoEnabled ? colors.accent : undefined}
           label="Shake to undo"
-          hint={shakeToUndoEnabled
-            ? 'Shake your phone right after completing, deleting or rescheduling to undo it'
-            : undefined}
+          hint="Shake your phone right after completing, deleting or rescheduling to undo it"
           toggle={shakeToUndoEnabled}
           onPress={() => setShakeToUndoEnabled(!shakeToUndoEnabled)}
         />
@@ -200,9 +196,7 @@ export function AppearanceSettings() {
           icon="laptop-outline"
           iconColor={mirroringMode ? colors.accent : undefined}
           label="iPhone Mirroring"
-          hint={mirroringMode
-            ? "Shows buttons for swipe actions, offers Undo after every change, lets Return accept a suggestion found in a task’s title, and turns on keyboard shortcuts (⌘/ lists them)"
-            : 'For using the app from a Mac, where you can click but not shake the phone'}
+          hint="For using the app from a Mac, where you can click but not shake the phone. Shows buttons for swipe actions, offers Undo after every change, lets Return accept a suggestion found in a task’s title, and turns on keyboard shortcuts (⌘/ lists them)"
           toggle={mirroringMode}
           onPress={() => setMirroringMode(!mirroringMode)}
         />
@@ -222,9 +216,7 @@ export function AppearanceSettings() {
           icon="trash-outline"
           iconColor={confirmBeforeDeleting ? colors.accent : undefined}
           label="Confirm before deleting"
-          hint={confirmBeforeDeleting
-            ? 'Shows an alert before a delete that can’t be undone, like a recipe. Anything you can undo is deleted right away'
-            : undefined}
+          hint="Shows an alert before a delete that can’t be undone, like a recipe. Anything you can undo is deleted right away"
           toggle={confirmBeforeDeleting}
           onPress={() => setConfirmBeforeDeleting(!confirmBeforeDeleting)}
         />
@@ -234,9 +226,7 @@ export function AppearanceSettings() {
           icon="information-circle-outline"
           iconColor={hideHelpText ? colors.accent : undefined}
           label="Hide help text"
-          hint={hideHelpText
-            ? 'Settings and editor fields show only their labels'
-            : 'Settings and editor fields show a line explaining what they do'}
+          hint="Hides the line that explains what each setting and editor field does, so only the labels show"
           toggle={hideHelpText}
           onPress={() => setHideHelpText(!hideHelpText)}
         />
@@ -246,9 +236,7 @@ export function AppearanceSettings() {
           icon="bulb-outline"
           iconColor={tipsEnabled ? colors.accent : undefined}
           label="Tips"
-          hint={tipsEnabled
-            ? 'Shows one tip a day on the screen it applies to, until you have seen them all'
-            : 'Never shows a tip on its own. The Tips screen still lists all of them'}
+          hint="Shows one tip a day on the screen it applies to, until you have seen them all. When off, the Tips screen still lists all of them"
           toggle={tipsEnabled}
           onPress={() => setTipsEnabled(!tipsEnabled)}
         />
