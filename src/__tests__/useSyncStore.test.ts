@@ -627,7 +627,7 @@ describe('syncNow', () => {
   });
 
   it('always returns the phase to idle, even when the loop throws', async () => {
-    (runSyncAll as jest.Mock).mockRejectedValue(new Error('boom'));
+    (runSyncAll as jest.Mock).mockRejectedValueOnce(new Error('boom'));
     useSyncStore.setState({ enabled: true });
     await expect(useSyncStore.getState().syncNow()).rejects.toThrow('boom');
     expect(useSyncStore.getState().phase).toBe('idle');
