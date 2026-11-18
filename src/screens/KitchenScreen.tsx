@@ -75,6 +75,7 @@ import { LeftoverSheet } from '../components/LeftoverSheet';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { PantryReviewSheet } from '../components/PantryReviewSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
+import { ScanLookupSheet } from '../components/ScanLookupSheet';
 import { featureHidden } from '../utils/simpleMode';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
@@ -287,6 +288,8 @@ export function KitchenScreen() {
   const [openItemField, setOpenItemField] = useState<CollapsibleFieldKey>('pantry');
   const [openLeftoverId, setOpenLeftoverId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
+  // Look up a barcode: reads a product, and the pantry is not touched.
+  const [lookupOpen, setLookupOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -1114,6 +1117,11 @@ export function KitchenScreen() {
                 icon: 'barcode-outline' as const,
                 onPress: () => setScanOpen(true),
                 accessibilityLabel: 'Scan a barcode into the pantry',
+              }, {
+                // Beside the one above so both stay a tap: this one only reads.
+                icon: 'search-outline' as const,
+                onPress: () => setLookupOpen(true),
+                accessibilityLabel: 'Look up a barcode without adding it to the pantry',
               }]),
           // Ungated, unlike the two above: the review deck needs no API key and
           // no camera, it writes only what this screen's own rows already write
@@ -1278,6 +1286,9 @@ export function KitchenScreen() {
           onClose={() => setScanOpen(false)}
           onApply={handleScanApply}
         />
+      </LazySheet>
+      <LazySheet open={lookupOpen}>
+        <ScanLookupSheet visible={lookupOpen} onClose={() => setLookupOpen(false)} />
       </LazySheet>
 
       <ReceiptImportSheet

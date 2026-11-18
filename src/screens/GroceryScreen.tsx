@@ -55,6 +55,7 @@ import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { GroceryListSheet } from '../components/GroceryListSheet';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
+import { ScanLookupSheet } from '../components/ScanLookupSheet';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
@@ -331,6 +332,8 @@ export function GroceryScreen() {
     setReceiptOpen(true);
   };
   const [scanOpen, setScanOpen] = useState(false);
+  // Look up a barcode: reads a product, writes nothing to the list or the trip.
+  const [lookupOpen, setLookupOpen] = useState(false);
   // The scan sheet's per-row freezer toggle, held here rather than written
   // immediately: a scan only checks an item onto the list, and the item isn't
   // bought yet — see finishShopping's own doc comment on frozenIds. It seeds
@@ -1543,6 +1546,9 @@ export function GroceryScreen() {
     // scanner with it.
     if (!featureHidden('barcodeScanning', simpleMode)) {
       list.push({ key: 'scan', label: 'Scan what you bought', icon: 'barcode-outline' });
+      // Not an add: it only reads a product. Here because the header is full and
+      // this is the menu the scanner is already in.
+      list.push({ key: 'lookup', label: 'Look up a barcode', icon: 'search-outline' });
     }
     list.push({ key: 'item', label: 'Add an item', icon: 'add-circle-outline' });
     // Closest to the button while shopping, since that is when it is wanted:
@@ -1563,6 +1569,7 @@ export function GroceryScreen() {
       else setRecipeSourceOpen(true);
     }
     else if (key === 'scan') setScanOpen(true);
+    else if (key === 'lookup') setLookupOpen(true);
     else {
       setAddIntoCart(key === 'cart');
       setAddOpen(true);
@@ -2073,6 +2080,9 @@ export function GroceryScreen() {
           />
           {shownReceiptHost === 'list' && receiptSheet}
         </SheetFlow>
+      </LazySheet>
+      <LazySheet open={lookupOpen}>
+        <ScanLookupSheet visible={lookupOpen} onClose={() => setLookupOpen(false)} />
       </LazySheet>
       <LazySheet open={tripOpen}>
         <ShoppingTripSheet
