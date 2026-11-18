@@ -20,6 +20,7 @@ import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsNested } from './SettingsNested';
 import { SettingsMinutesSegments, SettingsSegments } from './SettingsSegments';
 import { shortMinutesLabel } from '../../utils/customMinutes';
 import { type SegmentOption } from '../../components/SegmentedControl';
@@ -275,13 +276,10 @@ export function NotificationSettings() {
       />
 
       {dailyAgendaEnabled && (
-        <>
-          <View style={styles.sep} />
+        <SettingsNested>
           <SettingsRow
             entryId="dailyAgendaTime"
-            icon="alarm-outline"
-            iconColor={colors.accent}
-            label="Send it at"
+            label="Time"
             value={formatHHMM(dailyAgendaTime)}
             onPress={() => {
               if (pickerOpen) { setPickerOpen(false); return; }
@@ -300,16 +298,14 @@ export function NotificationSettings() {
           <View style={styles.sep} />
           <SettingsRow
             entryId="dailyAgendaSpoken"
-            icon="volume-high-outline"
-            iconColor={dailyAgendaSpoken ? colors.accent : undefined}
-            label="Read it aloud"
+            label="Read aloud"
             hint={dailyAgendaSpoken
               ? 'Tapping the notification reads the agenda aloud'
               : 'Tapping the notification opens the app without sound'}
             toggle={dailyAgendaSpoken}
             onPress={() => setDailyAgendaSpoken(!dailyAgendaSpoken)}
           />
-        </>
+        </SettingsNested>
       )}
 
       {kitchenEnabled && (
@@ -343,12 +339,9 @@ export function NotificationSettings() {
       />
 
       {quietHoursEnabled && (
-        <>
-          <View style={styles.sep} />
+        <SettingsNested>
           <SettingsRow
             entryId="quietHoursStart"
-            icon="moon-outline"
-            iconColor={colors.accent}
             label="From"
             value={formatHHMM(quietHoursStart ?? '00:00')}
             onPress={() => openQuietPicker('start')}
@@ -364,8 +357,6 @@ export function NotificationSettings() {
           <View style={styles.sep} />
           <SettingsRow
             entryId="quietHoursEnd"
-            icon="sunny-outline"
-            iconColor={colors.accent}
             label="Until"
             value={formatHHMM(quietHoursEnd ?? '00:00')}
             onPress={() => openQuietPicker('end')}
@@ -381,12 +372,11 @@ export function NotificationSettings() {
           <View style={styles.sep} />
           <SettingsRow
             entryId="quietHoursFromAwake"
-            icon="speedometer-outline"
             label="Set from awake hours"
             hint="Sets quiet hours to the hours outside your awake hours in Day & time."
             onPress={matchAwakeHours}
           />
-        </>
+        </SettingsNested>
       )}
     </SettingsSection>
 

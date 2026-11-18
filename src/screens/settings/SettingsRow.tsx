@@ -18,7 +18,8 @@ import { RotatingChevron } from '../../components/RotatingChevron';
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 interface Props {
-  icon: string;
+  /** Omit for a row nested under its parent (see `SettingsNested`): it has no icon of its own. */
+  icon?: string;
   /** Defaults to secondary; pass accent for an active row, red for a destructive one. */
   iconColor?: string;
   label: string;
@@ -123,7 +124,7 @@ export function SettingsRow({
 
   const body = (
     <>
-      {icon === TARGET_ICON || icon === COIN_ICON ? (
+      {icon === undefined ? null : icon === TARGET_ICON || icon === COIN_ICON ? (
         <View style={children != null ? { marginTop: spacing.xxs } : undefined}>
           {icon === COIN_ICON
             ? <CoinIcon size={18} color={iconColor ?? colors.textSecondary} />
