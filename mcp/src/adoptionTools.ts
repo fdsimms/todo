@@ -265,7 +265,7 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
   {
     id: 'milestones',
     title: 'Milestones',
-    benefit: 'Marking the day something changed (a new medicine, a new job) lets the Mood screen compare how you felt before and after.',
+    benefit: 'Marking the day something changed (a new medicine, a new job) lets the Experiments screen compare how you felt before and after.',
     advanced: true,
     evidence: ({ replica }) => {
       const logs = replica.allMoodLogs().length;
@@ -277,7 +277,7 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
   {
     id: 'experiments',
     title: 'Experiments',
-    benefit: 'Trying a change for a set number of days (no caffeine after noon, an earlier bedtime) lets the Mood screen compare your mood and the symptoms you pick during it with the same number of days before.',
+    benefit: 'Trying a change for a set number of days (no caffeine after noon, an earlier bedtime) lets the Experiments screen compare your mood and the symptoms you pick during it with the same number of days before.',
     advanced: true,
     since: '2026-11-11',
     evidence: ({ replica }) => {

@@ -76,6 +76,9 @@ export type SimpleFeatureId =
   | 'calendarScreen'
   | 'statsScreen'
   | 'moodScreen'
+  | 'insightsScreen'
+  | 'symptomsScreen'
+  | 'experimentsScreen'
   | 'medicationScreen'
   | 'weightScreen'
   | 'bloodPressureScreen'
@@ -178,6 +181,12 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // mood entries that live nowhere else in the app, so hiding it while it holds
   // any would strand them with no way back to them.
   { id: 'moodScreen', label: 'Mood', area: 'screens', screen: 'Mood', contentScreen: true },
+  // Insights, Symptoms and Experiments are read out of the mood log (and the experiments and
+  // milestones kept beside it), so each is a content screen that follows Mood's own count:
+  // they were sections of the Mood screen, which already hid with it.
+  { id: 'insightsScreen', label: 'Insights', area: 'screens', screen: 'Insights', contentScreen: true },
+  { id: 'symptomsScreen', label: 'Symptoms', area: 'screens', screen: 'Symptoms', contentScreen: true },
+  { id: 'experimentsScreen', label: 'Experiments', area: 'screens', screen: 'Experiments', contentScreen: true },
   // A content screen for the reason Mood is one, and *unlike* Weight below:
   // a dose taken as needed lives nowhere else in the app, so hiding the
   // screen while it holds any would strand it. The scheduled doses have a
@@ -315,7 +324,9 @@ export function screenShown(
   // so it was the one of the four shown unconditionally — the row stayed on an
   // install with no entries at all, which is the opposite of what the flag on
   // it says. Every caller passes the count now.
-  if (routeName === 'Mood') return (contentCounts.mood ?? 0) > 0;
+  if (routeName === 'Mood' || routeName === 'Insights' || routeName === 'Symptoms' || routeName === 'Experiments') {
+    return (contentCounts.mood ?? 0) > 0;
+  }
   if (routeName === 'Medications') return (contentCounts.medications ?? 0) > 0;
   if (routeName === 'Journal') return (contentCounts.journal ?? 0) > 0;
   if (routeName === 'Dreams') return (contentCounts.dreams ?? 0) > 0;
