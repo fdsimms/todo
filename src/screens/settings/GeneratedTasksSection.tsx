@@ -305,6 +305,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   // Targets that are figures to reach: every target that isn't a limit, water aside.
   const goalNutrients = goalNutrientKeys(s.nutritionTargets, s.nutritionLimits);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [pinTimePickerOpen, setPinTimePickerOpen] = useState(false);
+  const [pinPickerDate, setPinPickerDate] = useState(() => hhmmToDate('08:00'));
   // The saved places a leave-by trip can start from. A plain setting read on
   // focus, as SavedPlacesRows does: places are added from the new-event card.
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>(readSavedPlaces);
@@ -1302,6 +1304,42 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               describeValue={n => `${n ?? TRAVEL_LEAD_MINUTES_DEFAULT} minutes before the event`}
             />
           </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="travelPinBeforeTime"
+            label="Pin early leave-by tasks"
+            hint="Pins the task to the top of Today when you need to leave before this time. Takes effect for tasks added from now on."
+            toggle={s.travelPinBeforeTime !== null}
+            onPress={() => {
+              setPinTimePickerOpen(false);
+              s.setTravelPinBeforeTime(s.travelPinBeforeTime === null ? '08:00' : null);
+            }}
+            tight={s.travelPinBeforeTime !== null}
+          />
+          {s.travelPinBeforeTime !== null && (
+            <SettingsNested>
+              <SettingsRow
+                label="Leaving before"
+                value={formatHHMM(s.travelPinBeforeTime)}
+                onPress={() => {
+                  if (pinTimePickerOpen) { setPinTimePickerOpen(false); return; }
+                  setPinPickerDate(hhmmToDate(s.travelPinBeforeTime ?? '08:00'));
+                  setPinTimePickerOpen(true);
+                }}
+              />
+              {pinTimePickerOpen && (
+                <InlineTimePicker
+                  value={pinPickerDate}
+                  onChange={setPinPickerDate}
+                  onCancel={() => setPinTimePickerOpen(false)}
+                  onConfirm={() => {
+                    s.setTravelPinBeforeTime(dateToHHMM(pinPickerDate));
+                    setPinTimePickerOpen(false);
+                  }}
+                />
+              )}
+            </SettingsNested>
+          )}
           <View style={styles.sep} />
           <SettingsRow
             entryId="travelArriveEarlyMinutes"

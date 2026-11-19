@@ -641,6 +641,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'travelTaskCategory',
   'travelLeadMinutes',
   'travelArriveEarlyMinutes',
+  'travelPinBeforeTime',
   'wakeUpTaskCategory',
   'wakeUpUsualMinutes',
   'wakeUpGetReadyMinutes',

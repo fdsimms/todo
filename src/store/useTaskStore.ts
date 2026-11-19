@@ -527,6 +527,7 @@ import {
   travelOriginKey,
   travelSourceOf,
   travelTaskTitle,
+  leaveIsBeforePinCutoff,
 } from '../utils/travelTasks';
 import { leavePrepLine, openLeavePrep } from '../utils/leavePrep';
 import { describeDisruptions, disruptionHeadlines, journeyDisruptions } from '../utils/transitAlerts';
@@ -8829,6 +8830,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // decides what happens to it then.
           windowEnd: dateToHHMM(new Date(startMs)),
           category: settings.travelTaskCategory,
+          // Written pinned when leaving is early (Settings, Leave-by reminders).
+          // Only here, on creation: a pin the person removes is not put back.
+          pinned: leaveIsBeforePinCutoff(match.leaveAt, settings.travelPinBeforeTime),
           ...generatedBy('travel', match.sourceId),
         }),
       });

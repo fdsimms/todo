@@ -231,6 +231,7 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
     for (const [code, mode] of Object.entries(v)) s.setFrankiReadLanguageMode(code, mode as 'daily' | 'rotate' | 'off');
   } },
   frankiReadRotateCount: { group: 'automations', describe: 'How many Read & Listen languages set to "rotate" (1-10) get a task each day.', read: s => s.frankiReadRotateCount, write: (s, v) => s.setFrankiReadRotateCount(int('frankiReadRotateCount', v, 1, 10)) },
+  travelPinBeforeTime: { group: 'automations', describe: 'A "Leave for" task is added pinned when its leave-by time is before this time ("HH:MM"), or null for never.', read: s => s.travelPinBeforeTime, write: (s, v) => s.setTravelPinBeforeTime(v === null ? null : time('travelPinBeforeTime', v)) },
   mealPlanNudgeTime: { group: 'automations', describe: 'The time ("HH:MM") the plan-your-meals nudge appears.', read: s => s.mealPlanNudgeTime, write: (s, v) => s.setMealPlanNudgeTime(time('mealPlanNudgeTime', v)) },
   mealPlanNudgeWeekday: { group: 'automations', describe: 'The weekday (0 Sunday to 6) of that nudge.', read: s => s.mealPlanNudgeWeekday, write: (s, v) => s.setMealPlanNudgeWeekday(int('mealPlanNudgeWeekday', v, 0, 6)) },
   mealPlanNudgeSlots: { group: 'automations', describe: 'The meals that nudge asks to have planned.', read: s => s.mealPlanNudgeSlots, write: (s, v) => s.setMealPlanNudgeSlots(slots('mealPlanNudgeSlots', v)) },
