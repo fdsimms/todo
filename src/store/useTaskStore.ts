@@ -178,7 +178,7 @@ import {
   isWaniKaniLessonsOverCap,
 } from '../utils/wanikaniTasks';
 import {
-  FRANKI_READ_URL,
+  frankiReadUrl,
   FRANKI_REVIEW_URL,
   frankiCardsLeft,
   frankiDailySourceId,
@@ -9775,7 +9775,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         wanted: settings.frankiReadTasks && frankiReadModeOf(readModes, code) !== 'off',
         wants: readPlanned.includes(code),
         title: frankiReadTitle(readLanguages.get(code) ?? { name: code }),
-        link: FRANKI_READ_URL,
+        link: frankiReadUrl(code),
         // The latest record, since another language's task may have spent just before this one.
         spend: () => {
           const latest = useSettingsStore.getState();
