@@ -749,6 +749,21 @@ export function isTravelTaskStale(
 }
 
 /**
+ * Whether a "Leave for" row starts the pin cutoff's early: its leave-by time
+ * of day (the phone's clock, which is what the person reads) is before
+ * `pinBefore`. `null` is the setting off. The row is pinned when it is
+ * written and never re-pinned by a later sweep, so unpinning one by hand
+ * sticks.
+ */
+export function leaveIsBeforePinCutoff(leaveAt: string, pinBefore: string | null): boolean {
+  if (!pinBefore || !/^\d{2}:\d{2}$/.test(pinBefore)) return false;
+  const leave = new Date(leaveAt);
+  if (Number.isNaN(leave.getTime())) return false;
+  const [h, m] = pinBefore.split(':').map(Number);
+  return leave.getHours() * 60 + leave.getMinutes() < h * 60 + m;
+}
+
+/**
  * The task's title: "Leave for <event>". The event's own words follow the verb
  * unaltered apart from length. The MTA note is not in the title (it made a long
  * event name wrap to three lines): the row shows it on its own line and the

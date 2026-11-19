@@ -1,6 +1,7 @@
 import type { SavedPlace } from '../utils/savedPlaces';
 import type { BusyEvent } from '../utils/calendarBusy';
 import {
+  leaveIsBeforePinCutoff,
   travelOriginLabel,
   clampTravelLeadMinutes,
   clampTravelWalkUnder,
@@ -761,5 +762,27 @@ describe('travelOriginLabel', () => {
   });
   it('says current location when the trip starts at the phone', () => {
     expect(travelOriginLabel(null)).toBe('From current location:');
+  });
+});
+
+describe('leaveIsBeforePinCutoff', () => {
+  const at = (h: number, m = 0) => new Date(2026, 10, 19, h, m).toISOString();
+
+  it('is false when the setting is off', () => {
+    expect(leaveIsBeforePinCutoff(at(6), null)).toBe(false);
+  });
+
+  it('pins a leave-by time earlier than the cutoff', () => {
+    expect(leaveIsBeforePinCutoff(at(7, 15), '08:00')).toBe(true);
+  });
+
+  it('does not pin at the cutoff or later', () => {
+    expect(leaveIsBeforePinCutoff(at(8), '08:00')).toBe(false);
+    expect(leaveIsBeforePinCutoff(at(13), '08:00')).toBe(false);
+  });
+
+  it('ignores a malformed cutoff or time', () => {
+    expect(leaveIsBeforePinCutoff(at(6), 'soon')).toBe(false);
+    expect(leaveIsBeforePinCutoff('not a date', '08:00')).toBe(false);
   });
 });
