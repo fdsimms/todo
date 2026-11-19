@@ -21,7 +21,7 @@ import {
   type SlotCoverage,
 } from '../utils/mealLogCoverage';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, formatTimeOfDay, getCurrentDayStart, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
 import { slotForHour } from '../utils/mealLog';
 import {
   describeFoodLogEntry,
@@ -2232,6 +2232,7 @@ function makeStyles(colors: Colors) {
     entryText: { gap: spacing.xxs },
     entryTitle: { color: colors.text, fontSize: font.md },
     entryMeta: { color: colors.textSecondary, fontSize: font.sm },
+    entryTime: { color: colors.textSecondary, fontSize: font.sm },
     entryMenuButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
     entrySelectDot: { paddingHorizontal: spacing.md },
     entryNutrients: {
@@ -2335,6 +2336,11 @@ const FoodLogRow = React.memo(function FoodLogRow({
   const breakdown = entry.nutrition.breakdown ?? [];
   const openMenu = () => onOpenMenu(entry);
   const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
+  // Read from the settings so a change to 12/24-hour time redraws the row.
+  const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  // The day's water is one row stepped up and down, so its time is only when
+  // the first glass was written, not when anything was drunk.
+  const timeText = isWaterEntry(entry) ? null : formatTimeOfDay(new Date(entry.atISO), use24HourTime);
   const meta = describeFoodLogEntry(entry, waterEntryQuantity(entry, waterUnit), standardDrinkGrams);
   // Shared by the swipe and the iPhone Mirroring button.
   const swipeSelect = { onSelect: () => onSwipeSelect(entry.id), accessibilityLabel: `Select ${entry.label}` };
@@ -2357,7 +2363,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
           delayLongPress={interaction.delayLongPress}
           accessibilityRole={selectionMode ? 'checkbox' : undefined}
           accessibilityState={selectionMode ? { checked: selected } : canExpand ? { expanded } : undefined}
-          accessibilityLabel={`${entry.label}. ${meta}`}
+          accessibilityLabel={`${entry.label}. ${meta}${timeText ? `. ${timeText}` : ''}`}
           accessibilityHint={selectionMode ? undefined : !canExpand ? 'Shows options' : (expanded ? 'Hides nutrients' : 'Shows nutrients')}
         >
           <View style={styles.entryText}>
@@ -2365,6 +2371,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
             <Text style={styles.entryMeta}>{meta}</Text>
           </View>
         </TouchableOpacity>
+        {timeText !== null && <Text style={styles.entryTime}>{timeText}</Text>}
         {selectionMode ? (
           <View style={styles.entrySelectDot}>
             <SelectionDot selected={selected} onPress={toggleSelect} />
