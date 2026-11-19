@@ -39,3 +39,6 @@ what to say, pure and tested), `src/store/useOnCallStore.ts` (the read) and
   Settings field shows under itself, from the same `cleanWords` the match uses.
 - **Not in the demo seed.** Demo mode never reads the device calendar, and this is
   derived entirely from it, so there is no row to seed.
+- **An event that runs into a shift gets a swap task** (`onCallSwap`, `docs/arch/generated-tasks.md`).
+  The conflicting events are held beside the spans in `useOnCallStore`, read only while that switch
+  is on.

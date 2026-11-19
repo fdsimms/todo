@@ -355,6 +355,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'supplyReorderTaskCategory', current: s.supplyReorderTaskCategory, assign: s.setSupplyReorderTaskCategory };
     case 'calendarReview':
       return { key: 'calendarReviewTaskCategory', current: s.calendarReviewTaskCategory, assign: s.setCalendarReviewTaskCategory };
+    case 'onCallSwap':
+      return { key: 'onCallSwapTaskCategory', current: s.onCallSwapTaskCategory, assign: s.setOnCallSwapTaskCategory };
     case 'eventDetails':
       return { key: 'eventDetailsTaskCategory', current: s.eventDetailsTaskCategory, assign: s.setEventDetailsTaskCategory };
     case 'birthday':

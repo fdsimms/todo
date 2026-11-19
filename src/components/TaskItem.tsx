@@ -142,6 +142,7 @@ import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { EventDetailsCount, EventDetailsPanel } from './EventDetailsPanel';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
+import { useOnCallSwapContext } from '../hooks/useOnCallSwapContext';
 import { automationEntryIdFor, canPinTask, isNoticeTask } from '../utils/generatedTasks';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -1651,6 +1652,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // The calendar event a rule-written task ("Prep for interview") came from,
   // so the row says what it is about. Null for every other row.
   const eventTaskContext = useEventTaskContext(task);
+  const onCallSwap = useOnCallSwapContext(task);
 
   // A notice rather than a piece of work: something the app is telling you,
   // with a tick box on it. Which kinds are one, and why the rest aren't, is
@@ -3446,7 +3448,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
   const penaltyLabel = penaltyChipLabel(task, penaltyShieldEnabled);
-  const hasOtherMeta = logChips.length > 0 || penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || frankiMinutes !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || task.generatedKind === 'eventDetails' || placeReminderLabel !== null;
+  const hasOtherMeta = logChips.length > 0 || penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || onCallSwap !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || frankiMinutes !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || task.generatedKind === 'eventDetails' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   // A task the app wrote by itself says so on its row, in a tab on the card's
   // top-left corner (see `autoTab` in the styles). Only a small sparkle inside
@@ -4655,6 +4657,25 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
+            {/* When the event an on-call swap task is about is, or, in the warning
+                colour, that it no longer clashes: the swap was arranged or the
+                event moved. The row stays for the person to tick off, since the
+                app never removes a task they may have acted on. */}
+            {onCallSwap !== null && (onCallSwap.stale ? (
+              <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={onCallSwap.label}>
+                <Ionicons name="alert-circle-outline" size={iconSize.xs} color={colors.warningText} />
+                <Text style={styles.travelDisruptionLabel} numberOfLines={1}>
+                  {onCallSwap.label}
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.metaChip, styles.quietChip]}>
+                <Ionicons name="swap-horizontal-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.quietLabel} numberOfLines={1}>
+                  {onCallSwap.label}
+                </Text>
+              </View>
+            ))}
             {missingCount !== null && (
               <View style={[styles.metaChip, styles.quietChip]}>
                 <Ionicons name="cart-outline" size={iconSize.xs} color={colors.accent} />

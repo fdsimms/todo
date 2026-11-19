@@ -545,6 +545,11 @@ export type GeneratedKind =
   // square on the calendar, not a row, so writeGeneratedOptOut has nothing to
   // write and `eventDetailsLastDayKey` is what keeps a swiped-away one gone.
   | 'eventDetails'
+  // "Find someone to swap on call for <event>", for an event that runs into an
+  // on-call stretch — see src/utils/onCallSwapTasks.ts. Its source id is an event
+  // task's occurrence key with the rule id `onCallSwap`, and it shares the
+  // `eventTaskHandled` record that keeps a deleted or ticked one gone.
+  | 'onCallSwap'
   // A calendar event whose title matches a rule the user wrote — see
   // src/utils/eventTasks.ts. Its source id is `${eventId}|${eventStart}#${ruleId}`:
   // one *occurrence* of an event (EventKit shares one id across a whole

@@ -601,6 +601,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'calendarReviewTasks',
   // Its day mark and skipped record are state and stay off, like calendarReview's.
   'eventDetailsTasks',
+  'onCallSwapTasks',
   // Each generator's "File them under" and its own settings. These were
   // missing from the allowlist, the same gap as mealSlotsEnabled above: every
   // one is a preference the person set in Settings, so a category picked for
@@ -616,6 +617,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'calendarReviewTaskCategory',
   'calendarReviewTimeSegment',
   'eventDetailsTaskCategory',
+  'onCallSwapTaskCategory',
   'dreamLogTaskCategory',
   'eventTaskCategory',
   'healthCategory',

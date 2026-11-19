@@ -36,6 +36,7 @@ import { spacing, radius, font, fontWeight, border, iconSize, animation, interac
 import { useShallow } from 'zustand/react/shallow';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
+import { useOnCallSwapContext } from '../hooks/useOnCallSwapContext';
 import { useProjectStore, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -151,7 +152,9 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   const quotaNext = quotaNextDueLabel(task);
   const countLabel = formatOccurrenceCount(occurrenceCount);
   // Which calendar event a rule wrote this row for; null on any other task.
-  const eventContext = useEventTaskContext(task);
+  // An on-call swap task says when its event is, or that it no longer clashes.
+  const onCallSwap = useOnCallSwapContext(task);
+  const eventContext = useEventTaskContext(task) ?? onCallSwap?.label ?? null;
 
   // Built as a list so the dots between the parts can be interleaved rather
   // than each part having to know what's beside it. A generic-sounding title

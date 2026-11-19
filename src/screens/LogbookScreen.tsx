@@ -91,6 +91,7 @@ import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
+import { useOnCallSwapContext } from '../hooks/useOnCallSwapContext';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
@@ -1037,7 +1038,9 @@ const LogbookRow = React.memo(function LogbookRow({
   // actually links (peopleOn(task)), not the whole roster.
   const displayTitle = displayTitleFor(task);
   // Which calendar event a rule wrote this row for; null on any other task.
-  const eventContext = useEventTaskContext(task);
+  // An on-call swap task says when its event is, or that it no longer clashes.
+  const onCallSwap = useOnCallSwapContext(task);
+  const eventContext = useEventTaskContext(task) ?? onCallSwap?.label ?? null;
   const titleMentionRanges: [number, number][] = useMemo(
     () => mergeRanges(matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
       .map((m): [number, number] => [m.start, m.end])),

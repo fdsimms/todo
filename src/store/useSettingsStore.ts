@@ -1801,6 +1801,10 @@ interface SettingsStore {
   // calendarReviewTasks' reason: it adds a surface nobody had before.
   eventDetailsTasks: boolean;
   eventDetailsTaskCategory: string | null;
+  // "Find someone to swap" tasks for events that run into on call (src/utils/onCallSwapTasks.ts).
+  // On by default: it only acts once on call is set up and an event clashes.
+  onCallSwapTasks: boolean;
+  onCallSwapTaskCategory: string | null;
   // calendarReviewLastDayKey's job for this generator: the logical day key the
   // check last decided about, spent before it looks at the events, so a task
   // swiped away stays gone until the next day. State, not a preference.
@@ -2611,6 +2615,8 @@ interface SettingsStore {
   setCalendarReviewTimeSegment: (segment: TimeOfDay | null) => void;
   setEventDetailsTasks: (on: boolean) => void;
   setEventDetailsTaskCategory: (category: string | null) => void;
+  setOnCallSwapTasks: (on: boolean) => void;
+  setOnCallSwapTaskCategory: (category: string | null) => void;
   setEventDetailsLastDayKey: (dayKey: string | null) => void;
   setEventDetailsSkipped: (skipped: HandledEventTasks) => void;
   setWeatherTasks: (on: boolean) => void;
@@ -3454,6 +3460,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   calendarReviewTimeSegment: null,
   eventDetailsTasks: false,
   eventDetailsTaskCategory: null,
+  onCallSwapTasks: true,
+  onCallSwapTaskCategory: null,
   eventDetailsLastDayKey: null,
   eventDetailsSkipped: {},
   weatherTasks: false,
@@ -4029,6 +4037,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // calendarReviewTasks' opt-in reading, for its reason.
     const eventDetailsTasks = dbGetSetting('eventDetailsTasks') === 'true';
     const eventDetailsTaskCategory = dbGetSetting('eventDetailsTaskCategory') || null;
+    const onCallSwapTasks = dbGetSetting('onCallSwapTasks') !== 'false';
+    const onCallSwapTaskCategory = dbGetSetting('onCallSwapTaskCategory') || null;
     const eventDetailsLastDayKey = dbGetSetting('eventDetailsLastDayKey') || null;
     // Pruned on load for eventTaskHandled's reason.
     const eventDetailsSkipped = pruneHandledEventTasks(
@@ -4569,6 +4579,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       nutritionLimits,
       nutritionTargets,
       onCallCalendarIds,
+      onCallSwapTaskCategory,
+      onCallSwapTasks,
       onCallWords,
       onDeviceAiEnabled,
       pantryCheckTaskCategory,
@@ -5334,6 +5346,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setEventDetailsTaskCategory(category: string | null) {
     dbSetSetting('eventDetailsTaskCategory', category ?? '');
     set({ eventDetailsTaskCategory: category });
+  },
+
+  setOnCallSwapTasks(on: boolean) {
+    dbSetSetting('onCallSwapTasks', on ? 'true' : 'false');
+    set({ onCallSwapTasks: on });
+  },
+
+  setOnCallSwapTaskCategory(category: string | null) {
+    dbSetSetting('onCallSwapTaskCategory', category ?? '');
+    set({ onCallSwapTaskCategory: category });
   },
 
   // '' for "nothing decided yet", calendarReviewLastDayKey's reading.

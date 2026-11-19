@@ -7,7 +7,8 @@ import { createCoalescedTrigger, onEventStoreChanged } from '../utils/eventStore
 import { isDemoModeActive } from '../utils/demoState';
 import { getDayStart } from '../utils/dateUtils';
 import { createRefreshGuard } from '../utils/refreshGuard';
-import { ON_CALL_WINDOW_DAYS, onCallConfigured, onCallSpans, type OnCallSpan } from '../utils/onCall';
+import type { BusyEvent } from '../utils/calendarBusy';
+import { ON_CALL_WINDOW_DAYS, onCallConfigured, onCallConflicts, onCallSpans, type OnCallSpan } from '../utils/onCall';
 import { CALENDAR_CHANGE_COALESCE_MS } from './useCalendarStore';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -31,6 +32,11 @@ import { useSettingsStore } from './useSettingsStore';
  */
 interface OnCallState {
   spans: OnCallSpan[];
+  /**
+   * The events that run into those spans (`onCallConflicts`), for the swap tasks. Only
+   * read while those tasks are on, since finding them means reading every calendar.
+   */
+  conflicts: BusyEvent[];
   /** Whether a read has landed. A reader that must tell "nothing" from "not read yet" checks it. */
   loaded: boolean;
   refresh: () => Promise<void>;
@@ -41,6 +47,7 @@ const guard = createRefreshGuard();
 
 export const useOnCallStore = create<OnCallState>((set, get) => ({
   spans: [],
+  conflicts: [],
   loaded: false,
 
   async refresh() {
@@ -52,8 +59,9 @@ export const useOnCallStore = create<OnCallState>((set, get) => ({
       ? settings.calendarIds.filter(id => !settings.vacationHiddenCalendarIds.includes(id))
       : settings.calendarIds;
     // With no word set, only the on-call calendars can hold an on-call event, so
-    // only those are read; a word has to look through every calendar that is.
-    const readIds = config.words.length > 0
+    // only those are read; a word has to look through every calendar that is, and
+    // so does finding the events that clash with a shift.
+    const readIds = config.words.length > 0 || settings.onCallSwapTasks
       ? picked
       : picked.filter(id => config.calendarIds.includes(id));
     if (
@@ -61,7 +69,7 @@ export const useOnCallStore = create<OnCallState>((set, get) => ({
       || Platform.OS !== 'ios' || isDemoModeActive()
     ) {
       guard.invalidate();
-      if (get().loaded || get().spans.length > 0) set({ spans: [], loaded: false });
+      if (get().loaded || get().spans.length > 0) set({ spans: [], conflicts: [], loaded: false });
       return;
     }
     const start = getDayStart(new Date(), settings.dayResetTime);
@@ -72,14 +80,19 @@ export const useOnCallStore = create<OnCallState>((set, get) => ({
     // the whole point is not missing it.
     if (result === null) return;
     const spans = onCallSpans(result.events, config);
+    const conflicts = settings.onCallSwapTasks ? onCallConflicts(result.events, config, spans) : [];
     const held = get();
-    if (held.loaded && JSON.stringify(held.spans) === JSON.stringify(spans)) return;
-    set({ spans, loaded: true });
+    if (
+      held.loaded
+      && JSON.stringify(held.spans) === JSON.stringify(spans)
+      && JSON.stringify(held.conflicts) === JSON.stringify(conflicts)
+    ) return;
+    set({ spans, conflicts, loaded: true });
   },
 
   clear() {
     guard.invalidate();
-    set({ spans: [], loaded: false });
+    set({ spans: [], conflicts: [], loaded: false });
   },
 }));
 
@@ -106,6 +119,7 @@ export function useOnCallSync(): void {
         || state.calendarIds !== prev.calendarIds
         || state.onCallCalendarIds !== prev.onCallCalendarIds
         || state.onCallWords !== prev.onCallWords
+        || state.onCallSwapTasks !== prev.onCallSwapTasks
         || state.vacationMode !== prev.vacationMode
         || state.vacationHiddenCalendarIds !== prev.vacationHiddenCalendarIds
         || state.dayResetTime !== prev.dayResetTime

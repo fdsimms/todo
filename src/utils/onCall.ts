@@ -214,6 +214,37 @@ function appDayOfDate(date: Date, dayResetTime: string): { start: Date; end: Dat
   return appDay(new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12), dayResetTime);
 }
 
+// ---- Events that clash with a shift ----
+
+/**
+ * The events that run into an on-call stretch: live, not themselves on call, and
+ * not marked Free (a free event is one the user says does not take them away). An
+ * all-day event counts, by the days it names; a timed one by its hours. These are
+ * what the "find someone to swap" tasks (`onCallSwapTasks.ts`) are written for.
+ */
+export function onCallConflicts(
+  events: readonly BusyEvent[],
+  config: OnCallConfig,
+  spans: readonly OnCallSpan[],
+): BusyEvent[] {
+  if (spans.length === 0) return [];
+  return events.filter(event => {
+    if (!isLiveEvent(event) || isOnCallEvent(event, config) || event.availability === 'free') return false;
+    let start: Date;
+    let end: Date;
+    if (event.allDay) {
+      const range = allDayRangeMs(event);
+      if (!range || range.end <= range.start) return false;
+      start = new Date(range.start);
+      end = new Date(range.end);
+    } else {
+      start = new Date(event.start);
+      end = new Date(event.end);
+    }
+    return spans.some(span => spanTouches(span, start, end));
+  });
+}
+
 // ---- Today's strip ----
 
 /**

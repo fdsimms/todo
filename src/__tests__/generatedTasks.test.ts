@@ -414,7 +414,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'eventDetails', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'blockOffer', 'health', 'eventTask', 'travel', 'wakeUp', 'moodLog', 'moodNudge', 'weekendNudge', 'backfill', 'weighIn', 'bloodPressureLog', 'waterShortfall', 'snackNudge', 'produceNudge', 'produceFloor', 'limitWarning', 'goalTarget', 'bookEvent', 'journalLog', 'dreamLog', 'wanikani', 'franki']);
+      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'eventDetails', 'onCallSwap', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'blockOffer', 'health', 'eventTask', 'travel', 'wakeUp', 'moodLog', 'moodNudge', 'weekendNudge', 'backfill', 'weighIn', 'bloodPressureLog', 'waterShortfall', 'snackNudge', 'produceNudge', 'produceFloor', 'limitWarning', 'goalTarget', 'bookEvent', 'journalLog', 'dreamLog', 'wanikani', 'franki']);
   });
 
   it('marks exactly the day-shaped questions, the event details offer, the leave reminder and the wake-up task as notices', () => {
@@ -543,6 +543,8 @@ describe('generatorSwitchedOn', () => {
     // switch reads "on" over a pass that does nothing (eventTask did, for a while).
     const source = readFileSync(join(__dirname, '..', 'store', 'useTaskStore.ts'), 'utf8');
     const methods = source.split(/\n  (?:async )?(?=check\w+\(\) \{)/).slice(1);
+    // A pass kept beside the store rather than in it, so that file grows no further.
+    methods.push(readFileSync(join(__dirname, '..', 'store', 'onCallSwapSweep.ts'), 'utf8'));
     const gated = new Set<string>();
     for (const body of methods) {
       if (!body.includes('if (!settings.calendarReadEnabled) return;')) continue;
