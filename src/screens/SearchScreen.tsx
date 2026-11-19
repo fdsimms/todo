@@ -58,6 +58,7 @@ import { HighlightedText } from '../components/HighlightedText';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
+import { useOnCallSwapContext } from '../hooks/useOnCallSwapContext';
 import { format } from 'date-fns/format';
 import { useFilterField } from '../hooks/useFilterField';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
@@ -133,7 +134,9 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   // (see collapseOccurrences). Null on an ordinary one-off, which is most rows.
   const countLabel = formatOccurrenceCount(occurrenceCount);
   // Which calendar event a rule wrote this row for; null on any other task.
-  const eventContext = useEventTaskContext(task);
+  // An on-call swap task says when its event is, or that it no longer clashes.
+  const onCallSwap = useOnCallSwapContext(task);
+  const eventContext = useEventTaskContext(task) ?? onCallSwap?.label ?? null;
 
   const a11yLabel = [
     displayTitle,

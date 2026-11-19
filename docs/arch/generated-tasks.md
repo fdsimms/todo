@@ -1397,6 +1397,33 @@ events at once, where every other rule generator asks one question a day.**
   would have nothing to read anyway — the demo database's calendar is never read. `demoSeed.ts`
   seeds the shape directly.
 
+## `onCallSwap` — find someone to swap on call
+
+"Find someone to swap on call for Dinner with Lena", for an event that runs into an on-call
+stretch (`docs/arch/on-call.md`). `src/utils/onCallSwapTasks.ts` is the rules module and
+`src/store/onCallSwapSweep.ts` the sweep, fired by `useOnCallSwapSync` when the on-call read lands.
+
+- **It is `eventTask`'s shape and shares its record.** The source id is `${occurrenceKey}#onCallSwap`
+  (the event id and start, for `eventTask`'s reason), and what keeps a deleted or ticked task from
+  coming back is the same `eventTaskHandled`, valued by the event's end and pruned on it. The rule id
+  is a constant that can never be a `generateId()` value, so no event rule can collide with it.
+- **A conflict is any live event that is not itself on call and not marked Free**, by its hours or, for
+  an all-day event, the days it names (`onCallConflicts`). Finding them needs every calendar read, so
+  `useOnCallStore` reads them only while the switch is on.
+- **Due on the logical today, written as soon as the clash is seen.** The event may be weeks out and
+  the point is time to arrange a swap. The date does not chase the event (`drift` returns null,
+  #1953).
+- **Nothing deletes the task when the conflict goes away**, because the person may already have
+  messaged someone. The row says so instead: `onCallSwapContext` derives "No longer conflicts" at
+  render (never stored) once the occurrence is not among the conflicts and has not started, in the
+  warning colour on the task row. An event that has started is left alone, since it may only have
+  finished, and nothing says so until the read has landed (`loaded`), so an unread window is not
+  taken for a cleared one. A moved event is a new occurrence: it gets a new task, and the old one
+  reads as no longer conflicting.
+- **On by default, unlike `eventTask`**, because the person asked for it along with the on-call
+  setting itself and it writes nothing until on call is set up and an event clashes. It keeps running
+  on vacation, for `eventTask`'s reason, and refuses in demo mode.
+
 ## `travel` — leave-by reminders, with the MTA as a footnote
 
 An upcoming event with a location becomes "Leave for Dentist", with a reminder at the event's start

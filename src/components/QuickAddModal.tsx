@@ -112,6 +112,10 @@ import { findSavedEvent, readSavedEvents, recordSavedEventUse, savedEventRecall,
 import { useCalendarStore } from '../store/useCalendarStore';
 import { addDays } from 'date-fns/addDays';
 import { calendarCovers, firstFreeSlot } from '../utils/eventConflicts';
+import { useOnCallStore } from '../store/useOnCallStore';
+import { onLogicalDay } from '../utils/clockTime';
+import { onCallWarningForDay, onCallWarningForTime } from '../utils/onCall';
+import { OnCallWarning } from './OnCallWarning';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
@@ -321,6 +325,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     (intoProjectId ? projects.find(p => p.id === intoProjectId)?.taskDefaults : null) ?? null;
   const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const use24Hour = useSettingsStore(s => s.use24HourTime);
   // Where a new reminder starts out: the start of the task's time of day.
   const segmentStarts = useSettingsStore(useShallow(s => ({
     morning: s.morningStart, afternoon: s.afternoonStart, evening: s.eveningStart, night: s.nightStart,
@@ -2475,6 +2480,16 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     </View>
   );
 
+  // Whether the date lands on an on-call stretch, as the task editor says under
+  // its Date row. Time of the window's start when there is one, else any stretch that day.
+  const onCallSpans = useOnCallStore(s => s.spans);
+  const onCallWarning = useMemo(() => {
+    if (!dueDate) return null;
+    if (!windowStart) return onCallWarningForDay(onCallSpans, dueDate, dayResetTime, use24Hour);
+    const start = onLogicalDay(getTaskDayStart(dueDate, dayResetTime), windowStart);
+    return onCallWarningForTime(onCallSpans, start, new Date(start.getTime() + 60000), use24Hour);
+  }, [dueDate, windowStart, onCallSpans, dayResetTime, use24Hour]);
+
   const chipDescriptors: ToolChipDescriptor[] = [
     {
       key: 'date', icon: 'calendar-outline',
@@ -3216,6 +3231,7 @@ parsed
               table in utils/taskKinds is the only place that decides what
               a type takes off the toolbar — a chip left ungated here would
               silently ignore being listed there. */}
+          <OnCallWarning text={onCallWarning} />
           <View style={styles.toolbar}>
             {visibleChips.map(chip => (
               <TouchableOpacity

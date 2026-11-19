@@ -190,6 +190,7 @@ here names a file it is the authority: the two maps are indexes, not write-ups.
 | asking Claude to change things from inside the app (Ask Claude: the chat sheet, its Confirm and Undo) | `src/utils/askClaudeChat.ts` (the request, reading a reply and a confirm; tested) + `src/services/askClaudeCalls.ts` (the calls) + `AskClaudeSheet` / `AskClaudeHost` (opened from Today's header and the side menu, `useAskClaudeStore.show`) + `AskClaudeTokenRows` (the server's write token, Privacy & AI). Claude reaches `mcp/` through the API's MCP connector; the phone confirms with `confirm_change` itself — see `docs/arch/mcp-server.md`, "Ask Claude" |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
 | writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`). Meal and deadline events go through `writeAllDayEvent` (`src/utils/calendarEventLink.ts`) and deletes through `deleteLinkedEvent`, both of which keep and fall back to the calendar server's id |
+| being on call: Today's strip, and the warning when something is scheduled over a shift | `src/utils/onCall.ts` (what counts, how it reads) + `src/store/useOnCallStore.ts` (its own 90-day read) + `OnCallStrip`, `OnCallWarning` and `OnCallRows` (Settings) — see `docs/arch/on-call.md`. Not `occupiesTime`: it leaves out all-day and Free events, which is how shifts are written |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
 | a project page drawn as a board, a column per section | `src/utils/projectBoard.ts` (columns, where a drop lands, what it writes) + `src/components/ProjectBoard.tsx` + `Project.boardView`. A second drawing of the same order the list draws, never a second order: a drop writes through the list's own actions (`addExistingToGroup`, `removeFromGroup`, `reorderGroupChildren`, `reorderProjectItems`) |
@@ -221,6 +222,7 @@ here names a file it is the authority: the two maps are indexes, not write-ups.
 | `docs/arch/recipes.md` | Composed recipes, sections, quantities, scaling, unit conversion, cook mode |
 | `docs/arch/generated-tasks.md` | The things that write a task unattended |
 | `docs/arch/month-grid.md` | The Calendar screen, its agenda and event reads, and projected occurrences |
+| `docs/arch/on-call.md` | On call: what marks an event, why it is not busy time, its own 90-day read, and its warnings |
 | `docs/arch/template-questions.md` | What a template run asks before it creates anything |
 | `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |
 | `docs/arch/rewards.md` | Coins and rewards: why the balance is a ledger, and what may and may not earn or cost coins |

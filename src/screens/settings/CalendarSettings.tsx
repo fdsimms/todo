@@ -30,6 +30,7 @@ import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import { SavedPlacesRows } from './SavedPlacesRows';
 import { SavedEventsRows } from './SavedEventsRows';
+import { OnCallRows } from './OnCallRows';
 import { alertPermissionOff } from '../../utils/permissionAlert';
 
 const MAPS_APP_OPTIONS: SegmentOption<MapsApp>[] = [
@@ -405,6 +406,11 @@ export function CalendarSettings() {
             />
           )}
         </>
+      )}
+
+      {/* Only the calendars being read can hold an on-call event. */}
+      {calendarReadEnabled && permission === 'granted' && selected.length > 0 && (
+        <OnCallRows calendars={selected.map(c => ({ id: c.id, title: c.title }))} />
       )}
 
       {/* Only worth saying once it's biting: a calendar removed from the

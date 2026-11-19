@@ -100,6 +100,7 @@ describe('table definitions', () => {
       'syncDeviceId',         // two devices sharing one id ignore each other
       'appLockEnabled',       // one device must not unlock another
       'calendarIds',          // identifiers for calendars on one device
+      'onCallCalendarIds',    // the same ids, picked from those
       'remindersImportListId',
       'dailyAgendaEnabled',   // shared, every reminder would fire twice
       'hapticsEnabled',       // a Mac has no haptics

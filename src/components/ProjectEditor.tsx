@@ -42,6 +42,9 @@ import { SheetHeader } from './SheetHeader';
 import { EditorRow } from './EditorRow';
 import { awayNoonIso } from '../utils/awayDates';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useOnCallStore } from '../store/useOnCallStore';
+import { onCallWarningForDays } from '../utils/onCall';
+import { OnCallWarning } from './OnCallWarning';
 import { featureShown } from '../utils/simpleMode';
 import { AwayShiftSheet } from './AwayShiftSheet';
 import { EditorSheet } from './EditorSheet';
@@ -197,6 +200,14 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
   const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
+  // How many of the trip's days are on call. With no return date it is the one day.
+  const onCallSpans = useOnCallStore(s => s.spans);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const awayOnCallWarning = useMemo(() => {
+    if (!awayStart) return null;
+    const last = awayEnd && awayEnd >= awayStart ? awayEnd : awayStart;
+    return onCallWarningForDays(onCallSpans, awayStart, last, dayResetTime);
+  }, [awayStart, awayEnd, onCallSpans, dayResetTime]);
   // ==== form state (nudges, flags, pause, people, links, order) ====
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -836,6 +847,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             onClear={awayEnd ? () => setAwayEnd(null) : undefined}
           />
         )}
+        <OnCallWarning text={awayOnCallWarning} style={styles.onCallWarning} />
         {awayStart && (
           <>
             <FieldLabel inCard>Destination</FieldLabel>
@@ -1566,6 +1578,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm,
     marginTop: spacing.sm,
   },
+  // Inside the card, under the dates it is about, with the card's own side padding.
+  onCallWarning: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
   destinationRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,

@@ -340,6 +340,14 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'time', label: 'Time of day', summary: 'The part of the day set above', hint: 'Any time when none is set.' },
     ],
   },
+  onCallSwap: {
+    example: 'Find someone to swap on call for Dinner with Lena',
+    noun: 'On-call swap task',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Find someone to swap on call for (event)', hint: 'Names the event that runs into your on call.' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'Added as soon as the clash is seen, so there is time to arrange a swap.' },
+    ],
+  },
   eventDetails: {
     example: 'Add details to 2 events',
     noun: 'Event details task',

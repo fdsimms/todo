@@ -78,6 +78,9 @@ import {
   type SavedEventFields,
 } from '../utils/savedEvents';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useOnCallStore } from '../store/useOnCallStore';
+import { onCallWarningForDay, onCallWarningForTime } from '../utils/onCall';
+import { OnCallWarning } from './OnCallWarning';
 import { useTaskStore } from '../store/useTaskStore';
 import { defaultNewEventSpan } from '../utils/eventPeople';
 import {
@@ -620,6 +623,15 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       : overlappingEvents(effectiveStart, effectiveEnd, calendarEvents)),
     [allDay, startChosen, effectiveStart.getTime(),effectiveEnd.getTime(), calendarEvents, calendarWindowStart, calendarWindowEnd],
   );
+  // On call is read for its own, longer window (`useOnCallStore`), not the
+  // fortnight above, and counts all-day events, which `conflicts` leaves out.
+  const onCallSpans = useOnCallStore(s => s.spans);
+  const onCallWarning = useMemo(() => {
+    if (!startChosen) return null;
+    return allDay
+      ? onCallWarningForDay(onCallSpans, effectiveStart, dayResetTime, use24Hour)
+      : onCallWarningForTime(onCallSpans, effectiveStart, effectiveEnd, use24Hour);
+  }, [startChosen, allDay, effectiveStart.getTime(), effectiveEnd.getTime(), onCallSpans, dayResetTime, use24Hour]);
   const dayLabel = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const describeStart = (d: Date) => (allDay ? dayLabel(d) : `${dayLabel(d)}, ${formatTimeOfDay(d, use24Hour)}`);
   // "12:00–12:30 PM" for a conflicting event, on the card's own clock setting.
@@ -1606,6 +1618,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               ))}
             </View>
           )}
+
+          <OnCallWarning text={onCallWarning} />
 
           {freeSlot !== null && rawStart === freeSlot && (
             <View style={styles.captionRow}>

@@ -401,6 +401,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, displayFigure, targetProgress, TargetStatus, +30 more
 - `src/utils/occurrenceReset.ts` — freshOccurrenceFields
 - `src/utils/okAgainNotification.ts` — syncOkAgainNotification
+- `src/utils/onCall.ts` — ON_CALL_WINDOW_DAYS, ON_CALL_MAX_WORDS, OnCallConfig, OnCallSpan, onCallConfigured, cleanWords, splitTypedWords, onCallWordsProblem, parseOnCallWords, isOnCallEvent, +8 more
+- `src/utils/onCallSwapTasks.ts` — ON_CALL_SWAP_RULE_ID, onCallSwapSourceId, onCallSwapTitle, OnCallSwapMatch, matchedOnCallSwaps, OnCallSwapContext, onCallSwapContext
 - `src/utils/openExternalUrl.ts` — ExternalKind, externalKindFor, externalFailureCopy, openExternalUrl
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
@@ -780,6 +782,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, markGeneratedReady, settleReadyMarks, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
+- `src/store/onCallSwapSweep.ts` — checkOnCallSwapTasks
 - `src/store/useAgentSuggestionStore.ts` — useAgentSuggestionStore
 - `src/store/useAlarmStore.ts` — AlarmSetup, AlarmInput, ImportSoundResult, useAlarmStore
 - `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, allowGroupsNow, resolveGroupNow, expandGroupNow
@@ -820,6 +823,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useMissionStore.ts` — useMissionStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore
 - `src/store/useNfcKeyStore.ts` — KeyScanResult, EnrollResult, useNfcKeyStore
+- `src/store/useOnCallStore.ts` — useOnCallStore, useOnCallSync
 - `src/store/usePendingEstimateStore.ts` — PendingEstimateDraft, EnqueueResult, RenameResult, usePendingEstimateStore
 - `src/store/usePendingRecipeEstimateStore.ts` — PendingRecipeEstimateDraft, usePendingRecipeEstimateStore
 - `src/store/usePersonGroupStore.ts` — usePersonGroupStore
@@ -909,6 +913,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useNavMenuOptions.ts` — useNavMenuOptions, navMenuOptionsNow
 - `src/hooks/useNotificationPermission.ts` — useNotificationPermission
 - `src/hooks/useNowTick.ts` — useNowTick
+- `src/hooks/useOnCallSwapContext.ts` — useOnCallSwapContext
+- `src/hooks/useOnCallSwapSync.ts` — useOnCallSwapSync
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/usePantryCatalog.ts` — usePantryCatalog
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit

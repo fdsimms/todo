@@ -210,6 +210,7 @@ import { parseBlockOfferRules, serializeBlockOfferRules } from '../utils/blockOf
 import { clampBumpReset, clampBumpWarn, parseBumpReset, parseBumpWarn, parseSpeedBumpRules, serializeSpeedBumpRules } from '../utils/speedBump';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
+import { cleanWords, parseOnCallWords } from '../utils/onCall';
 import {
   DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_AFTER_DAYS_MIN,
 } from '../utils/moodTasks';
@@ -1072,6 +1073,15 @@ interface SettingsStore {
   // for good. Ignored entirely while vacation mode is off, so turning
   // vacation off hands every calendar straight back with nothing to redo.
   vacationHiddenCalendarIds: string[];
+  // On call (src/utils/onCall.ts): an event is on call when its calendar is in
+  // `onCallCalendarIds` or its title holds one of `onCallWords`, and either alone
+  // is enough. Both stay empty until the user sets one, which is what leaves the
+  // feature off. The ids are EventKit's, so like `calendarIds` they stay on the
+  // device (not synced, not in a backup restored onto another phone); a calendar
+  // here that isn't also in `calendarIds` is never read, so the Settings row only
+  // offers the read ones.
+  onCallCalendarIds: string[];
+  onCallWords: string[];
   // Which category the day's events file under on Today, by name — the fourth
   // instance of the "File them under" setting the three generated-task kinds
   // already have (see mealCookTaskCategory), and the whole of how events reach
@@ -1791,6 +1801,10 @@ interface SettingsStore {
   // calendarReviewTasks' reason: it adds a surface nobody had before.
   eventDetailsTasks: boolean;
   eventDetailsTaskCategory: string | null;
+  // "Find someone to swap" tasks for events that run into on call (src/utils/onCallSwapTasks.ts).
+  // On by default: it only acts once on call is set up and an event clashes.
+  onCallSwapTasks: boolean;
+  onCallSwapTaskCategory: string | null;
   // calendarReviewLastDayKey's job for this generator: the logical day key the
   // check last decided about, spent before it looks at the events, so a task
   // swiped away stays gone until the next day. State, not a preference.
@@ -2527,6 +2541,8 @@ interface SettingsStore {
   setReminderCaptures: (captures: ReminderCapture[]) => void;
   setCalendarIds: (ids: string[]) => void;
   setVacationHiddenCalendarIds: (ids: string[]) => void;
+  setOnCallCalendarIds: (ids: string[]) => void;
+  setOnCallWords: (words: string[]) => void;
   setCalendarEventCategory: (category: string | null) => void;
   setCollapsedCategories: (categories: string[]) => void;
   setCollapsedRecipeSections: (sections: string[]) => void;
@@ -2599,6 +2615,8 @@ interface SettingsStore {
   setCalendarReviewTimeSegment: (segment: TimeOfDay | null) => void;
   setEventDetailsTasks: (on: boolean) => void;
   setEventDetailsTaskCategory: (category: string | null) => void;
+  setOnCallSwapTasks: (on: boolean) => void;
+  setOnCallSwapTaskCategory: (category: string | null) => void;
   setEventDetailsLastDayKey: (dayKey: string | null) => void;
   setEventDetailsSkipped: (skipped: HandledEventTasks) => void;
   setWeatherTasks: (on: boolean) => void;
@@ -3371,6 +3389,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   calendarReadEnabled: false,
   calendarIds: [],
   vacationHiddenCalendarIds: [],
+  onCallCalendarIds: [],
+  onCallWords: [],
   calendarEventCategory: null,
   reminderMeetingNudgeEnabled: true,
   calendarPeopleHistory: true,
@@ -3440,6 +3460,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   calendarReviewTimeSegment: null,
   eventDetailsTasks: false,
   eventDetailsTaskCategory: null,
+  onCallSwapTasks: true,
+  onCallSwapTaskCategory: null,
   eventDetailsLastDayKey: null,
   eventDetailsSkipped: {},
   weatherTasks: false,
@@ -3857,6 +3879,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const calendarReadEnabled = dbGetSetting('calendarReadEnabled') === 'true';
     const calendarIds = parseCalendarIds(dbGetSetting('calendarIds'));
     const vacationHiddenCalendarIds = parseCalendarIds(dbGetSetting('vacationHiddenCalendarIds'));
+    const onCallCalendarIds = parseCalendarIds(dbGetSetting('onCallCalendarIds'));
+    const onCallWords = parseOnCallWords(dbGetSetting('onCallWords'));
     // '' persists as "not chosen", matching mealCookTaskCategory. Nothing
     // creates the category from here — see ensureCalendarEventCategory, which
     // runs once the categories themselves have loaded.
@@ -4013,6 +4037,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // calendarReviewTasks' opt-in reading, for its reason.
     const eventDetailsTasks = dbGetSetting('eventDetailsTasks') === 'true';
     const eventDetailsTaskCategory = dbGetSetting('eventDetailsTaskCategory') || null;
+    const onCallSwapTasks = dbGetSetting('onCallSwapTasks') !== 'false';
+    const onCallSwapTaskCategory = dbGetSetting('onCallSwapTaskCategory') || null;
     const eventDetailsLastDayKey = dbGetSetting('eventDetailsLastDayKey') || null;
     // Pruned on load for eventTaskHandled's reason.
     const eventDetailsSkipped = pruneHandledEventTasks(
@@ -4552,6 +4578,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       nightStart,
       nutritionLimits,
       nutritionTargets,
+      onCallCalendarIds,
+      onCallSwapTaskCategory,
+      onCallSwapTasks,
+      onCallWords,
       onDeviceAiEnabled,
       pantryCheckTaskCategory,
       pantryCheckTasks,
@@ -5316,6 +5346,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setEventDetailsTaskCategory(category: string | null) {
     dbSetSetting('eventDetailsTaskCategory', category ?? '');
     set({ eventDetailsTaskCategory: category });
+  },
+
+  setOnCallSwapTasks(on: boolean) {
+    dbSetSetting('onCallSwapTasks', on ? 'true' : 'false');
+    set({ onCallSwapTasks: on });
+  },
+
+  setOnCallSwapTaskCategory(category: string | null) {
+    dbSetSetting('onCallSwapTaskCategory', category ?? '');
+    set({ onCallSwapTaskCategory: category });
   },
 
   // '' for "nothing decided yet", calendarReviewLastDayKey's reading.
@@ -6800,6 +6840,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setVacationHiddenCalendarIds(ids: string[]) {
     dbSetSetting('vacationHiddenCalendarIds', JSON.stringify(ids));
     set({ vacationHiddenCalendarIds: ids });
+  },
+
+  setOnCallCalendarIds(ids: string[]) {
+    dbSetSetting('onCallCalendarIds', JSON.stringify(ids));
+    set({ onCallCalendarIds: ids });
+  },
+
+  setOnCallWords(words: string[]) {
+    // Cleaned on the way in, so what is shown back is what the match uses.
+    const cleaned = cleanWords(words);
+    dbSetSetting('onCallWords', JSON.stringify(cleaned));
+    set({ onCallWords: cleaned });
   },
 
   setMealPlanNudgeTaskCategory(category: string | null) {

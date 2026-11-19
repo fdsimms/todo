@@ -44,6 +44,8 @@ import { useWatchClashPrompt } from './src/hooks/useWatchClashPrompt';
 import { useWatchRetractNotice } from './src/hooks/useWatchRetractNotice';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
+import { useOnCallSync } from './src/store/useOnCallStore';
+import { useOnCallSwapSync } from './src/hooks/useOnCallSwapSync';
 import { useWeatherSync, useWeatherStore } from './src/store/useWeatherStore';
 import { useWeatherWaitSync } from './src/hooks/useWeatherWaitSync';
 import { useSlotInSync } from './src/hooks/useSlotInSync';
@@ -413,6 +415,11 @@ function AppRoot() {
   // Re-runs the event rule sweep when the calendar windows land (including the
   // wider one the "after the event" rules read) or the rules change.
   useEventTaskSync();
+  // Reads the on-call stretches (Today's strip, and the warnings when something
+  // is scheduled over one). Inert until an on-call calendar or word is set.
+  useOnCallSync();
+  // Writes a "find someone to swap" task for an event that runs into a shift.
+  useOnCallSwapSync();
   // Rebuilds the reminder queue when the calendar's meetings change, so a
   // reminder a meeting was booked over after it was scheduled still gets
   // pushed past it. Inert while the meeting nudge or calendar reading is off.

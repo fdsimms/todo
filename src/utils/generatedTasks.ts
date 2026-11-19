@@ -113,6 +113,8 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // Beside calendarReview: both read the calendar window and ask about events
   // rather than being a piece of work, and they file under one category.
   'eventDetails',
+  // Beside the other calendar readers: it asks about events too.
+  'onCallSwap',
   'birthday',
   // Beside its pair, the same way pantryCheck sits beside groceryUseUp: to the
   // person reading Settings, marking a birthday and shopping for it are one
@@ -268,6 +270,7 @@ export type GeneratedEnabledKey =
   | 'supplyReorderTasks'
   | 'calendarReviewTasks'
   | 'eventDetailsTasks'
+  | 'onCallSwapTasks'
   | 'birthdayTasks'
   | 'birthdayGiftTasks'
   | 'reachOutTasks'
@@ -793,6 +796,31 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Calendar Events',
+  },
+  // A task per event that runs into an on-call stretch — see
+  // src/utils/onCallSwapTasks.ts. `eventTask`'s shape: the source is an event in
+  // EventKit, so there is no row to stamp an opt-out on, and the shared
+  // `eventTaskHandled` record is what keeps a deleted row deleted. Not a notice:
+  // finding someone to swap with is real work the person ticks off. It keeps
+  // running on vacation for eventTask's reason: the clash is on the calendar
+  // already, and a trip is when a swap is hardest to arrange late.
+  //
+  // On by default, unlike eventTask: the person asked for it with the on-call
+  // setting itself, and it writes nothing until an on-call calendar or word is
+  // set and an event actually clashes.
+  onCallSwap: {
+    kind: 'onCallSwap',
+    pausedOnVacation: false,
+    enabledKey: 'onCallSwapTasks',
+    label: 'On-call swap tasks',
+    onHint: 'Adds a task to find someone to swap with when an event runs into your on call',
+    offHint: 'No task when an event runs into your on call',
+    icon: 'swap-horizontal-outline',
+    sourced: false,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Calendar',
   },
   eventDetails: {
     kind: 'eventDetails',
@@ -1429,7 +1457,7 @@ export type GeneratedEnabledFlags =
  * `generatedTasks.test.ts` reads `useTaskStore.ts` and fails if a pass gains
  * or loses that refusal without this list following.
  */
-export const CALENDAR_READ_KINDS: readonly GeneratedKind[] = ['calendarReview', 'eventDetails', 'eventTask', 'travel', 'wakeUp'];
+export const CALENDAR_READ_KINDS: readonly GeneratedKind[] = ['calendarReview', 'eventDetails', 'eventTask', 'onCallSwap', 'travel', 'wakeUp'];
 
 /**
  * What a generator needs turned on before its own switch can mean anything,

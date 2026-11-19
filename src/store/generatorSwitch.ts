@@ -27,6 +27,7 @@ export function setGeneratorEnabled(kind: GeneratedKind, next: boolean): void {
     case 'supplyReorder': s.setSupplyReorderTasks(next); break;
     case 'calendarReview': s.setCalendarReviewTasks(next); break;
     case 'eventDetails': s.setEventDetailsTasks(next); break;
+    case 'onCallSwap': s.setOnCallSwapTasks(next); break;
     // personDate shares the birthday's switch (see its spec).
     case 'birthday': case 'personDate': s.setBirthdayTasks(next); break;
     case 'birthdayGift': s.setBirthdayGiftTasks(next); break;
