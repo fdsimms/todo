@@ -60,6 +60,7 @@ beforeEach(() => {
   mockRaw.runSync('DELETE FROM tasks');
   mockRaw.runSync('DELETE FROM mood_logs');
   mockRaw.runSync('DELETE FROM workout_sessions');
+  mockRaw.runSync('DELETE FROM screen_time_days');
   mockRaw.runSync("DELETE FROM settings WHERE key = 'workoutsEnabled'");
   replica.refresh();
 });
@@ -167,6 +168,43 @@ describe('moodInsights, training days', () => {
     seed();
     replica.refresh();
     expect(moodInsights(replica).byTrainingDay).toEqual([]);
+  });
+});
+
+describe('moodInsights, screen time', () => {
+  function reading(daysAgo: number, minutes: number): void {
+    mockRaw.runSync('INSERT INTO screen_time_days (day_key, minutes) VALUES (?, ?)', [dayKey(daysAgo), minutes]);
+  }
+  // Fourteen days of mood, heavy phone use on the even ones, which are the low days.
+  function seed(): void {
+    for (let i = 0; i < 14; i++) {
+      mood(i, i % 2 === 0 ? 2 : 4);
+      reading(i, i % 2 === 0 ? 300 : 60);
+    }
+  }
+
+  it('compares mood on days use reached an amount with the other days, in the amount rather than minutes', () => {
+    seed();
+    replica.refresh();
+    const result = moodInsights(replica);
+    expect(result.byScreenTime[0]).toEqual({
+      label: 'Days with over 4 hours of screen time', daysWith: 7, daysWithout: 7, moodWith: 2, moodWithout: 4,
+    });
+    expect(result.rules.join(' ')).toMatch(/floor, never a measurement/);
+  });
+
+  it('is empty when the phone sends no readings', () => {
+    for (let i = 0; i < 14; i++) mood(i, i % 2 === 0 ? 2 : 4);
+    replica.refresh();
+    expect(moodInsights(replica).byScreenTime).toEqual([]);
+  });
+
+  it('leaves a day with no reading out of both sides', () => {
+    seed();
+    mockRaw.runSync('DELETE FROM screen_time_days WHERE day_key = ?', [dayKey(1)]);
+    replica.refresh();
+    const [row] = moodInsights(replica).byScreenTime;
+    expect(row.daysWith + row.daysWithout).toBe(13);
   });
 });
 

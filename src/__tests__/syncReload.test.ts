@@ -359,9 +359,10 @@ describe('what each part of the reload reads', () => {
   it('gives every synced table a part that reloads for it', () => {
     const read = new Set(Object.values(STORE_RELOAD_READS).flatMap((r: ReloadReads) => r.tables));
     const unread = [...TRACKED].filter(t => t !== 'settings' && !read.has(t)).sort();
-    // The only synced table no store on the fan-out holds: the error log is
-    // read by its own screen when it opens (`dbGetErrorLog`).
-    expect(unread).toEqual(['error_log']);
+    // The only synced tables no store on the fan-out holds: the error log is
+    // read by its own screen when it opens (`dbGetErrorLog`), and phone use is
+    // read by the Mood Insights screen each time it is shown (`loadUsage`).
+    expect(unread).toEqual(['error_log', 'screen_time_days']);
   });
 });
 

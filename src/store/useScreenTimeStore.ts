@@ -10,6 +10,15 @@ import { useSettingsStore } from './useSettingsStore';
 import { expandGroupNow, resolveGroupNow, useAppGroupStore } from './useAppGroupStore';
 import { DEFAULT_GROUP_ID, groupName } from '../utils/appGroups';
 import { createRefreshGuard } from '../utils/refreshGuard';
+import {
+  isUsageRuleId,
+  raisedUsageDays,
+  usageArmSignature,
+  usageRungs,
+  USAGE_GROUP_ID,
+  type ScreenTimeDay,
+} from '../utils/screenTimeUsage';
+import { dbClearScreenTimeDays, dbGetScreenTimeDays, dbRaiseScreenTimeDay } from '../db/database';
 
 /**
  * What iOS has reported about app usage, held in memory — the screen-time
@@ -31,10 +40,32 @@ interface ScreenTimeState {
   /** Thresholds reported crossed and not yet turned into tasks. */
   crossings: ScreenTimeCrossing[];
   refreshing: boolean;
+  /**
+   * Daily phone use as this phone's monitor saw it, oldest first
+   * (`screen_time_days`; `screenTimeUsage.ts` says what a reading means).
+   */
+  usageDays: ScreenTimeDay[];
+  /**
+   * Whether the last attempt to arm the usage ladder took: null before one,
+   * false when iOS refused it (it can throw when too many events are monitored).
+   */
+  usageArmed: boolean | null;
+  /** Read the stored readings into `usageDays`. */
+  loadUsage: () => void;
+  /**
+   * Forget every reading. Called only from the switch the person turns off, never
+   * from a settings change: entering or leaving demo mode swaps the settings
+   * under this store, and a clear fired by that would run against whichever
+   * database is open at that moment.
+   */
+  clearUsage: () => void;
   /** Drain whatever the monitor extension has recorded. */
   refresh: () => Promise<void>;
-  /** Arm (or disarm) the OS monitor against the current rules. */
-  armMonitor: () => Promise<void>;
+  /**
+   * Arm (or disarm) the OS monitor against the current rules. `force` re-arms
+   * a usage ladder that is already armed, for when the chosen apps changed.
+   */
+  armMonitor: (force?: boolean) => Promise<void>;
   /** Drop crossings that have been acted on. */
   consume: (ruleIds: readonly string[]) => void;
   clear: () => void;
@@ -44,9 +75,28 @@ interface ScreenTimeState {
 // than appended.
 const crossingsGuard = createRefreshGuard();
 
+// What the monitor was last armed with, so a foreground that changes nothing
+// doesn't re-arm a usage ladder. Whether re-arming resets what iOS has counted
+// is not documented, and a ladder is only a floor if it doesn't, so it is left
+// alone unless the day, the rungs or the chosen apps changed. Not set on a
+// failed arm, which has to be tried again.
+let armedSignature: string | null = null;
+
 export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
   crossings: [],
   refreshing: false,
+  usageDays: [],
+  usageArmed: null,
+
+  loadUsage() {
+    set({ usageDays: dbGetScreenTimeDays() });
+  },
+
+  clearUsage() {
+    dbClearScreenTimeDays();
+    armedSignature = null;
+    set({ usageDays: [], usageArmed: null });
+  },
 
   async refresh() {
     const bridge = screenTimeBridge();
@@ -62,15 +112,31 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
       // tasks off, and crossings from a rule that is no longer armed would sit
       // in state waiting to raise a task nobody asked for.
       if (!crossingsGuard.isCurrent(token)) return;
+      // The usage ladder's rungs are split off first: they are readings, not
+      // rules, and `checkScreenTimeTasks` would otherwise spend them as
+      // crossings of a rule that doesn't exist.
+      const rungs = drained.filter(c => isUsageRuleId(c.ruleId));
+      const ruleCrossings = drained.filter(c => !isUsageRuleId(c.ruleId));
+      if (rungs.length > 0) {
+        const settings = useSettingsStore.getState();
+        // Dropped when the recording has been turned off since the monitor
+        // produced them, rather than writing a reading nobody asked for.
+        if (settings.screenTimeUsage) {
+          const current = new Map(get().usageDays.map(d => [d.dayKey, d.minutes]));
+          const changed = raisedUsageDays(current, rungs, settings.dayResetTime);
+          for (const day of changed) dbRaiseScreenTimeDay(day.dayKey, day.minutes);
+          if (changed.length > 0) get().loadUsage();
+        }
+      }
       // Appended rather than replacing: a drain that happens between one sweep
       // and the next must not discard what the previous drain is still holding.
-      set({ crossings: [...get().crossings, ...drained] });
+      if (ruleCrossings.length > 0) set({ crossings: [...get().crossings, ...ruleCrossings] });
     } finally {
       set({ refreshing: false });
     }
   },
 
-  async armMonitor() {
+  async armMonitor(force = false) {
     const bridge = screenTimeBridge();
     if (!bridge) return;
     const settings = useSettingsStore.getState();
@@ -96,15 +162,42 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
     );
     if (bumps.length === 0) bridge.stopSpeedBumps();
     else await bridge.armSpeedBumps(bumps, dayKey, settings.speedBumpResetHours);
-    const rules = armableRules(settings.screenTimeRules, id => resolveGroupNow(id ?? DEFAULT_GROUP_ID));
-    if (!settings.screenTimeTasks || rules.length === 0) {
+    const taskRules = settings.screenTimeTasks
+      ? armableRules(settings.screenTimeRules, id => resolveGroupNow(id ?? DEFAULT_GROUP_ID))
+      : [];
+    // The usage ladder shares the monitor: one activity holds the task rules and
+    // the rungs, and arming replaces it whole, so both are armed together.
+    // Nothing chosen under the usage group arms nothing natively, so it must not
+    // count as armed either: a day marked watched with no apps behind it would
+    // read as a day of no use.
+    const chosen = bridge.screenTimeSelectionCount(USAGE_GROUP_ID);
+    const rungs = settings.screenTimeUsage && chosen.applications + chosen.categories + (chosen.websites ?? 0) > 0
+      ? usageRungs()
+      : [];
+    const rules = [...taskRules, ...rungs];
+    if (rules.length === 0) {
       bridge.stopMonitoring();
+      armedSignature = null;
       return;
     }
+    // A ladder already armed for this day with these rungs is left running
+    // (see `armedSignature`). Task rules alone keep their re-arm on every
+    // foreground, which is cheap and keeps their day key current.
+    const signature = `${usageArmSignature(dayKey, rungs)}|${taskRules.map(r => r.id).join(',')}`;
+    if (rungs.length > 0 && !force && signature === armedSignature) return;
     // The day key is stamped here rather than in the extension, which has no
     // way to read the user's dayResetTime — a crossing filed under the wrong
     // day is a task on the wrong day.
-    await bridge.startMonitoring(rules, dayKey);
+    const armed = await bridge.startMonitoring(rules, dayKey);
+    if (rungs.length === 0) return;
+    armedSignature = armed ? signature : null;
+    set({ usageArmed: armed });
+    if (armed) {
+      // The day is marked watched at 0 before any rung fires, so a quiet day
+      // reads as a quiet day and not as a day nobody was watching.
+      dbRaiseScreenTimeDay(dayKey, 0);
+      get().loadUsage();
+    }
   },
 
   consume(ruleIds) {
@@ -134,8 +227,9 @@ export function useScreenTimeSync(): void {
     const sync = () => {
       const settings = useSettingsStore.getState();
       if (!settings.initialized) return;
+      useScreenTimeStore.getState().loadUsage();
       void useScreenTimeStore.getState().armMonitor();
-      if (settings.screenTimeTasks) void useScreenTimeStore.getState().refresh();
+      if (settings.screenTimeTasks || settings.screenTimeUsage) void useScreenTimeStore.getState().refresh();
     };
 
     sync();
@@ -144,6 +238,7 @@ export function useScreenTimeSync(): void {
       if (
         state.initialized !== prev.initialized ||
         state.screenTimeTasks !== prev.screenTimeTasks ||
+        state.screenTimeUsage !== prev.screenTimeUsage ||
         state.screenTimeRules !== prev.screenTimeRules ||
         state.speedBumpRules !== prev.speedBumpRules ||
         state.speedBumpWarnMinutes !== prev.speedBumpWarnMinutes ||

@@ -1936,6 +1936,12 @@ interface SettingsStore {
   // with one more on top: it wants a Screen Time authorization the app doesn't
   // hold, and asking for one unprompted is not something a generator does.
   screenTimeTasks: boolean;
+  // Whether this phone records daily phone use for Mood Insights, as a ladder of
+  // usage thresholds over the apps chosen under the reserved `usage` group
+  // (src/utils/screenTimeUsage.ts). The switch is device-local, so not in the
+  // synced list: the monitor and its Screen Time authorization belong to this
+  // phone. The readings it records sync with the health record.
+  screenTimeUsage: boolean;
   // Which category a screen-time task files itself under, by name, or null.
   screenTimeTaskCategory: string | null;
   // The rules themselves — "after 30 minutes on these apps, add a task". Kept
@@ -2638,6 +2644,7 @@ interface SettingsStore {
   setTransitAlerts: (on: boolean) => void;
   setTransitLines: (lines: string[]) => void;
   setScreenTimeTasks: (on: boolean) => void;
+  setScreenTimeUsage: (on: boolean) => void;
   setScreenTimeTaskCategory: (category: string | null) => void;
   setScreenTimeRules: (rules: ScreenTimeRule[]) => void;
   setBlockOfferTasks: (on: boolean) => void;
@@ -3481,6 +3488,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   transitAlerts: false,
   transitLines: [],
   screenTimeTasks: false,
+  screenTimeUsage: false,
   screenTimeTaskCategory: null,
   screenTimeRules: [],
   blockOfferTasks: false,
@@ -4220,6 +4228,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const bloodPressureLastDayKey = dbGetSetting('bloodPressureLastDayKey') || null;
     const bloodPressureDeclinedDayKey = dbGetSetting('bloodPressureDeclinedDayKey') || null;
     const screenTimeTasks = dbGetSetting('screenTimeTasks') === 'true';
+    const screenTimeUsage = dbGetSetting('screenTimeUsage') === 'true';
     const screenTimeTaskCategory = dbGetSetting('screenTimeTaskCategory') || null;
     const storedScreenTimeRules = dbGetSetting('screenTimeRules');
     const screenTimeRules = storedScreenTimeRules
@@ -4616,6 +4625,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       screenTimeRules,
       screenTimeTaskCategory,
       screenTimeTasks,
+      screenTimeUsage,
       seenTips,
       shakeToUndoEnabled,
       shortNightMinutes,
@@ -5535,6 +5545,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setScreenTimeTasks(on: boolean) {
     dbSetSetting('screenTimeTasks', on ? 'true' : 'false');
     set({ screenTimeTasks: on });
+  },
+
+  setScreenTimeUsage(on: boolean) {
+    dbSetSetting('screenTimeUsage', on ? 'true' : 'false');
+    set({ screenTimeUsage: on });
   },
 
   setScreenTimeTaskCategory(category: string | null) {

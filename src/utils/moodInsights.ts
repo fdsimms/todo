@@ -11,6 +11,7 @@ import {
   MOOD_LEVELS,
 } from './moodLog';
 import type { MoodLog, NutrientKey, Task, TimeOfDay } from '../types';
+import type { ScreenTimeDay } from './screenTimeUsage';
 
 /**
  * Reading a pile of mood entries *against the tasks you got done*.
@@ -124,6 +125,13 @@ export interface MoodDay {
    * only means something on a day that was fully logged.
    */
   foodKeys: string[];
+  /**
+   * The highest usage rung reached that day, in minutes (`screenTimeUsage.ts`),
+   * or null/absent when nothing was watching. A floor in 30 minute steps, not a
+   * measurement, and absent is not zero: a day only has a reading when the
+   * monitor was armed on it. Same rules as `steps`.
+   */
+  screenMinutes?: number | null;
 }
 
 /**
@@ -304,6 +312,7 @@ export function buildMoodDays(
   readings: readonly HealthDayInput[] = [],
   completionsKnownFrom: string | null = null,
   meals: readonly FoodDayInput[] = [],
+  usage: readonly ScreenTimeDay[] = [],
 ): MoodDay[] {
   const days = new Map<string, MoodDay>();
   const dayFor = (dayKey: string): MoodDay => {
@@ -428,6 +437,16 @@ export function buildMoodDays(
     if (!day) continue;
     day.nutrients = meal.nutrients;
     day.foodKeys = meal.labels;
+  }
+
+  // Phone use decorates a day and never creates one, for the reason a health
+  // reading doesn't: the monitor records use whether or not anyone opened this
+  // app, so folding it in through `dayFor` would conjure days with a
+  // zero-completion record nobody logged.
+  for (const reading of usage) {
+    const day = days.get(reading.dayKey);
+    if (!day) continue;
+    day.screenMinutes = reading.minutes;
   }
 
   return [...days.values()].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
@@ -803,6 +822,33 @@ export function trainingDayMoodContrast(
  * the paired ones: a symptom-only entry is the first use of its name even though
  * it has no mood to compare.
  */
+/** The amounts of phone use compared against, in minutes: over 4 hours and over 2 hours. */
+export const SCREEN_TIME_CONTRAST_MINUTES: readonly number[] = [240, 120];
+
+/**
+ * Mood on days phone use reached an amount, against the days it didn't.
+ *
+ * Only days with a reading and a mood take part. A day with no reading is
+ * unknown, not a quiet one (`MoodDay.screenMinutes`), so it is in neither group,
+ * and the days before the first reading are left out of "without" for the
+ * reason a new tag's are. The reading is a rung in 30 minute steps, so "over 4
+ * hours" means the 240 minute rung fired. Labels are the thresholds' own, in
+ * the order given.
+ */
+export function screenTimeMoodContrasts(
+  days: readonly MoodDay[],
+  thresholds: readonly number[] = SCREEN_TIME_CONTRAST_MINUTES,
+): (GroupContrast & { minutes: number })[] {
+  const read = pairedDays(days).filter(d => typeof d.screenMinutes === 'number');
+  if (read.length < MIN_PAIRED_DAYS) return [];
+  const rows: (GroupContrast & { minutes: number })[] = [];
+  for (const minutes of thresholds) {
+    const [row] = contrastsFor(read, [String(minutes)], day => (day.screenMinutes as number) >= minutes);
+    if (row) rows.push({ ...row, minutes });
+  }
+  return rows;
+}
+
 function firstDayOf(
   days: readonly MoodDay[],
   keysOf: (day: MoodDay) => readonly string[],

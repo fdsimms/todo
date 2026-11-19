@@ -305,7 +305,10 @@ no-coefficient rule and the missing medication-against-symptom contrast hold her
 and the result carries the rules in words so the model stays inside them when it explains a
 finding. Its training-day row (`byTrainingDay`, `trainingDayMoodContrast`) reads the replica's workout
 sessions, which are health-record data, so it is absent exactly when Workouts is off or the sessions
-are withheld from the server, the same as any missing data. The replica hands these modules out through `lib()`, one lazily required handle rather
+are withheld from the server, the same as any missing data. The screen-time row (`byScreenTime`,
+`screenTimeMoodContrasts`) reads `screen_time_days`, which syncs with the health record, and is absent
+until the phone sends it; its readings are 30 minute steps, so the result's rules tell the model to say
+"over 4 hours" and never a figure. The replica hands these modules out through `lib()`, one lazily required handle rather
 than a pass-through method per function, for the static-import reason at the top of `replica.ts`.
 
 **Changing several things has one path, and it previews** (`agentTools.ts`). `batch_update_tasks`

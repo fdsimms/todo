@@ -842,6 +842,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // and "distraction", which is what somebody is actually looking for.
   { id: 'screenTimeApps', iosOnly: true, groupId: 'screenTime', label: 'Default', section: 'App groups', simple: true,
     keywords: ['screen time', 'apps to block', 'which apps', 'picker', 'choose', 'distraction', 'social media', 'restrict', 'group', 'groups'] },
+  { id: 'screenTimeUsage', iosOnly: true, groupId: 'screenTime', label: 'Count screen time', section: 'Screen time for Mood Insights',
+    keywords: ['phone use', 'phone usage', 'hours on phone', 'mood', 'insights', 'doomscrolling', 'how long', 'track usage'] },
+  { id: 'screenTimeUsageApps', iosOnly: true, groupId: 'screenTime', label: 'What counts', section: 'Screen time for Mood Insights',
+    keywords: ['screen time', 'phone use', 'apps counted', 'which apps', 'categories', 'picker', 'mood', 'insights'] },
   { id: 'blockSchedules', iosOnly: true, groupId: 'screenTime', label: 'Add a schedule', section: 'Schedules', simple: true,
     keywords: ['screen time', 'block apps', 'hours', 'times', 'bedtime', 'work hours', 'downtime', 'automatic', 'recurring', 'weekdays', 'distraction', 'restrict'] },
   { id: 'manualBlock', iosOnly: true, groupId: 'screenTime', label: 'Block apps now', section: 'Block now', simple: true,

@@ -221,6 +221,13 @@ export interface MoodInsights {
    * record), or while either side is under the floor.
    */
   byTrainingDay: Contrast[];
+  /**
+   * Mood on days phone use reached 4 hours and 2 hours against the other days.
+   * Use is read in 30 minute steps (a floor, never a measurement), so say "over
+   * 4 hours", not a figure. Empty when the phone does not send it, and a day
+   * with no reading is unknown, not a quiet one.
+   */
+  byScreenTime: Contrast[];
   byFood: Contrast[];
   /** The app's own sentences about calories and sugar against mood and completions. */
   nutrients: string[];
@@ -246,7 +253,9 @@ export function moodInsights(replica: Replica): MoodInsights {
   const knownFrom = cutoff === null ? null : replica.logicalDayKeyOf(cutoff.toISOString());
   // The phone reads 90 days of food for this, and the kitchen switch drops the lot.
   const food = settings.kitchenEnabled ? replica.foodLogEntries(replica.shiftDayKey(today, -89), today) : [];
-  const days = mi.buildMoodDays(logs, tasks, settings.dayResetTime, [], knownFrom, lib.nutritionStats.foodDayInputs(food));
+  const days = mi.buildMoodDays(
+    logs, tasks, settings.dayResetTime, [], knownFrom, lib.nutritionStats.foodDayInputs(food), replica.screenTimeDays(),
+  );
 
   const names = (vocabulary: string[], keyOf: (s: string) => string) => {
     const out = new Map<string, string>();
@@ -285,6 +294,7 @@ export function moodInsights(replica: Replica): MoodInsights {
       `Nothing is compared below ${mi.MIN_PAIRED_DAYS} days with both a mood and a record, and each side of a contrast needs ${mi.MIN_CONTRAST_DAYS} days.`,
       'A day nobody logged is unknown, not a zero.',
       'Training days are the days a workout was finished in the app; a run or class that only Apple Health holds is not counted. Every other day with a mood since the first logged workout is a rest day. Like the rest, this is an association: people tend to train on days they already feel well.',
+      'Screen time is the highest 30 minute step of phone use each day reached, counted on the phone that sends it. It is a floor, never a measurement: say "over 4 hours", not "4 hours 12 minutes". A day with no reading is unknown, not a quiet one.',
       'There is deliberately no medication-against-symptom comparison: you take a painkiller because something hurts, so the comparison would point backwards.',
     ],
     summary: {
@@ -319,6 +329,11 @@ export function moodInsights(replica: Replica): MoodInsights {
     bySymptom: contrasts(mi.symptomMoodContrasts(days), k => symptomNames.get(k) ?? k),
     byContextTag: contrasts(mi.contextTagMoodContrasts(days), k => tagNames.get(k) ?? k),
     byTrainingDay: trainingRow ? contrasts([trainingRow], () => 'Days you finished a workout') : [],
+    byScreenTime: mi.screenTimeMoodContrasts(days).map(r => {
+      const hours = r.minutes / 60;
+      const [row] = contrasts([r], () => `Days with over ${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours of screen time`);
+      return row;
+    }),
     byFood: settings.kitchenEnabled ? contrasts(mi.foodMoodContrasts(days), k => foodNames.get(k) ?? k) : [],
     nutrients: settings.kitchenEnabled ? mi.nutrientFindings(days).map(f => f.text) : [],
     byTimeOfDay: mi.moodByTimeOfDay(logs, iso => lib.rhythms.segmentOf(new Date(iso), seg)).map(r => ({

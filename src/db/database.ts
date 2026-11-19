@@ -936,6 +936,17 @@ function runInitDatabase(): void {
       created_at TEXT NOT NULL
     );
 
+    -- One row per logical day the usage monitor watched: the highest usage rung
+    -- reached, in minutes (utils/screenTimeUsage.ts). Synced as part of the
+    -- health record (HEALTH_SYNC_TABLES) so the MCP server can read it against
+    -- mood. Keyed on the day alone: two phones recording the same day keep
+    -- whichever row was written last, which is the phone the person used most
+    -- recently and an acceptable answer for a floor in 30 minute steps.
+    CREATE TABLE IF NOT EXISTS screen_time_days (
+      day_key TEXT PRIMARY KEY NOT NULL,
+      minutes INTEGER NOT NULL DEFAULT 0
+    );
+
     -- A recipe's nutrition estimate asked for with no connection — see
     -- utils/recipeEstimateQueue.ts. One row per recipe, device-local like
     -- pending_estimates. estimate_key is the sheet's fingerprint of what was
@@ -3077,6 +3088,8 @@ export const BACKUP_TABLES = [
   'copy_flags',
   // Fasts point at nothing either.
   'fasts',
+  // Daily phone use points at nothing; it is read against the mood log above.
+  'screen_time_days',
   // Workouts, parents first: a routine names a program and exercises, a
   // session names a routine and a program, a set names a session and an
   // exercise. All of them are ids that may dangle (a set on a built-in
@@ -4445,6 +4458,38 @@ export function dbGetAllSettings(): Map<string, string> {
 
 export function dbSetSetting(key: string, value: string): void {
   db.runSync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+}
+
+/** Every day the usage monitor has a reading for, oldest first (`screen_time_days`). */
+export function dbGetScreenTimeDays(): { dayKey: string; minutes: number }[] {
+  return db
+    .getAllSync<{ day_key: string; minutes: number }>('SELECT day_key, minutes FROM screen_time_days ORDER BY day_key')
+    .map(r => ({ dayKey: r.day_key, minutes: r.minutes }));
+}
+
+/**
+ * Raises a day's reading to `minutes`, creating the day at that figure. Never
+ * lowers one: a rung is a floor, so a late or repeated crossing for a lower
+ * rung must leave the day where it is. Writing 0 is how a day is marked
+ * watched before any rung fires.
+ *
+ * The update is guarded by a WHERE rather than written as MAX(): the table
+ * syncs, every UPDATE restamps the row (see "Sync stamps" in
+ * `.claude/rules/database.md`), and the app marks today watched on every
+ * foreground, so an update that changed nothing would still win a merge
+ * against a peer's newer reading.
+ */
+export function dbRaiseScreenTimeDay(dayKey: string, minutes: number): void {
+  db.runSync(
+    `INSERT INTO screen_time_days (day_key, minutes) VALUES (?, ?)
+     ON CONFLICT(day_key) DO UPDATE SET minutes = excluded.minutes WHERE excluded.minutes > minutes`,
+    [dayKey, minutes],
+  );
+}
+
+/** Forgets every reading, for when the person turns the recording off. */
+export function dbClearScreenTimeDays(): void {
+  db.runSync('DELETE FROM screen_time_days');
 }
 
 /**

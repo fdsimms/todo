@@ -53,7 +53,7 @@ import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodChange, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem, WorkoutRoutineItem } from '../types';
-import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
+import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbRaiseScreenTimeDay, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
 import { quotaProrationPatch } from './quotaSchedule';
@@ -3452,6 +3452,8 @@ function seedMoodLog(today: Date): void {
     );
   }
 
+  seedScreenTime(today);
+
   // Words from further back, so the Mood screen's "Looking back" card has
   // something to show. Note-only (no mood), so they add no paired days and
   // leave every insight above exactly as the 17-day seed made it.
@@ -3466,6 +3468,31 @@ function seedMoodLog(today: Date): void {
   }
 
   seedRepeatedHealthTask(today);
+}
+
+/**
+ * Phone use for the same seventeen days, so "Mood with screen time" has
+ * something to show (`screenTimeUsage.ts`).
+ *
+ * The heavy days are the "Big deadline" patch and the day after it, which are
+ * the low-mood ones, and the rest sit at the lighter steps, so both sides of
+ * each comparison have enough days to report. Minutes are rungs, multiples of
+ * 30, as the monitor would have recorded them. Written through the same
+ * `dbRaiseScreenTimeDay` the store uses, and the switch is turned on so the
+ * card is not hidden behind it. Today is left unread, like today's mood.
+ *
+ * Nothing here reaches iOS: the bridge refuses in demo mode, so no monitor is
+ * armed and these readings are the only ones there are.
+ */
+function seedScreenTime(today: Date): void {
+  const minutesBack: Record<number, number> = {
+    17: 60, 16: 90, 15: 30, 14: 150, 13: 90, 12: 150, 11: 300, 10: 360, 9: 420,
+    8: 270, 7: 240, 6: 180, 5: 90, 4: 60, 3: 30, 2: 120, 1: 90,
+  };
+  for (const [back, minutes] of Object.entries(minutesBack)) {
+    dbRaiseScreenTimeDay(dayKeyOf(subDays(today, Number(back))), minutes);
+  }
+  useSettingsStore.getState().setScreenTimeUsage(true);
 }
 
 /**

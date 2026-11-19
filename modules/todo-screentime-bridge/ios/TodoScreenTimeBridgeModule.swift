@@ -655,11 +655,26 @@ public class TodoScreenTimeBridgeModule: Module {
             guard let selection = ScreenTimeShared.readSelection(groupId: rule.groupId ?? ScreenTimeShared.defaultGroupID),
                   !(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
             else { continue }
-            events[DeviceActivityEvent.Name("\(Self.eventPrefix)\(rule.id)")] = DeviceActivityEvent(
-              applications: selection.applicationTokens,
-              categories: selection.categoryTokens,
-              threshold: DateComponents(minute: rule.thresholdMinutes)
-            )
+            let name = DeviceActivityEvent.Name("\(Self.eventPrefix)\(rule.id)")
+            let threshold = DateComponents(minute: rule.thresholdMinutes)
+            if rule.includesPastActivity == true, #available(iOS 17.4, *) {
+              // The usage ladder: a rung means this much use today, so use from
+              // before this arming counts. Every parameter is passed because the
+              // documented declaration shows no defaults for this initializer.
+              events[name] = DeviceActivityEvent(
+                applications: selection.applicationTokens,
+                categories: selection.categoryTokens,
+                webDomains: selection.webDomainTokens,
+                threshold: threshold,
+                includesPastActivity: true
+              )
+            } else {
+              events[name] = DeviceActivityEvent(
+                applications: selection.applicationTokens,
+                categories: selection.categoryTokens,
+                threshold: threshold
+              )
+            }
           }
           // Nothing to watch (every rule's group is empty): drop what was armed
           // before, or a rule would keep firing against apps since removed.
@@ -675,8 +690,15 @@ public class TodoScreenTimeBridgeModule: Module {
           )
           let center = DeviceActivityCenter()
           center.stopMonitoring([DeviceActivityName(Self.activityName)])
-          try? center.startMonitoring(DeviceActivityName(Self.activityName), during: schedule, events: events)
-          started = true
+          // Reported rather than swallowed: Apple says arming can throw when too
+          // many events or activities are monitored, and the usage ladder adds
+          // up to twenty events, so the app needs to know when it didn't take.
+          do {
+            try center.startMonitoring(DeviceActivityName(Self.activityName), during: schedule, events: events)
+            started = true
+          } catch {
+            started = false
+          }
         }
         return started
       }
@@ -790,6 +812,11 @@ public class TodoScreenTimeBridgeModule: Module {
 
           // Window k runs from k*hours:00 to its last minute, so the count
           // starts over at each start. Every window carries every event.
+          // A window iOS refuses (it can throw when too many activities or events
+          // are monitored) is reported rather than swallowed, and the armed record
+          // is not written, so the next foreground tries again instead of
+          // skipping a monitor that never started.
+          var allStarted = true
           for (index, name) in names.enumerated() {
             let startHour = index * (hours > 0 ? hours : 24)
             let endHour = hours > 0 ? startHour + hours - 1 : 23
@@ -798,8 +825,13 @@ public class TodoScreenTimeBridgeModule: Module {
               intervalEnd: DateComponents(hour: endHour, minute: 59),
               repeats: true
             )
-            try? center.startMonitoring(name, during: schedule, events: events)
+            do {
+              try center.startMonitoring(name, during: schedule, events: events)
+            } catch {
+              allStarted = false
+            }
           }
+          guard allStarted else { return }
           ScreenTimeShared.writeSpeedBumpsArmed(SpeedBumpArmedShared(dayKey: dayKey, bumps: bumpsJson, resetHours: hours))
           started = true
         }

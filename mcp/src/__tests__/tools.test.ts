@@ -333,6 +333,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
       },
     }) as unknown as ReturnType<Replica['lib']>,
     allMoodLogs: () => [],
+    screenTimeDays: () => [],
     milestones: () => [],
     cookware: () => [],
     addCookware: () => { throw new Error('not stubbed'); },
