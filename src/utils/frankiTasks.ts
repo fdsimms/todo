@@ -181,6 +181,11 @@ export const FRANKI_REVIEW_THRESHOLD_MAX = 500;
 export const FRANKI_REVIEW_URL = 'franki://';
 export const FRANKI_READ_URL = 'franki://read';
 
+/** A language's Read & Listen task opens Franki's shelf already on that language (`?language=de`). */
+export function frankiReadUrl(language: string): string {
+  return `${FRANKI_READ_URL}?language=${encodeURIComponent(language)}`;
+}
+
 /** `frankiReviewThreshold` clamped to what the stepper offers, defaulting anything unusable. */
 export function clampFrankiReviewThreshold(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return FRANKI_REVIEW_THRESHOLD_DEFAULT;
