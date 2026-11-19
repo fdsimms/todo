@@ -411,7 +411,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryBulk.ts` — PantryBulkAction, PantryBulkTargets, partitionPantryEntries, pantryBulkLabel, applyPantryBulk
 - `src/utils/pantryCheckTasks.ts` — MAX_PANTRY_CHECK_TASKS, PANTRY_CHECK_GRACE_DAYS, pantryCheckTitle, pantryCheckItemId, pantryCheckLinkUrl, pantryCheckLapse, pantryCheckAnswers, PantryCheckWant, wantedPantryChecks, stalePantryCheckTasks, +1 more
 - `src/utils/pantryIndex.ts` — PantryIndexEntry, MAX_PANTRY_INDEX_ENTRIES, buildPantryIndex, QueuedDisposal, parseQueuedDisposals, resolveQueuedPantryItem, PlannedDisposal, planQueuedDisposals
-- `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PANTRY_PAST_USE_BY_DAYS, PANTRY_GUESS_DOUBT_FRACTION, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, +2 more
+- `src/utils/pantryReview.ts` — PantryReviewAnswer, pantryAnswerAddsToList, PantryListNotice, describePantryListNotice, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PANTRY_PAST_USE_BY_DAYS, PANTRY_GUESS_DOUBT_FRACTION, PantryDoubt, PantryReviewCard, +5 more
 - `src/utils/pantryReviewTasks.ts` — PANTRY_REVIEW_TITLE, PANTRY_REVIEW_LINK_URL, MIN_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_CADENCE_DAYS, pantryReviewDayKey, pantryReviewCadenceElapsed, wantsPantryReview, stalePantryReviewTasks
 - `src/utils/pantryRowMenu.ts` — PantryRowAction, PantryRowFacts, PantryRowMenuEntry, PantryRowChip, pantryRowChip, PANTRY_CHIP_LABEL, PantryRowMark, pantryRowMarks, pantryRowMenu
 - `src/utils/pantryStanding.ts` — PantryStanding, pantryBoughtCaption, pantryStanding
