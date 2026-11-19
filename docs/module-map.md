@@ -199,7 +199,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/eventTaskLinks.ts` — EventTaskLink, EventTaskLinks, eventTaskKey, tasksForEvent, withEventTasks, rekeyEventTasks, EVENT_TASK_LINK_GRACE_DAYS, pruneStaleEventTaskLinks, parseEventTaskLinks, MovedEvent, +4 more
 - `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, FOLLOW_UP_LOOKBACK_DAYS, FOLLOW_UP_AHEAD_DAYS, defaultEventRules, parseEventRules, ruleMatchesTitle, +24 more
 - `src/utils/eventTextParse.ts` — MAX_EVENT_TEXT_CHARS, ParsedEventText, parseEventText
-- `src/utils/exerciseCatalog.ts` — CatalogExercise, buildCatalog, activeExercises, catalogExercise, exerciseName, ExerciseFilters, ExerciseSearchResult, searchExercises, muscleFilterOptions, equipmentFilterOptions, +1 more
+- `src/utils/exerciseCatalog.ts` — CatalogExercise, namesOf, buildCatalog, activeExercises, catalogExercise, exerciseName, ExerciseFilters, ExerciseSearchResult, searchExercises, muscleFilterOptions, +2 more
 - `src/utils/exerciseChart.ts` — ChartInput, ChartPoint, CHART_GAP_DAYS, daysBetween, chartPoints, chartSegments, recordIndexes, ChartDomain, chartDomain, domainFraction, +3 more
 - `src/utils/exerciseDayNote.ts` — exerciseDayNote, exerciseDayNotePatches
 - `src/utils/exerciseImages.ts` — EXERCISE_IMAGE_BASE_URL, ExercisePhotos, PHOTOGRAPHED_SLUGS, exercisePhotos

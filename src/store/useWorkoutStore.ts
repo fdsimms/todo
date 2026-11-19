@@ -106,7 +106,7 @@ import { overlappingSessions } from '../utils/watchWorkoutClash';
 import { watchCopyStale, type WatchWorkoutSpan } from '../utils/watchHealthWorkout';
 import { getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useWatchClashStore } from './useWatchClashStore';
-import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
+import { buildCatalog, catalogExercise, namesOf } from '../utils/exerciseCatalog';
 import { bodyweightSetVolume, bodyweightVolumeKg, liftVolumeKg } from '../utils/workoutRecords';
 import { bodyweightFractionFor, readBodyweightFraction } from '../utils/bodyweightLoad';
 import { latestWeight } from '../utils/weightLog';
@@ -914,7 +914,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     const keys = new Set(names.map(exerciseNameKey));
     return buildCatalog(get().exercises).some(e =>
       e.id !== exceptId && !e.archived
-      && [e.name, ...e.otherNames].some(n => keys.has(exerciseNameKey(n))));
+      && namesOf(e).some(n => keys.has(exerciseNameKey(n))));
   };
 
   const putExercise = (row: Exercise) => {

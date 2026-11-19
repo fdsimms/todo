@@ -1,7 +1,7 @@
 import type { Exercise } from '../types';
 import {
   activeExercises, buildCatalog, catalogExercise, describeExercise, equipmentFilterOptions, exerciseName,
-  muscleFilterOptions, searchExercises,
+  muscleFilterOptions, namesOf, searchExercises,
 } from '../utils/exerciseCatalog';
 import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
 import { EQUIPMENT_LABELS, MUSCLE_LABELS, equipmentGroup } from '../utils/workoutData';
@@ -196,6 +196,33 @@ describe('searchExercises', () => {
     expect(found[0].viaOtherName).toBe('Hinged barbell pull');
     expect(found[0].nameMatches).toEqual([]);
     expect(describeExercise(found[0].exercise, found[0].viaOtherName)).toMatch(/^Also called Hinged barbell pull · /);
+  });
+
+  it('finds a built-in by the library\'s own alias, with no override row', () => {
+    const ohp = searchExercises([], 'ohp');
+    expect(ohp.map(r => r.exercise.id)).toContain('lib:overhead-press');
+    expect(ohp.find(r => r.exercise.id === 'lib:overhead-press')!.viaOtherName).toBe('OHP');
+    const db = searchExercises([], 'dumbbell overhead press');
+    expect(db[0].exercise.id).toBe('lib:dumbbell-shoulder-press');
+    expect(db[0].viaOtherName).toBe('Dumbbell overhead press');
+    expect(db.map(r => r.exercise.id)).not.toContain('lib:overhead-press');
+  });
+
+  it('keeps the library\'s aliases out of the person\'s other names', () => {
+    const e = buildCatalog([]).find(x => x.id === 'lib:overhead-press')!;
+    expect(e.aliases).toContain('OHP');
+    expect(e.otherNames).toEqual([]);
+  });
+
+  it('gives no two exercises the same name or alias', () => {
+    const seen = new Map<string, string>();
+    for (const e of buildCatalog([])) {
+      for (const n of namesOf(e)) {
+        const key = n.toLowerCase().replace(/[^a-z0-9]/g, '');
+        expect([key, seen.get(key) ?? e.id]).toEqual([key, e.id]);
+        seen.set(key, e.id);
+      }
+    }
   });
 
   it('does not say "also called" when the name itself matched', () => {

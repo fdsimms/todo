@@ -20,7 +20,10 @@ import { scoreSubstring } from './ranges';
  *   dropped: the sets logged against it still need a name to show under.
  */
 export interface CatalogExercise extends Exercise {
+  /** The person's own other names for it. */
   otherNames: string[];
+  /** The library's own other names ("OHP"): read like `otherNames`, never saved as the person's. Empty for a custom exercise. */
+  aliases: string[];
   /** The library's one-line cue. Null for a custom exercise, which has only its notes. */
   cue: string | null;
   /** From the library (overridden or not), rather than one the person made. */
@@ -34,6 +37,7 @@ function fromLibrary(lib: LibraryExercise, override: Exercise | undefined): Cata
     id: lib.id,
     name: override?.name.trim() ? override.name : lib.name,
     otherNames: override?.otherNames ?? [],
+    aliases: [...lib.aliases],
     kind: lib.kind,
     primaryMuscles: [...lib.primaryMuscles],
     secondaryMuscles: [...lib.secondaryMuscles],
@@ -53,8 +57,11 @@ function fromLibrary(lib: LibraryExercise, override: Exercise | undefined): Cata
 }
 
 function fromRow(row: Exercise): CatalogExercise {
-  return { ...row, otherNames: row.otherNames ?? [], cue: null, builtIn: false, overridden: false };
+  return { ...row, otherNames: row.otherNames ?? [], aliases: [], cue: null, builtIn: false, overridden: false };
 }
+
+/** Every name an exercise answers to: its own, the person's other names and the library's aliases. */
+export const namesOf = (e: Pick<CatalogExercise, 'name' | 'otherNames' | 'aliases'>): string[] => [e.name, ...e.otherNames, ...e.aliases];
 
 const byName = (a: CatalogExercise, b: CatalogExercise) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
@@ -194,7 +201,7 @@ export function searchExercises(
       // so a search for "two arm" finds the exercise the person calls that.
       let other = { score: 0, via: '' };
       if (name.score === 0) {
-        for (const n of exercise.otherNames) {
+        for (const n of [...exercise.otherNames, ...exercise.aliases]) {
           const hit = wordScore(n, word).score;
           if (hit > other.score) other = { score: hit, via: n };
         }
