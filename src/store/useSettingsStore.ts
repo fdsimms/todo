@@ -1862,6 +1862,9 @@ interface SettingsStore {
   // its own in the event sheet (TravelEventPref.arriveEarlyMinutes). 0 is on
   // time; clamped by clampArriveEarlyMinutes.
   travelArriveEarlyMinutes: number;
+  // "HH:MM": a "Leave for" row whose leave-by time is earlier than this is
+  // written pinned (leaveIsBeforePinCutoff). null is off.
+  travelPinBeforeTime: string | null;
   // Per-calendar overrides of that lead, by EventKit calendar id: "events on
   // Work get 45 minutes". Holds only the calendars someone set; the rest use
   // travelLeadMinutes. See TravelLeadByCalendar.
@@ -2613,6 +2616,7 @@ interface SettingsStore {
   setTravelTaskCategory: (category: string | null) => void;
   setTravelLeadMinutes: (minutes: number) => void;
   setTravelArriveEarlyMinutes: (minutes: number) => void;
+  setTravelPinBeforeTime: (time: string | null) => void;
   setTravelEstimates: (on: boolean) => void;
   setTravelCompareModes: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
@@ -3455,6 +3459,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelTaskCategory: null,
   travelLeadMinutes: TRAVEL_LEAD_MINUTES_DEFAULT,
   travelArriveEarlyMinutes: 0,
+  travelPinBeforeTime: null,
   travelLeadByCalendar: {},
   travelEventPrefs: {},
   travelEstimates: false,
@@ -4052,6 +4057,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       Number.isFinite(storedTravelLead) ? storedTravelLead : undefined,
     );
     const travelArriveEarlyMinutes = clampArriveEarlyMinutes(parseInt(dbGetSetting('travelArriveEarlyMinutes') ?? '', 10));
+    const storedPinBefore = dbGetSetting('travelPinBeforeTime');
+    const travelPinBeforeTime = storedPinBefore && /^\d{2}:\d{2}$/.test(storedPinBefore) ? storedPinBefore : null;
     const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
     const travelEventPrefs = parseTravelEventPrefs(dbGetSetting('travelEventPrefs'));
     const travelEstimates = dbGetSetting('travelEstimates') === 'true';
@@ -4646,6 +4653,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       travelLeadMinutes,
       travelMode,
       travelOriginPlaceId,
+      travelPinBeforeTime,
       travelTaskCategory,
       travelTaskHandled,
       travelTasks,
@@ -5392,6 +5400,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = clampTravelLeadMinutes(minutes);
     dbSetSetting('travelLeadMinutes', String(clamped));
     set({ travelLeadMinutes: clamped });
+  },
+
+  setTravelPinBeforeTime(time: string | null) {
+    dbSetSetting('travelPinBeforeTime', time ?? '');
+    set({ travelPinBeforeTime: time });
   },
 
   setTravelArriveEarlyMinutes(minutes: number) {
