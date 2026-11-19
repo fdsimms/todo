@@ -579,7 +579,6 @@ Where each component can appear.
 - `src/screens/settings/DeadlineCalendarSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/FeatureAreasSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/FocusSettings.tsx` — on SettingsGroupScreen
-- `src/screens/settings/FrankiReadLanguageRows.tsx` — on AutomationsScreen
 - `src/screens/settings/FrankiSettingsRows.tsx` — on AutomationsScreen
 - `src/screens/settings/FrankiTokenRows.tsx` — on AutomationsScreen, SettingsGroupScreen
 - `src/screens/settings/GeneratedTasksSection.tsx` — on AutomationsScreen

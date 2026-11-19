@@ -27,7 +27,7 @@ const snapshot = (overrides: Record<string, unknown> = {}) => ({
   upcoming: [],
   dayEndsAt: new Date(Date.now() + 3600_000).toISOString(),
   readListen: null,
-  readLanguages: [],
+  readToday: null,
   frankiNew: null,
   studyDays: [],
   ...overrides,

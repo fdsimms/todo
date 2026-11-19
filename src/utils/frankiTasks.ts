@@ -23,10 +23,10 @@ import { minutesReadToday, minutesStudiedToday, type FrankiStudyDay } from './fr
  *   waiting in that language and nothing in it was read to the end since the
  *   logical day began. A day that doesn't qualify yet can later (a text gets
  *   written), so declining spends nothing.
- * - **Which languages get one is a setting** (`frankiReadLanguages`): each is
- *   Every day, Rotate or Off. Every day always gets its task. Rotate languages
- *   take turns, `frankiReadRotateCount` of them a day, the one read least
- *   recently first (`plannedFrankiReadLanguages`).
+ * - **Which languages get one is Franki's call**, not this app's: which to read next
+ *   depends on what has been read, which Franki holds. Its status lists today's
+ *   languages (`readToday`, Franki's Settings, Daily reading tasks), and this app
+ *   writes one task for each, deciding nothing (`wantedFrankiReadLanguages`).
  * - **Nothing here completes a task.** A text read today, or a queue read as
  *   empty, makes the row ready (`isFrankiTaskReady`). The tap stays a person's.
  * - **Yesterday's goes** at the day's first pass, like WaniKani's lessons.
@@ -47,49 +47,14 @@ export interface FrankiReadListen {
   name: string;
   /** Texts waiting to be read in it. */
   waiting: number;
-  /** When a text in it was last read to the end (ISO), or null for never. */
-  lastReadAt: string | null;
 }
 
-/**
- * How a language's Read & Listen task is handled: a task every day, in turn
- * with the other rotating languages, or none. A language the person never set
- * rotates.
- */
-export type FrankiReadMode = 'daily' | 'rotate' | 'off';
-export const FRANKI_READ_MODE_DEFAULT: FrankiReadMode = 'rotate';
-export type FrankiReadModes = Record<string, FrankiReadMode>;
-
-export const FRANKI_ROTATE_COUNT_DEFAULT = 1;
-export const FRANKI_ROTATE_COUNT_MIN = 1;
-export const FRANKI_ROTATE_COUNT_MAX = 10;
-
-/** `frankiReadRotateCount` clamped to what the stepper offers, defaulting anything unusable. */
-export function clampFrankiRotateCount(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return FRANKI_ROTATE_COUNT_DEFAULT;
-  return Math.min(FRANKI_ROTATE_COUNT_MAX, Math.max(FRANKI_ROTATE_COUNT_MIN, Math.round(value)));
-}
-
-/** The stored per-language choices (a JSON object of language code to mode), dropping anything unreadable. */
-export function parseFrankiReadModes(raw: unknown): FrankiReadModes {
-  let value: unknown = raw;
-  if (typeof raw === 'string') {
-    try {
-      value = JSON.parse(raw);
-    } catch {
-      return {};
-    }
-  }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const modes: FrankiReadModes = {};
-  for (const [code, mode] of Object.entries(value)) {
-    if (mode === 'daily' || mode === 'rotate' || mode === 'off') modes[code] = mode;
-  }
-  return modes;
-}
-
-export function frankiReadModeOf(modes: FrankiReadModes, language: string): FrankiReadMode {
-  return modes[language] ?? FRANKI_READ_MODE_DEFAULT;
+/** One language Franki lists for today's Read & Listen tasks (its `read_and_listen_today`). */
+export interface FrankiReadToday {
+  language: string;
+  name: string;
+  /** Whether a text in it was read to the end since Franki's study day began. */
+  done: boolean;
 }
 
 /** The languages that already got a Read & Listen task on one logical day, this device's own record. */
@@ -137,10 +102,10 @@ export interface FrankiSnapshot extends ReviewQueue {
   /** The language being read in Franki. Null when the server didn't say (Read & Listen isn't set up there). */
   readListen: FrankiReadListen | null;
   /**
-   * Every language Read & Listen has, with what is waiting in it. A server
-   * from before it reported them gives just the language being read.
+   * The languages Franki says get a Read & Listen task today, or null from a
+   * server from before it chose them (no task is written or taken away then).
    */
-  readLanguages: FrankiReadListen[];
+  readToday: FrankiReadToday[] | null;
   /**
    * New cards left today as Franki's deck list counts them, progress gates
    * included, or null when Franki hasn't reported since Anki's day began
@@ -360,42 +325,14 @@ export function frankiRowMinutes(
 
 // ==== Read & Listen ====
 
-/** Whether a text was read to the end since `dayStart`. */
-export function frankiReadSince(readListen: FrankiReadListen | null, dayStart: Date): boolean {
-  if (!readListen?.lastReadAt) return false;
-  const at = Date.parse(readListen.lastReadAt);
-  return Number.isFinite(at) && at >= dayStart.getTime();
-}
-
 /**
- * Which languages should get a Read & Listen task written now. Each needs a
- * text waiting and none read to the end today, and has not had its task today
+ * The languages that should get a Read & Listen task written now: those Franki
+ * lists today that weren't read to the end and haven't had their task today
  * (`spentToday`, so declining spends nothing but writing does, and a task
- * checked off or deleted stays gone). Every day languages all qualify. Rotate
- * languages share `rotateCount` tasks a day, those already written today
- * counted, taken in the order least recently read first (never read before
- * any, then by name so the order is stable).
+ * checked off or deleted stays gone).
  */
-export function plannedFrankiReadLanguages(input: {
-  snapshot: FrankiSnapshot;
-  dayStart: Date;
-  modes: FrankiReadModes;
-  rotateCount: number;
-  spentToday: string[];
-}): string[] {
-  const { snapshot, dayStart, modes, rotateCount, spentToday } = input;
-  const open = snapshot.readLanguages.filter(l =>
-    l.waiting > 0 && !frankiReadSince(l, dayStart) && !spentToday.includes(l.language));
-  const planned = open.filter(l => frankiReadModeOf(modes, l.language) === 'daily').map(l => l.language);
-  const spentRotating = spentToday.filter(code => frankiReadModeOf(modes, code) === 'rotate').length;
-  const room = Math.max(0, rotateCount - spentRotating);
-  const lastRead = (l: FrankiReadListen) => (l.lastReadAt ? Date.parse(l.lastReadAt) : Number.NEGATIVE_INFINITY);
-  const turns = open
-    .filter(l => frankiReadModeOf(modes, l.language) === 'rotate')
-    .sort((a, b) => lastRead(a) - lastRead(b) || a.name.localeCompare(b.name))
-    .slice(0, room)
-    .map(l => l.language);
-  return [...planned, ...turns];
+export function wantedFrankiReadLanguages(readToday: FrankiReadToday[], spentToday: string[]): string[] {
+  return readToday.filter(l => !l.done && !spentToday.includes(l.language)).map(l => l.language);
 }
 
 /**
@@ -408,7 +345,6 @@ export function isFrankiTaskReady(
   task: Pick<Task, 'generatedKind' | 'generatedSourceId'> & Partial<Pick<Task, 'dueDate' | 'windowStart'>>,
   snapshot: FrankiSnapshot | null,
   now: Date,
-  dayStart: Date,
   dayResetTime = '00:00',
   goal: { minutes: number | null; countReading: boolean } = { minutes: null, countReading: true },
 ): boolean {
@@ -421,10 +357,7 @@ export function isFrankiTaskReady(
   }
   if (kind === 'read') {
     const language = frankiReadTaskLanguage(task);
-    const reading = language === null
-      ? snapshot.readListen
-      : snapshot.readLanguages.find(l => l.language === language) ?? null;
-    return frankiReadSince(reading, dayStart);
+    return language !== null && (snapshot.readToday?.find(l => l.language === language)?.done ?? false);
   }
   if (kind === 'day') {
     // Unknown new cards are not none left.

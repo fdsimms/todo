@@ -185,7 +185,6 @@ import {
   frankiDailyTitle,
   frankiGoalSourceId,
   frankiGoalTitle,
-  frankiReadModeOf,
   frankiReadSourceId,
   frankiReadSpentToday,
   frankiReadTaskLanguage,
@@ -194,7 +193,7 @@ import {
   frankiReviewTitle,
   frankiTaskDayKey,
   frankiTaskKind,
-  plannedFrankiReadLanguages,
+  wantedFrankiReadLanguages,
   wantsFrankiDailyTask,
   wantsFrankiGoalTask,
   withFrankiReadSpent,
@@ -9753,40 +9752,38 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
-    // ==== Read & Listen: a task for each language chosen for the day ====
-    // One written before there was a task per language (`read:<day>`, no
-    // language) is replaced by its language's own.
+    // ==== Read & Listen: a task for each language Franki lists today ====
+    // Franki chooses the languages (its Settings, Daily reading tasks); this
+    // writes one task for each. One written before there was a task per
+    // language (`read:<day>`, no language) is replaced by its language's own.
     liveOf('read')
       .filter(task => frankiReadTaskLanguage(task) === null)
       .forEach(task => deleteGeneratedTaskQuietly(task.id));
-    const readModes = settings.frankiReadLanguages;
-    const readPlanned = plannedFrankiReadLanguages({
-      snapshot,
-      dayStart,
-      modes: readModes,
-      rotateCount: settings.frankiReadRotateCount,
-      spentToday: frankiReadSpentToday(settings.frankiReadSpent, todayKey),
-    });
-    // The languages the read lists, and any that still have a task of their own here.
-    const readLanguages = new Map(snapshot.readLanguages.map(l => [l.language, l]));
-    const readCodes = new Set([
-      ...readLanguages.keys(),
-      ...liveOf('read').flatMap(task => frankiReadTaskLanguage(task) ?? []),
-    ]);
-    readCodes.forEach(code => {
-      dayTask({
-        sourceId: frankiReadSourceId(todayKey, code),
-        wanted: settings.frankiReadTasks && frankiReadModeOf(readModes, code) !== 'off',
-        wants: readPlanned.includes(code),
-        title: frankiReadTitle(readLanguages.get(code) ?? { name: code }),
-        link: frankiReadUrl(code),
-        // The latest record, since another language's task may have spent just before this one.
-        spend: () => {
-          const latest = useSettingsStore.getState();
-          latest.setFrankiReadSpent(withFrankiReadSpent(latest.frankiReadSpent, todayKey, code));
-        },
+    // A server that doesn't send the list gets no reading task written or taken away.
+    const readToday = snapshot.readToday;
+    if (readToday) {
+      const readPlanned = wantedFrankiReadLanguages(readToday, frankiReadSpentToday(settings.frankiReadSpent, todayKey));
+      const readLanguages = new Map(readToday.map(l => [l.language, l]));
+      // The languages Franki lists, and any that still have a task of their own here (one it no longer lists goes).
+      const readCodes = new Set([
+        ...readLanguages.keys(),
+        ...liveOf('read').flatMap(task => frankiReadTaskLanguage(task) ?? []),
+      ]);
+      readCodes.forEach(code => {
+        dayTask({
+          sourceId: frankiReadSourceId(todayKey, code),
+          wanted: settings.frankiReadTasks && readLanguages.has(code),
+          wants: readPlanned.includes(code),
+          title: frankiReadTitle(readLanguages.get(code) ?? { name: code }),
+          link: frankiReadUrl(code),
+          // The latest record, since another language's task may have spent just before this one.
+          spend: () => {
+            const latest = useSettingsStore.getState();
+            latest.setFrankiReadSpent(withFrankiReadSpent(latest.frankiReadSpent, todayKey, code));
+          },
+        });
       });
-    });
+    }
 
     // ==== the study-time goal ====
     const goal = settings.frankiGoalMinutes;

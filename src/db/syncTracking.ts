@@ -679,8 +679,6 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'frankiServer',
   'frankiReviewThreshold',
   'frankiReadTasks',
-  'frankiReadLanguages',
-  'frankiReadRotateCount',
   'frankiReviewMode',
   'frankiGoalMinutes',
   'frankiCountReading',
