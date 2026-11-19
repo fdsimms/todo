@@ -31,6 +31,13 @@ export interface LibraryExercise {
   secondaryMuscles: MuscleGroup[];
   /** One short sentence on how it's done. */
   cue: string;
+  /**
+   * Other names lifters know it by ("OHP"), read by search and the CSV import's
+   * name match like the person's own `otherNames`, but the library's: a later
+   * build can correct them, and the exercise editor never saves them as the
+   * person's. Empty for most exercises.
+   */
+  aliases: string[];
 }
 
 /** The prefix every built-in id carries, which no `generateId()` id can. */
@@ -38,6 +45,21 @@ export const LIBRARY_ID_PREFIX = 'lib:';
 
 type Row = [slug: string, name: string, kind: ExerciseKind, equipment: ExerciseEquipment,
   primary: MuscleGroup[], secondary: MuscleGroup[], cue: string];
+
+/**
+ * Other names for a built-in, by slug. A name here must not be another
+ * exercise's name or alias (`tests/exerciseCatalog.test.ts` checks), so a search
+ * never has two exercises answering to one name.
+ */
+const ALIASES: Record<string, string[]> = {
+  'overhead-press': ['OHP', 'Military press', 'Standing overhead press'],
+  'seated-barbell-shoulder-press': ['Seated overhead press', 'Seated OHP'],
+  'dumbbell-shoulder-press': ['Dumbbell overhead press', 'Dumbbell OHP'],
+  'one-arm-dumbbell-shoulder-press': ['One-arm dumbbell overhead press', 'Single-arm dumbbell OHP'],
+  'machine-shoulder-press': ['Machine overhead press'],
+  'smith-machine-shoulder-press': ['Smith machine overhead press'],
+  'cable-shoulder-press': ['Cable overhead press'],
+};
 
 const ROWS: Row[] = [
   // ─── Chest ────────────────────────────────────────────────────────────────
@@ -591,6 +613,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = ROWS.map(
     primaryMuscles,
     secondaryMuscles,
     cue,
+    aliases: ALIASES[slug] ?? [],
   })
 );
 

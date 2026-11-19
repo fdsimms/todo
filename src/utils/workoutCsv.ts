@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import type { Exercise, ExerciseEquipment, WorkoutSession, WorkoutSet, WorkoutSetKind } from '../types';
-import { buildCatalog, catalogExercise, type CatalogExercise } from './exerciseCatalog';
+import { buildCatalog, catalogExercise, namesOf, type CatalogExercise } from './exerciseCatalog';
 import { MAX_SET_WEIGHT_KG, cleanWorkoutName, exerciseNameKey, machineParent, weightToDisplay } from './workoutData';
 import { csvCell } from './moodExport';
 import { dumbbellsUsed, storedKgFromShown } from './dumbbellLoad';
@@ -742,12 +742,12 @@ export function matchExerciseName(name: string, catalog: readonly CatalogExercis
   // A name the person gave an exercise is as good as its own: they wrote it. One
   // that two exercises both carry (a sync can bring that) decides nothing.
   const live = catalog.filter(e => !e.archived);
-  const byOtherName = live.filter(e => e.otherNames.some(n => exerciseNameKey(n) === key));
+  const byOtherName = live.filter(e => [...e.otherNames, ...e.aliases].some(n => exerciseNameKey(n) === key));
   if (byOtherName.length === 1) return { kind: 'exact', exerciseId: byOtherName[0].id, exerciseName: byOtherName[0].name };
 
   const words = sortedWords(name);
   if (words.length === 0) return { kind: 'none' };
-  const goesBy = (e: CatalogExercise) => [e.name, ...e.otherNames];
+  const goesBy = namesOf;
   const sameWords = live.filter(e => goesBy(e).some(n => {
     const w = sortedWords(n);
     return w.length === words.length && w.every((x, i) => x === words[i]);
