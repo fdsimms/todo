@@ -51,7 +51,7 @@ import { logError } from '../utils/errorLog';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
-import { DESCRIBE_MAX_LENGTH, readWorkoutDraft, type WorkoutDraft } from '../utils/workoutDraft';
+import { DESCRIBE_MAX_LENGTH, readWorkoutDraft, type DescribeContext, type WorkoutDraft } from '../utils/workoutDraft';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { cleanModelItemType } from '../utils/scanItemType';
 import {
@@ -257,6 +257,9 @@ export function describeAIError(error: unknown, source: string = 'ai'): string {
   if (message === 'Response was truncated') return 'The reply was too long to finish. Try again with less in the request, such as a smaller meal or fewer items.';
   if (message === 'No estimate returned') {
     return 'That description could not be read into figures. Try naming the dish and the place.';
+  }
+  if (message === 'No exercises described') {
+    return 'No exercises could be read from that. Name the lifts, for example bench press 3x8, rows 3x10.';
   }
   if (message === 'No food in the photo') {
     return 'No meal could be made out in that photo. Try again closer up, or type what it was.';
@@ -3273,6 +3276,8 @@ export interface DraftWorkoutOptions {
   unit: 'kg' | 'lb';
   /** The logical day, for "yesterday" and "last Tuesday". Never the calendar date: the day starts at `dayResetTime`. */
   today: string;
+  /** The person's routines and newest workouts (`describeContext`), for a description that leans on them ("my usual workout"). */
+  context: DescribeContext;
 }
 
 const MAX_DRAFT_EXERCISE_NAMES = 1500;
@@ -3326,6 +3331,7 @@ export async function draftWorkoutFromText(
       'Write one entry in sets for every set, so "3x5" is three entries, and a warm-up the description names is its own entry with kind warmup.',
       'Never supply a number the description did not state. Leave a weight, rep count, rest or RPE out rather than estimating it. The description gives the weights in ' + options.unit + ' unless it names the other.',
       'Name each exercise with the spelling in the library list when one clearly is that exercise ("DB incline press" is "Incline dumbbell press"). When none is, use the description\'s own words. Never make an exercise up, and never guess at a different lift to fit the list.',
+      'The person may describe it by what they usually do ("my normal workout but only upper body", "push day without dips"). Read that against their routines and recent workouts, given after the description: pick the exercises that fit, and take their sets, reps and weights from there, written as the list writes them. Those numbers count as stated. Only when nothing there fits, return no exercises.',
       'Put anything in the description that is not a lift into notes, in the person\'s own words ("finish with abs", "felt strong"). Do not drop it and do not turn it into an exercise unless it names a lift with sets.',
       ...(mode === 'routine' ? [
         'restSeconds is the rest after each set of that exercise, only when the description gave one ("rest 2 min on the big lifts" applies to the big lifts it names). Set supersetWithPrevious when the description pairs an exercise with the one before it ("supersetted with"). Set warmupRamp only when it asks for a ramp or "work up to" without naming the warm-up sets. Set progression only when the description names a scheme: double progression is a rep range to top out then add weight, linear is adding weight every workout, percent is a percent of a max, rpe is going by how hard it felt.',
@@ -3372,6 +3378,8 @@ export async function draftWorkoutFromText(
       content: [
         `Description:\n${asked}`,
         names.length > 0 ? `The person's exercise library:\n${names.join('; ')}` : '',
+        options.context.routines.length > 0 ? `Their routines:\n${options.context.routines.join('\n')}` : '',
+        options.context.workouts.length > 0 ? `Their recent workouts, newest first:\n${options.context.workouts.join('\n')}` : '',
       ].filter(Boolean).join('\n\n'),
     }],
   }, apiKey, model);
