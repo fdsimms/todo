@@ -831,10 +831,17 @@ Decisions worth not re-deriving:
   store leaves an armed ladder alone unless the day, the rungs or the chosen apps
   changed. On iOS before 17.4 a re-arm may restart the count, so a rung can be
   late. Not verified on a device.
-- **It is device-local.** `screen_time_days` is in `SYNC_EXCLUDED_TABLES` and the
-  backup exclusions, and `screenTimeUsage` is not in the synced settings list: a
-  phone's readings are that phone's. The MCP replica therefore never has them,
-  and `mood_insights` there composes its days without phone use.
+- **The readings sync with the health record; the switch does not.**
+  `screen_time_days` is in `SYNC_TRACKED_TABLES`, keyed on the day, and in
+  `HEALTH_SYNC_TABLES` (withheld from iCloud, sent to the sync server with the
+  other health logs) and `BACKUP_TABLES`. That is what lets the MCP server's
+  `mood_insights` return `byScreenTime`. Two phones recording the same day keep
+  whichever wrote last. `dbRaiseScreenTimeDay` updates only when it raises the
+  reading, because every UPDATE restamps a synced row and the app marks today
+  watched on every foreground. `screenTimeUsage` stays device-local (not in the
+  synced settings list): the monitor and its Screen Time authorization belong to
+  one phone, so the card is hidden on a phone where it is off even if readings
+  arrived from another.
 - **Arming can fail and the app says so.** `startMonitoring` returns false when
   iOS throws (too many events or activities); the settings row then says it
   couldn't start. The ladder adds up to twenty events and Apple publishes no

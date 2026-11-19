@@ -1313,6 +1313,14 @@ export interface Replica {
   lib(): ReplicaLib;
   /** Every mood check-in, unfiltered: the insights need the whole log. */
   allMoodLogs(): MoodLog[];
+  /**
+   * Daily phone use, oldest first: the highest usage rung each day reached, in
+   * minutes (`screenTimeUsage.ts`). A floor in 30 minute steps, and a day with
+   * no row is unknown, not zero. Empty unless the person has turned on Include
+   * health logs for the sync server on their phone, and turned on Count screen
+   * time there.
+   */
+  screenTimeDays(): { dayKey: string; minutes: number }[];
   milestones(): Milestone[];
   /** Every copy flag, newest first. TEMPORARY dev tooling, see `CopyFlag`. */
   copyFlags(): CopyFlag[];
@@ -4799,6 +4807,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       /* eslint-enable @typescript-eslint/no-require-imports */
     },
     allMoodLogs: () => db.dbGetAllMoodLogs(),
+    screenTimeDays: () => db.dbGetScreenTimeDays(),
     milestones: () => db.dbGetAllMilestones(),
     copyFlags: () => db.dbGetAllCopyFlags(),
     resolveCopyFlag(id: string, resolution: string): CopyFlag {

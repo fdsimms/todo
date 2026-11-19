@@ -812,6 +812,11 @@ public class TodoScreenTimeBridgeModule: Module {
 
           // Window k runs from k*hours:00 to its last minute, so the count
           // starts over at each start. Every window carries every event.
+          // A window iOS refuses (it can throw when too many activities or events
+          // are monitored) is reported rather than swallowed, and the armed record
+          // is not written, so the next foreground tries again instead of
+          // skipping a monitor that never started.
+          var allStarted = true
           for (index, name) in names.enumerated() {
             let startHour = index * (hours > 0 ? hours : 24)
             let endHour = hours > 0 ? startHour + hours - 1 : 23
@@ -820,8 +825,13 @@ public class TodoScreenTimeBridgeModule: Module {
               intervalEnd: DateComponents(hour: endHour, minute: 59),
               repeats: true
             )
-            try? center.startMonitoring(name, during: schedule, events: events)
+            do {
+              try center.startMonitoring(name, during: schedule, events: events)
+            } catch {
+              allStarted = false
+            }
           }
+          guard allStarted else { return }
           ScreenTimeShared.writeSpeedBumpsArmed(SpeedBumpArmedShared(dayKey: dayKey, bumps: bumpsJson, resetHours: hours))
           started = true
         }

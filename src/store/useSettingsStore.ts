@@ -1935,8 +1935,9 @@ interface SettingsStore {
   screenTimeTasks: boolean;
   // Whether this phone records daily phone use for Mood Insights, as a ladder of
   // usage thresholds over the apps chosen under the reserved `usage` group
-  // (src/utils/screenTimeUsage.ts). Device-local, so not in the synced list:
-  // the monitor and its Screen Time authorization belong to this phone.
+  // (src/utils/screenTimeUsage.ts). The switch is device-local, so not in the
+  // synced list: the monitor and its Screen Time authorization belong to this
+  // phone. The readings it records sync with the health record.
   screenTimeUsage: boolean;
   // Which category a screen-time task files itself under, by name, or null.
   screenTimeTaskCategory: string | null;

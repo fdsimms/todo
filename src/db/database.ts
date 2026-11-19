@@ -937,9 +937,11 @@ function runInitDatabase(): void {
     );
 
     -- One row per logical day the usage monitor watched: the highest usage rung
-    -- reached, in minutes (utils/screenTimeUsage.ts). Device-local, neither
-    -- synced nor backed up: it is what this phone's monitor saw, and another
-    -- phone's reading of the same day is a different number, not a copy.
+    -- reached, in minutes (utils/screenTimeUsage.ts). Synced as part of the
+    -- health record (HEALTH_SYNC_TABLES) so the MCP server can read it against
+    -- mood. Keyed on the day alone: two phones recording the same day keep
+    -- whichever row was written last, which is the phone the person used most
+    -- recently and an acceptable answer for a floor in 30 minute steps.
     CREATE TABLE IF NOT EXISTS screen_time_days (
       day_key TEXT PRIMARY KEY NOT NULL,
       minutes INTEGER NOT NULL DEFAULT 0
@@ -3086,6 +3088,8 @@ export const BACKUP_TABLES = [
   'copy_flags',
   // Fasts point at nothing either.
   'fasts',
+  // Daily phone use points at nothing; it is read against the mood log above.
+  'screen_time_days',
   // Workouts, parents first: a routine names a program and exercises, a
   // session names a routine and a program, a set names a session and an
   // exercise. All of them are ids that may dangle (a set on a built-in
@@ -3206,10 +3210,6 @@ export const BACKUP_EXCLUDED_TABLES = [
   // rows are believed only against a fingerprint of ingredient lines that a
   // restore is about to rewrite.
   'pending_recipe_estimates',
-  // Daily phone use as this phone's monitor saw it. It describes this device's
-  // own days and a restore onto another phone would put someone else's use
-  // beside this phone's mood log.
-  'screen_time_days',
   // Alarms (see Alarm in types). An alarm belongs to the phone it rings on,
   // and a restore onto another phone, or weeks later, would set alarms for a
   // morning nobody planned. They are quick to set again; a wrong one ringing
@@ -3567,7 +3567,7 @@ export function dbHasOwnSyncData(): boolean {
  * Device-only tables about the rows an erase removes: a focus session over
  * tasks that are gone, and meals or recipes waiting for an estimate.
  */
-const ERASED_DEVICE_TABLES = ['focus_sessions', 'pending_estimates', 'pending_recipe_estimates', 'screen_time_days'];
+const ERASED_DEVICE_TABLES = ['focus_sessions', 'pending_estimates', 'pending_recipe_estimates'];
 
 /**
  * Empties this device so it can join sync holding only what its other devices
@@ -4472,11 +4472,17 @@ export function dbGetScreenTimeDays(): { dayKey: string; minutes: number }[] {
  * lowers one: a rung is a floor, so a late or repeated crossing for a lower
  * rung must leave the day where it is. Writing 0 is how a day is marked
  * watched before any rung fires.
+ *
+ * The update is guarded by a WHERE rather than written as MAX(): the table
+ * syncs, every UPDATE restamps the row (see "Sync stamps" in
+ * `.claude/rules/database.md`), and the app marks today watched on every
+ * foreground, so an update that changed nothing would still win a merge
+ * against a peer's newer reading.
  */
 export function dbRaiseScreenTimeDay(dayKey: string, minutes: number): void {
   db.runSync(
     `INSERT INTO screen_time_days (day_key, minutes) VALUES (?, ?)
-     ON CONFLICT(day_key) DO UPDATE SET minutes = MAX(minutes, excluded.minutes)`,
+     ON CONFLICT(day_key) DO UPDATE SET minutes = excluded.minutes WHERE excluded.minutes > minutes`,
     [dayKey, minutes],
   );
 }

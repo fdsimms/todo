@@ -81,6 +81,14 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // MCP server can read what the phone flagged and resolve it.
   { name: 'copy_flags', key: ['id'] },
   { name: 'fasts', key: ['id'] },
+  // Daily phone use (utils/screenTimeUsage.ts): the highest usage rung a day
+  // reached, so the MCP server can read it against mood. Keyed on the day, not
+  // an id, so a day is one row everywhere. Two phones recording the same day
+  // keep whichever wrote last, which is acceptable for a floor in 30 minute
+  // steps; the write only touches the row when it raises the reading
+  // (dbRaiseScreenTimeDay), or every foreground would restamp it. Health
+  // record, so HEALTH_SYNC_TABLES below.
+  { name: 'screen_time_days', key: ['day_key'] },
   // Workouts (docs/arch/workouts.md). Custom exercises, routines and programs
   // are plans, and travel like any other synced data; a custom exercise's name
   // is a natural key (NATURAL_KEYS), so the same one made on two phones folds
@@ -361,10 +369,6 @@ export const SYNC_EXCLUDED_TABLES = [
   // nap alarm set on the phone must not also ring on the iPad, and a device
   // that turns one off says nothing about another's.
   'alarms',
-  // Daily phone use as this phone's monitor saw it (see utils/screenTimeUsage.ts).
-  // A reading belongs to the device that took it: the same day on another phone
-  // is a different number, and merging them would be inventing one.
-  'screen_time_days',
 ] as const;
 
 /**
@@ -959,7 +963,9 @@ export interface ServerSharing {
  * record of what a body did, and once a session carries heart rate and energy
  * from HealthKit it is plainly health information (docs/arch/workouts.md).
  * Custom exercises, routines and programs are not: they are plans, the same
- * reason `saved_meals` isn't.
+ * reason `saved_meals` isn't. `screen_time_days` is here because a day-by-day
+ * record of how long somebody used their phone is read against their mood, and
+ * is behavioural health data in that use.
  *
  * Pushes only. A row of these arriving from a transport is still applied, so
  * a peer on an older build that still sends them does no harm.
@@ -968,6 +974,9 @@ export const HEALTH_SYNC_TABLES: readonly string[] = [
   'mood_logs', 'milestones', 'experiments', 'medication_logs', 'check_ins', 'food_logs', 'workout_sessions', 'workout_sets',
   // A fast is a record of what a body did, beside the food log it is read with.
   'fasts',
+  // How long somebody used their phone each day is behavioural health data
+  // once it is read against their mood.
+  'screen_time_days',
 ];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'medication_archived', 'medication_registered', 'medication_settings', 'medication_summary_last',
