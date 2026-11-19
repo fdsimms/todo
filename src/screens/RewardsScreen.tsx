@@ -15,6 +15,8 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { EmptyNote } from '../components/EmptyNote';
 import { InlineAction } from '../components/InlineAction';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
+import { SheetHeader } from '../components/SheetHeader';
+import { SheetModal } from '../components/SheetModal';
 import { CoinIcon } from '../components/CoinIcon';
 import { CoinBurst } from '../components/CoinBurst';
 import { TARGET_ICON, TargetIcon } from '../components/TargetIcon';
@@ -106,6 +108,7 @@ import { Toggle } from '../components/Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from '../components/FieldLabel';
 import { confirmDelete } from '../utils/confirmDelete';
+import { confirmDiscard } from '../utils/confirmDiscard';
 import { animateLayout } from '../utils/layoutAnimation';
 import { GoalPlanSheet } from '../components/GoalPlanSheet';
 import { UnlocksSection } from '../components/UnlocksSection';
@@ -206,6 +209,8 @@ export function RewardsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ refreshing: pullSearch.pulling });
+  // The reward form's own scroll, in its own sheet.
+  const draftScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const scrollTop = useListScrollToTop(keyboardScroll);
 
   const enabled = useSettingsStore(s => s.rewardsEnabled);
@@ -420,32 +425,23 @@ export function RewardsScreen() {
   const parsedCost = priceDriven ? coinsForPrice(totalMinor!, exchange) : parseRewardCost(draftCost);
   // A reward made from a list item takes its title, note and link from the
   // item, so the form doesn't ask for them.
-  const draftItem: Task | null = draft?.mode === 'item'
-    ? taskById.get(draft.taskId) ?? null
-    : draft?.mode === 'edit'
+  // The held draft, so the form still draws what it was about for the commit
+  // it spends sliding away (`draft` itself is null by then).
+  const shownDraft = useSheetSubject(draft);
+  const draftItem: Task | null = shownDraft?.mode === 'item'
+    ? taskById.get(shownDraft.taskId) ?? null
+    : shownDraft?.mode === 'edit'
       ? (() => {
-        const r = rewards.find(x => x.id === draft.id);
+        const r = rewards.find(x => x.id === shownDraft.id);
         return r?.taskId ? taskById.get(r.taskId) ?? null : null;
       })()
       : null;
   const canSave = (draftItem !== null || draftTitle.trim().length > 0) && parsedCost !== null
     && (!priceTyped || priceDriven);
 
-  const closeDraft = useCallback(() => {
-    setDraft(null);
-    setDraftTitle('');
-    setDraftCost('');
-    setDraftPrice('');
-    setDraftTaxable(false);
-    setDraftNote('');
-    setDraftLink('');
-    setDraftOneTime(false);
-    setDraftGlyph('');
-    setLimitCount(null);
-    setLimitUnit('weeks');
-    setDraftGuard(null);
-    setCustomCount(null);
-  }, []);
+  // The fields stay as they are on the way out, so the sheet doesn't empty
+  // itself while it slides away; the next `openDraft` seeds every one again.
+  const closeDraft = useCallback(() => setDraft(null), []);
 
   const openDraft = useCallback((next: Draft, reward?: Reward) => {
     setDraft(next);
@@ -463,6 +459,22 @@ export function RewardsScreen() {
     setLimitUnit(limit.count === null ? 'weeks' : limit.unit);
     setCustomCount(null);
   }, []);
+
+  // What the form opened with, so Cancel and the swipe-down only ask when
+  // something changed. Stamped once the opening's state has landed.
+  const draftSnapshot = JSON.stringify([draftTitle, draftCost, draftPrice, draftTaxable, draftNote, draftLink, draftOneTime, draftGlyph, limitCount, limitUnit, draftGuard]);
+  const openedSnapshot = useRef('');
+  const draftSnapshotRef = useRef(draftSnapshot);
+  draftSnapshotRef.current = draftSnapshot;
+  useEffect(() => {
+    if (draft !== null) openedSnapshot.current = draftSnapshotRef.current;
+  }, [draft]);
+  // Wired to both Cancel and the page sheet's swipe-down, which calls
+  // `onRequestClose` rather than Cancel.
+  const handleCancel = () => {
+    if (draftSnapshot === openedSnapshot.current) { closeDraft(); return; }
+    confirmDiscard(closeDraft);
+  };
 
   const saveDraft = useCallback(() => {
     if (!canSave || draft === null) return;
@@ -634,7 +646,6 @@ export function RewardsScreen() {
   const recentEntries = entries.slice(0, HISTORY_LIMIT);
   const history = recentEntries.slice(0, historyShown);
   const historyHidden = recentEntries.length - history.length;
-  const pickableItems = listItems.filter(t => !(draft?.mode === 'item' && draft.taskId === t.id));
   const customLink = savedLinks.isChip(draftLink) ? '' : draftLink;
   // The name of a link's chip, or null for a typed address, so the claim card's
   // button says "Open" rather than printing a URL.
@@ -646,21 +657,27 @@ export function RewardsScreen() {
   // Not a component: a component defined in render remounts on every
   // keystroke and drops the field's focus with it.
   const renderDraft = () => (
-    <View style={styles.card}>
-      {/* Add/Save and Cancel sit at the top: the form runs several screens
-          long, and at the bottom they were behind the keyboard or off screen. */}
-      <View style={styles.draftHeader}>
-        <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={closeDraft} minWidth={56} />
-        <Text style={styles.draftHeaderTitle} numberOfLines={1}>
-          {draft?.mode === 'edit' ? 'Edit reward' : 'New reward'}
-        </Text>
-        <SheetHeaderButton
-          label={draft?.mode === 'edit' ? BUTTON_LABEL.save : 'Add'}
-          onPress={saveDraft}
-          disabled={!canSave}
-          minWidth={56}
-        />
-      </View>
+    <View style={[styles.draftRoot, { paddingTop: spacing.md }]}>
+      {/* Add/Save and Cancel stay in the header, above the scroll, so they
+          are never behind the keyboard however long the form runs. */}
+      <SheetHeader
+        title={shownDraft?.mode === 'edit' ? 'Edit reward' : 'New reward'}
+        left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
+        right={(
+          <SheetHeaderButton
+            label={shownDraft?.mode === 'edit' ? BUTTON_LABEL.save : 'Add'}
+            onPress={saveDraft}
+            disabled={!canSave}
+          />
+        )}
+      />
+      <ScrollView
+        ref={draftScroll.ref}
+        style={styles.draftScroll}
+        contentContainerStyle={[styles.draftBody, { paddingBottom: insets.bottom + spacing.xl }]}
+        keyboardShouldPersistTaps="handled"
+        {...draftScroll.props}
+      >
       {draftItem ? (
         <View>
           <Text style={styles.rewardTitle}>{draftItem.title}</Text>
@@ -976,10 +993,10 @@ export function RewardsScreen() {
           })()}
         </>
       )}
-      {draft?.mode === 'edit' && (() => {
+      {shownDraft?.mode === 'edit' && (() => {
         // Inside the form rather than on the row, so the row's actions fit
         // one line: Claim, the link, the goal and Edit are the everyday ones.
-        const editing = rewards.find(r => r.id === draft.id);
+        const editing = rewards.find(r => r.id === shownDraft.id);
         if (!editing) return null;
         const title = rewardDisplay(editing, sourceOf(editing)).title;
         return (
@@ -994,6 +1011,8 @@ export function RewardsScreen() {
           </View>
         );
       })()}
+      </ScrollView>
+      <NumberPadAccessory />
     </View>
   );
 
@@ -1273,7 +1292,7 @@ export function RewardsScreen() {
         </CardSheet>
 
         <Text style={styles.sectionHeader}>Rewards</Text>
-        {openRewards.length === 0 && draft?.mode !== 'new' && (
+        {openRewards.length === 0 && (
           <View style={styles.emptyNote}>
             <EmptyNote icon="gift-outline" style={styles.noteUnderHint}>No rewards yet. Add your own, or start from an idea below.</EmptyNote>
           </View>
@@ -1281,29 +1300,22 @@ export function RewardsScreen() {
         <View style={styles.grid}>
           {(() => {
             const { ready, resting } = splitRewardsByWait(openRewards, entries, getCurrentDayStart());
-            const editing = draft?.mode === 'edit' ? draft.id : null;
-            // The form being edited takes a full row where its tile was.
-            return [...ready.map(r => ({ r, resting: false })), ...resting.map(r => ({ r, resting: true }))].map(({ r, resting: isResting }) => (
-              r.id === editing
-                ? <View key={r.id} style={styles.gridDraft}>{renderDraft()}</View>
-                : renderTile(r, isResting)
-            ));
+            return [...ready.map(r => ({ r, resting: false })), ...resting.map(r => ({ r, resting: true }))]
+              .map(({ r, resting: isResting }) => renderTile(r, isResting));
           })()}
         </View>
-        {draft?.mode === 'new' ? renderDraft() : (
-          <View style={styles.addRow}>
-            <InlineAction label="New reward" icon="add" onPress={() => openDraft({ mode: 'new' })} />
-            {openRewards.length > 0 && ideas.length > 0 && (
-              <InlineAction
-                label={ideasOpen ? 'Hide ideas' : 'Ideas'}
-                icon="bulb-outline"
-                variant="neutral"
-                surface="page"
-                onPress={() => { haptics.tap(); animateLayout(); setIdeasOpen(open => !open); }}
-              />
-            )}
-          </View>
-        )}
+        <View style={styles.addRow}>
+          <InlineAction label="New reward" icon="add" onPress={() => openDraft({ mode: 'new' })} />
+          {openRewards.length > 0 && ideas.length > 0 && (
+            <InlineAction
+              label={ideasOpen ? 'Hide ideas' : 'Ideas'}
+              icon="bulb-outline"
+              variant="neutral"
+              surface="page"
+              onPress={() => { haptics.tap(); animateLayout(); setIdeasOpen(open => !open); }}
+            />
+          )}
+        </View>
 
         <Text style={styles.sectionHeader}>Exchange rate</Text>
         <Text style={styles.sectionHint}>
@@ -1464,7 +1476,7 @@ export function RewardsScreen() {
 
         {hasLists && (
           <>
-            <Text style={styles.sectionHeader}>{list ? `From ${list.title}${pickableItems.length > 0 ? ` · ${pickableItems.length}` : ''}` : 'From a project'}</Text>
+            <Text style={styles.sectionHeader}>{list ? `From ${list.title}${listItems.length > 0 ? ` · ${listItems.length}` : ''}` : 'From a project'}</Text>
             {list === null ? (
               <View style={styles.listPrompt}>
                 <Text style={styles.sectionHint}>
@@ -1476,15 +1488,12 @@ export function RewardsScreen() {
               </View>
             ) : (
               <>
-                {draft?.mode === 'item' && renderDraft()}
-                {pickableItems.length === 0 ? (
-                  draft?.mode !== 'item' && (
-                    <View style={styles.emptyNote}>
-                      <EmptyNote icon="briefcase-outline" style={styles.noteUnderHint}>{`Every task in ${list.title} is already a reward.`}</EmptyNote>
-                    </View>
-                  )
+                {listItems.length === 0 ? (
+                  <View style={styles.emptyNote}>
+                    <EmptyNote icon="briefcase-outline" style={styles.noteUnderHint}>{`Every task in ${list.title} is already a reward.`}</EmptyNote>
+                  </View>
                 ) : (
-                  <RewardWishList key={list.id} items={pickableItems} onPrice={taskId => openDraft({ mode: 'item', taskId })} />
+                  <RewardWishList key={list.id} items={listItems} onPrice={taskId => openDraft({ mode: 'item', taskId })} />
                 )}
                 <View style={styles.addRow}>
                   <InlineAction label="Change project" icon="swap-horizontal" variant="neutral" surface="page" onPress={() => setListPickerOpen(true)} />
@@ -1543,13 +1552,24 @@ export function RewardsScreen() {
         title="Rewards from a project"
         noneLabel="No project"
       />
-      <HabitPickerSheet
-        visible={habitPickerOpen}
-        onClose={() => setHabitPickerOpen(false)}
-        value={draftGuard}
-        onSelect={id => setDraftGuard(id)}
-        excludeIds={guardedElsewhere}
-      />
+      <SheetModal
+        name="RewardForm"
+        visible={draft !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleCancel}
+      >
+        {shownDraft && renderDraft()}
+        {/* Inside this sheet's Modal, not beside it: a sibling would ask the
+            controller already presenting the form to present a second sheet. */}
+        <HabitPickerSheet
+          visible={habitPickerOpen}
+          onClose={() => setHabitPickerOpen(false)}
+          value={draftGuard}
+          onSelect={id => setDraftGuard(id)}
+          excludeIds={guardedElsewhere}
+        />
+      </SheetModal>
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
       <NumberPadAccessory />
@@ -1612,14 +1632,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  card: {
-    marginHorizontal: spacing.md,
-    marginVertical: spacing.xxs,
-    padding: spacing.smd,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgSecondary,
-    gap: spacing.sm,
-  },
+  draftRoot: { flex: 1, backgroundColor: colors.bg },
+  draftScroll: { flex: 1 },
+  draftBody: { padding: spacing.md, gap: spacing.sm },
   // The name gets its own full-width line and the actions wrap under it, so a
   // long reward name is never truncated to make room for a button.
   rewardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
@@ -1632,7 +1647,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     marginTop: spacing.xxs,
   },
-  gridDraft: { width: '100%', marginHorizontal: -spacing.md },
   // Two to a row. A width rather than flexGrow, so a lone last tile stays one
   // column wide instead of stretching across.
   tile: {
@@ -1660,11 +1674,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   // Delete (edit only) sits under the Linked habit field, which has no bottom margin of its own.
   draftActions: { marginTop: spacing.md },
-  draftHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xs, marginBottom: spacing.lg },
-  draftHeaderTitle: {
-    flex: 1, textAlign: 'center', color: colors.text,
-    fontSize: font.md, fontWeight: fontWeight.semibold,
-  },
   fieldLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,

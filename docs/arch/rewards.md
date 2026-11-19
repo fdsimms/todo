@@ -386,7 +386,7 @@ per-reward fact goes in the sheet, not on the tile.
   place. Neither tile is dimmed (a faded tile read as disabled); only its Claim pill is, and the tile's
   own text ("Back in 3 days") or progress bar says why. A reward in either state still opens its sheet,
   which explains itself when Claim is tapped.
-- **The form takes a full row where its tile was**, so editing never leaves a half-empty grid row.
+- **The add, edit and price-a-wish-list-item form is one page sheet** (`RewardForm` in `RewardsScreen`), never drawn in the page's flow: it runs several screens long, and inline it pushed the rest of the screen down and, when editing, took a grid row from its tile. It stages everything until Add/Save, so Cancel and the swipe-down both go through `handleCancel`'s discard check. The habit picker it raises is rendered inside the sheet, not beside it.
 
 ## A reward guarding a habit
 
