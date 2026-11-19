@@ -126,6 +126,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/columnCap.ts` — WIDE_LIST_ROUTES, DASHBOARD_ROUTES, UNCAPPED_WIDTH, dashboardColumnsFor, columnCapFor
 - `src/utils/columnDeal.ts` — DealtRow, dealColumns
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent
+- `src/utils/completionLogChip.ts` — CompletionLogChip, completionLogChips
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion, TARGET_FINISH_TAP_GUARD_MS, isStrayTapOnFinishedTarget
 - `src/utils/componentShares.ts` — componentShares, amountUsedCounts, MakesUnits, makesUnitsFor, BATCH_LABEL, amountUnitsFor
 - `src/utils/confirmDelete.ts` — confirmDelete
