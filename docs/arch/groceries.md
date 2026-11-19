@@ -1253,7 +1253,7 @@ on that scale is in the middle, and it's the one the app had no way to hear abou
   `addToPantry`'s rule: saying you *have* something is not a plan to buy it, and saying you're
   nearly out is nothing but one, **unless "Running low adds to the list" is off** (Settings, Groceries
   & meals; `runningLowAddsToList`, default on). That switch governs a mark made by hand, in the item
-  sheet, the add field's offer and the review deck; a supply running low passes `addToList: true`,
+  sheet and the add field's offer (the review deck always adds, see below); a supply running low passes `addToList: true`,
   since that is a request to reorder. The item sheet says what the pill will do before it is tapped.
   **In one direction only** — marking adds, clearing leaves the list
   alone. `onList` has several owners and nothing on the row records which of them put it there, so
@@ -1397,10 +1397,16 @@ write. "Computed first, corrected second" is the rule; this is the second half, 
   "Got it"/"Out of it" pair was missing, and it is the one answer with an outlet — it puts the row on
   the shopping list. That is what gives a review pass something to show for itself rather than being
   pure bookkeeping.
-- **Adding to the list is its own button, never a switch or a setting.** Swipe up and "Running low" pass
-  `addToList: false`, so they only mark the row and ignore `runningLowAddsToList`; the "Low, add to list" pill
-  under the card is `low` with `addToList: true`. A pass-wide toggle had to be set before every card that
-  needed it, and a button whose effect depended on a setting the card didn't show was ambiguous.
+- **"Out of it" and "Running low" both add to the home list, and the way out is a line shown after the
+  swipe, never a switch or a setting** (`pantryAnswerAddsToList`). They pass `addToList: true` and ignore
+  `runningLowAddsToList`. Flagging something as nearly gone is nearly always a request to buy it, so the
+  default is the add. The line under the card (`ListNotice`, in the spot "Edit item" holds) says what happened
+  ("Basmati rice added to the list") with a "Take off" button for the exception: it reverts the row and
+  answers again with `addToList: false`, so the answer stays and the row leaves the list. It lasts six seconds
+  or until the next answer, Skip or Undo, and says "already on the list" with no button when nothing was added.
+  Two earlier shapes failed: a pass-wide toggle had to be set before every card that needed it, and a separate
+  "Low, add to list" pill was an opt-in made before the swipe that was easy to overlook, with the wrong default
+  for the usual case. The finished list's chips add the same way (Undo there drops the row).
 - **"Restocked" is the one answer about a different packet.** Everything else asks about the packet the
   card was already holding; this says it has been replaced. So it is "still have it" over the row
   `acquiredRow` leaves (the same clear a receipt or scan does): frozen, opened and running low go,

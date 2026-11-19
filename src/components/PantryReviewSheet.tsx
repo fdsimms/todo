@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   Dimensions,
   PanResponder,
@@ -33,7 +34,10 @@ import {
   buildPantryReviewDeck,
   describeLastPurchase,
   describePantryDoubt,
+  describePantryListNotice,
   describePantryReviewDone,
+  pantryAnswerAddsToList,
+  type PantryListNotice,
   type PantryReviewAnswer,
   type PantryReviewCard,
   type PantryReviewDeck,
@@ -152,7 +156,29 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   deckRef.current = deck;
   indexRef.current = index;
 
+  // The line under the card after an add-to-list answer. It lasts a few
+  // seconds, or until the next answer, Skip or Undo, so it is never about a
+  // card other than the one just answered.
+  const [notice, setNotice] = useState<PantryListNotice | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearNotice = useCallback(() => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = null;
+    setNotice(null);
+  }, []);
+  const showNotice = useCallback((n: PantryListNotice) => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    setNotice(n);
+    AccessibilityInfo.announceForAccessibility(describePantryListNotice(n).title);
+    noticeTimer.current = setTimeout(() => {
+      noticeTimer.current = null;
+      setNotice(null);
+    }, NOTICE_MS);
+  }, []);
+  useEffect(() => clearNotice, [clearNotice]);
+
   useEffect(() => {
+    clearNotice();
     if (!visible) return;
     const grocery = useGroceryStore.getState();
     // Bare `new Date()` for the reason every pantry read takes it: the windows
@@ -162,12 +188,13 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     setHistory([]);
     setEditingId(null);
     pan.setValue({ x: 0, y: 0 });
-  }, [visible, pan]);
+  }, [visible, pan, clearNotice]);
 
   const commit = useCallback(
-    (answer: PantryReviewAnswer, addToList = false) => {
+    (answer: PantryReviewAnswer) => {
       const card = deckRef.current.cards[indexRef.current];
       if (!card) return;
+      const addToList = pantryAnswerAddsToList(answer);
       // Snapshotted from the store rather than from the card, so the row put
       // back by Undo is the one that was actually written over — the card holds
       // the item as the deck was built, which may be a few answers old by now.
@@ -182,8 +209,13 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       const portions = answerPantryReview(card.item.id, answer, { addToList });
       setHistory(h => [...h, { kind: 'answered', item: live ?? card.item, entry, answer, portions }]);
       setIndex(i => i + 1);
+      if (answer === 'out' || answer === 'low') {
+        showNotice({ name: live?.name ?? card.item.name, answer, added: entry === null, takenOff: false });
+      } else {
+        clearNotice();
+      }
     },
-    [answerPantryReview]
+    [answerPantryReview, showNotice, clearNotice]
   );
 
   /**
@@ -197,8 +229,9 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     haptics.tap();
     setHistory(h => [...h, { kind: 'skipped', item: card.item }]);
     setIndex(i => i + 1);
+    clearNotice();
     pan.setValue({ x: 0, y: 0 });
-  }, [pan]);
+  }, [pan, clearNotice]);
 
   /**
    * Fling the card out the way it was answered, then commit.
@@ -209,7 +242,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
    * finished state's counts would tick over a beat early.
    */
   const flingOut = useCallback(
-    (answer: PantryReviewAnswer, addToList = false) => {
+    (answer: PantryReviewAnswer) => {
       const toValue =
         answer === 'low' ? { x: 0, y: -SCREEN_HEIGHT }
         : answer === 'new' ? { x: 0, y: SCREEN_HEIGHT }
@@ -229,7 +262,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (!finished) return;
-        commit(answer, addToList);
+        commit(answer);
         // `pan` is one shared node bound to whichever card sits at offset 0,
         // so resetting it here — before this commit's `setIndex` has actually
         // been rendered — snaps the card that just flew out back into view
@@ -250,8 +283,29 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     if (previous.kind === 'answered') revertPantryAnswer(previous.item, previous.entry, previous.portions);
     setHistory(h => h.slice(0, -1));
     setIndex(i => Math.max(0, i - 1));
+    clearNotice();
     pan.setValue({ x: 0, y: 0 });
-  }, [history, pan, revertPantryAnswer]);
+  }, [history, pan, revertPantryAnswer, clearNotice]);
+
+  /**
+   * The line's "Take off": the answer stands and the row leaves the list.
+   * Reverts the row to the snapshot taken before the answer and answers again
+   * without the add, the same replace-not-layer a change on the review list
+   * does, so the row's other columns can't keep anything the add wrote.
+   */
+  const takeOffList = useCallback(() => {
+    if (!notice || !notice.added || notice.takenOff) return;
+    // The line only ever describes the newest answer: the next answer, Skip and
+    // Undo all clear or replace it.
+    const i = history.length - 1;
+    const entry = history[i];
+    if (!entry || entry.kind !== 'answered') return;
+    haptics.tap();
+    revertPantryAnswer(entry.item, entry.entry, entry.portions);
+    const portions = answerPantryReview(entry.item.id, entry.answer, { addToList: false });
+    setHistory(h => h.map((e, idx) => (idx === i && e.kind === 'answered' ? { ...e, portions } : e)));
+    showNotice({ ...notice, takenOff: true });
+  }, [notice, history, revertPantryAnswer, answerPantryReview, showNotice]);
 
   /**
    * The review screen's per-row Undo — puts that one row back exactly as it
@@ -291,7 +345,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       if (!entry || entry.kind !== 'answered' || entry.answer === answer) return;
       haptics.tap();
       revertPantryAnswer(entry.item, entry.entry, entry.portions);
-      const portions = answerPantryReview(entry.item.id, answer, { addToList: false });
+      const portions = answerPantryReview(entry.item.id, answer, { addToList: pantryAnswerAddsToList(answer) });
       setHistory(h => h.map((e, idx) => (idx === i && e.kind === 'answered' ? { ...e, answer, portions } : e)));
     },
     [answerPantryReview, history, revertPantryAnswer]
@@ -479,21 +533,18 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                 ))}
             </View>
             <View style={styles.cardActions}>
-              <InlineAction
-                label="Edit item"
-                icon="create-outline"
-                variant="neutral"
-                surface="page"
-                onPress={() => setEditingId(card.item.id)}
-                accessibilityLabel={`Edit ${card.item.name}`}
-              />
-              <InlineAction
-                label="Low, add to list"
-                icon="add"
-                tint={colors.orangeText}
-                onPress={() => flingOut('low', true)}
-                accessibilityLabel={`Mark ${card.item.name} as running low and add it to the grocery list`}
-              />
+              {notice ? (
+                <ListNotice notice={notice} colors={colors} styles={styles} onTakeOff={takeOffList} />
+              ) : (
+                <InlineAction
+                  label="Edit item"
+                  icon="create-outline"
+                  variant="neutral"
+                  surface="page"
+                  onPress={() => setEditingId(card.item.id)}
+                  accessibilityLabel={`Edit ${card.item.name}`}
+                />
+              )}
             </View>
           </View>
         )}
@@ -577,6 +628,45 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         />
       </View>
     </SheetModal>
+  );
+}
+
+/**
+ * What an "Out of it" or "Running low" just did to the list, in the spot Edit
+ * item holds the rest of the time. "Take off" is the only way to opt out of the
+ * add, and it is on screen exactly when something was added.
+ */
+function ListNotice({
+  notice,
+  colors,
+  styles,
+  onTakeOff,
+}: {
+  notice: PantryListNotice;
+  colors: Colors;
+  styles: Styles;
+  onTakeOff: () => void;
+}) {
+  const { title, detail } = describePantryListNotice(notice);
+  const tint = notice.answer === 'out' ? colors.red : colors.orangeText;
+  return (
+    <View style={styles.notice}>
+      <Ionicons name={notice.answer === 'out' ? 'close' : 'contrast-outline'} size={iconSize.md} color={tint} />
+      <View style={styles.noticeText}>
+        <Text style={styles.noticeTitle} numberOfLines={2}>
+          {title}
+        </Text>
+        {!!detail && <Text style={styles.noticeDetail}>{detail}</Text>}
+      </View>
+      {notice.added && !notice.takenOff && (
+        <InlineAction
+          label="Take off"
+          tint={colors.orangeText}
+          onPress={onTakeOff}
+          accessibilityLabel={`Take ${notice.name} off the grocery list`}
+        />
+      )}
+    </View>
   );
 }
 
@@ -712,6 +802,8 @@ function Action({
 }
 
 const EMPTY_DECK: PantryReviewDeck = { cards: [], omitted: 0 };
+/** How long the "added to the list" line stays up if nothing else is answered. */
+const NOTICE_MS = 6000;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 /**
  * How far a card has to travel before the release counts as an answer.
@@ -821,6 +913,20 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
 
     stage: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.md },
     cardActions: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: spacing.smd, marginTop: spacing.md },
+    notice: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.smd,
+      paddingVertical: spacing.sm,
+      paddingLeft: spacing.md,
+      paddingRight: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgSecondary,
+    },
+    noticeText: { flex: 1 },
+    noticeTitle: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.text },
+    noticeDetail: { fontSize: font.sm, color: colors.textSecondary },
     deck: { height: Math.round(CARD_HEIGHT * textScaleFactor) },
     card: {
       position: 'absolute',

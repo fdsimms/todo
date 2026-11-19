@@ -64,6 +64,35 @@ import { liveExpiresAt } from './groceryShelfLife';
 export type PantryReviewAnswer = 'have' | 'low' | 'out' | 'new';
 
 /**
+ * Whether the deck puts the row on the home list with this answer. "Out of it"
+ * and "Running low" both do, since flagging something as nearly gone is nearly
+ * always a request to buy it; the exception is the deck's "Take off" line, shown
+ * right after the swipe, which is why there is no switch to set beforehand. The
+ * swipe, the buttons and the finished list's chips all ask here, so they can't
+ * disagree.
+ */
+export function pantryAnswerAddsToList(answer: PantryReviewAnswer): boolean {
+  return answer === 'out' || answer === 'low';
+}
+
+/** What the line under the card says after an add-to-list answer, in its three states. */
+export interface PantryListNotice {
+  name: string;
+  answer: 'out' | 'low';
+  /** False when the row was already on the home list, so nothing was added. */
+  added: boolean;
+  takenOff: boolean;
+}
+
+/** The line shown under the deck after "Out of it" or "Running low": what happened to the list, and the answer that stays. */
+export function describePantryListNotice(n: PantryListNotice): { title: string; detail: string | null } {
+  const standing = n.answer === 'out' ? 'Out of it' : 'Running low';
+  if (n.takenOff) return { title: `${n.name} taken off the list`, detail: `Still marked ${standing.toLowerCase()}` };
+  if (!n.added) return { title: `${n.name} is already on the list`, detail: standing };
+  return { title: `${n.name} added to the list`, detail: standing };
+}
+
+/**
  * How many cards one session can hold.
  *
  * A pantry is hundreds of rows and a deck that long is the treadmill this
