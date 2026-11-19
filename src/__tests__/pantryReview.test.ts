@@ -5,6 +5,8 @@ import {
   describeLastPurchase,
   describePantryDoubt,
   describePantryReviewDone,
+  describePantryListNotice,
+  pantryAnswerAddsToList,
 } from '../utils/pantryReview';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -399,5 +401,37 @@ describe('the past use-by tier', () => {
   it('names the pill in days past its use-by date', () => {
     const bread = makeItem({ name: 'Bread', ...onHand, expiresAt: dayKeyAgo(27) });
     expect(describePantryDoubt(buildPantryReviewDeck([bread], NOW).cards[0])).toBe('27 days past its use-by date');
+  });
+});
+
+describe('pantryAnswerAddsToList', () => {
+  it('adds for out and low only', () => {
+    expect(pantryAnswerAddsToList('out')).toBe(true);
+    expect(pantryAnswerAddsToList('low')).toBe(true);
+    expect(pantryAnswerAddsToList('have')).toBe(false);
+    expect(pantryAnswerAddsToList('new')).toBe(false);
+  });
+});
+
+describe('describePantryListNotice', () => {
+  const base = { name: 'Basmati rice', answer: 'low' as const, added: true, takenOff: false };
+
+  it('says it was added, and keeps the answer as the detail', () => {
+    expect(describePantryListNotice(base)).toEqual({ title: 'Basmati rice added to the list', detail: 'Running low' });
+    expect(describePantryListNotice({ ...base, answer: 'out' }).detail).toBe('Out of it');
+  });
+
+  it('says the row was already there instead of claiming an add', () => {
+    expect(describePantryListNotice({ ...base, added: false })).toEqual({
+      title: 'Basmati rice is already on the list',
+      detail: 'Running low',
+    });
+  });
+
+  it('says it was taken off and that the answer still stands', () => {
+    expect(describePantryListNotice({ ...base, answer: 'out', takenOff: true })).toEqual({
+      title: 'Basmati rice taken off the list',
+      detail: 'Still marked out of it',
+    });
   });
 });
