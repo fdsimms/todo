@@ -33,6 +33,7 @@ import {
   moodCompletionInsight,
   moodSummary,
   pairedDays,
+  screenTimeMoodContrasts,
   symptomMoodContrasts,
   trainingDayMoodContrast,
   type HealthInsight,
@@ -1334,5 +1335,65 @@ describe('healthFindings', () => {
 
   it('says nothing below the paired-day floor', () => {
     expect(healthFindings(unrelated(2))).toEqual([]);
+  });
+});
+
+describe('screen time', () => {
+  /** Twelve paired days, the heavy-use ones (240+ minutes) logged lower. */
+  function withUse(minutesByDay: (number | null)[]): MoodDay[] {
+    return daysWithMoods(minutesByDay.map(m => (m !== null && m >= 240 ? 2 : 4))).map((d, i) => ({
+      ...d,
+      screenMinutes: minutesByDay[i],
+    }));
+  }
+
+  const mixed = [300, 60, 270, 90, 240, 30, 360, 120, 0, 60, 300, 150];
+
+  it('compares mood on days use reached an amount against the days it did not', () => {
+    const [over4] = screenTimeMoodContrasts(withUse(mixed), [240]);
+    expect(over4.minutes).toBe(240);
+    expect(over4.withDays).toBe(5);
+    expect(over4.withoutDays).toBe(7);
+    expect(over4.moodWith).toBe(2);
+    expect(over4.moodWithout).toBe(4);
+    expect(over4.delta).toBe(-2);
+  });
+
+  it('leaves a day with no reading out of both groups', () => {
+    const days = withUse([...mixed, null, null, null]);
+    const [over4] = screenTimeMoodContrasts(days, [240]);
+    expect(over4.withDays + over4.withoutDays).toBe(mixed.length);
+  });
+
+  it('treats a day read as 0 as a quiet day, not a missing one', () => {
+    const [over4] = screenTimeMoodContrasts(withUse(mixed), [240]);
+    expect(over4.withoutDays).toBe(7);
+  });
+
+  it('says nothing below the paired-day floor', () => {
+    expect(screenTimeMoodContrasts(withUse(mixed.slice(0, MIN_PAIRED_DAYS - 1)))).toEqual([]);
+  });
+
+  it('says nothing for an amount one side of which has too few days', () => {
+    expect(screenTimeMoodContrasts(withUse(mixed), [600])).toEqual([]);
+  });
+
+  it('gives every amount its own row, in the order asked', () => {
+    const rows = screenTimeMoodContrasts(withUse(mixed), [240, 90]);
+    expect(rows.map(r => r.minutes)).toEqual([240, 90]);
+  });
+
+  it('decorates a mood day with its reading and never creates a day', () => {
+    const days = buildMoodDays(
+      [log('2026-08-01', 4)], [], '00:00', [], null, [],
+      [{ dayKey: '2026-08-01', minutes: 150 }, { dayKey: '2026-08-02', minutes: 30 }],
+    );
+    expect(days).toHaveLength(1);
+    expect(days[0].screenMinutes).toBe(150);
+  });
+
+  it('leaves a day with no reading absent rather than zero', () => {
+    const [day] = buildMoodDays([log('2026-08-01', 4)], [], '00:00');
+    expect(day.screenMinutes ?? null).toBeNull();
   });
 });

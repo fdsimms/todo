@@ -29,6 +29,7 @@ import { interaction } from '../../theme';
 import { Toggle } from '../../components/Toggle';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { ScreenTimeUsageSection } from './ScreenTimeUsageSection';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 import { isDemoModeActive } from '../../utils/demoState';
@@ -1011,6 +1012,8 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
           onPress={() => { haptics.tap(); navigateToSettingsEntry(navigation, 'gen:screenTime'); }}
         />
       </SettingsSection>
+
+      <ScreenTimeUsageSection />
 
       {reasons.length > 0 && (
         <SettingsSection

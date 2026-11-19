@@ -244,6 +244,12 @@ struct ScreenTimeRuleShared: Codable {
   /// The app group whose selection this rule counts. Absent from a rules file
   /// an older build wrote, which reads as the default group.
   let groupId: String?
+  /// Whether the event counts use from before the monitor was armed today
+  /// (`DeviceActivityEvent`'s `includesPastActivity`, iOS 17.4+). The usage
+  /// ladder sets it, because the app re-arms on a new day or a changed
+  /// selection and a rung must still mean "this much use today". Absent for the
+  /// task rules, which keep the system's own default. An older iOS ignores it.
+  let includesPastActivity: Bool?
 }
 
 /// One speed bump rule, as both processes see it. Group ids are resolved by the
@@ -462,6 +468,12 @@ struct ScheduleWindowShared: Codable {
 struct ScreenTimeCrossing: Codable {
   let ruleId: String
   let dayKey: String
+  /// When the extension was woken, in seconds since 1970. The usage ladder files
+  /// a crossing under the logical day this falls on, worked out in the app
+  /// (`dayResetTime` isn't known here), because `dayKey` is only the day the app
+  /// last armed the monitor and goes stale if the app isn't opened for a while.
+  /// Absent from a crossing an older build wrote.
+  let atSeconds: Double?
 }
 
 extension ScreenTimeShared {
@@ -568,7 +580,14 @@ extension ScreenTimeShared {
   /// already fired, and a duplicate here is a duplicate task.
   static func appendCrossing(_ crossing: ScreenTimeCrossing) {
     var existing = readCrossings()
-    guard !existing.contains(where: { $0.ruleId == crossing.ruleId && $0.dayKey == crossing.dayKey }) else { return }
+    // The calendar day of the wake is part of the identity: `dayKey` can be a
+    // day old when the app hasn't been opened since, and a rung crossed again
+    // today would otherwise be dropped as yesterday's duplicate.
+    guard !existing.contains(where: { existing in
+      guard existing.ruleId == crossing.ruleId && existing.dayKey == crossing.dayKey else { return false }
+      guard let a = existing.atSeconds, let b = crossing.atSeconds else { return true }
+      return Calendar.current.isDate(Date(timeIntervalSince1970: a), inSameDayAs: Date(timeIntervalSince1970: b))
+    }) else { return }
     existing.append(crossing)
     guard let data = try? JSONEncoder().encode(existing) else { return }
     writeData(data, to: crossingsFileName)

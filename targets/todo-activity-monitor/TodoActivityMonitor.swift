@@ -61,7 +61,11 @@ class TodoActivityMonitor: DeviceActivityMonitor {
     // appendCrossing ignores a duplicate for the same rule and day. iOS can
     // wake this more than once for an event that has already fired, and a
     // duplicate here would be a duplicate task.
-    ScreenTimeShared.appendCrossing(ScreenTimeCrossing(ruleId: ruleId, dayKey: dayKey))
+    ScreenTimeShared.appendCrossing(ScreenTimeCrossing(
+      ruleId: ruleId,
+      dayKey: dayKey,
+      atSeconds: Date().timeIntervalSince1970
+    ))
   }
 
   /// A speed bump's heads-up was crossed: tell the person a block is close.

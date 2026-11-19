@@ -45,12 +45,19 @@ export interface ScreenTimeMonitorRule {
   thresholdMinutes: number;
   /** The app group whose selection this rule counts. Absent from an older caller; native reads it as Default. */
   groupId?: string;
+  /** Count use from before this arming (iOS 17.4+; older iOS ignores it). Set by the usage ladder only. */
+  includesPastActivity?: boolean;
 }
 
-/** A threshold that fired: which rule, and the logical day it fired on. */
+/**
+ * A threshold that fired: which rule, and the logical day the app last armed
+ * the monitor for. `atSeconds` is when the extension was woken (seconds since
+ * 1970), absent from a crossing an older build recorded.
+ */
 export interface ScreenTimeCrossing {
   ruleId: string;
   dayKey: string;
+  atSeconds?: number;
 }
 
 interface TodoScreenTimeNativeModule {

@@ -121,7 +121,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { linkFor } from '../constants/linkApps';
-import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, screenTimeMoodContrasts, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { analyzeExercise, recordSessions, trainingDays } from '../utils/workoutRecords';
 import { currentProgram, programProgress } from '../utils/workoutProgram';
 import { programHistory, routineHistory } from '../utils/routineVersions';
@@ -145,7 +145,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTransitStore } from '../store/useTransitStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
-import { initDatabase, isUsingDemoDatabase } from '../db/database';
+import { dbGetScreenTimeDays, initDatabase, isUsingDemoDatabase } from '../db/database';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDeadlineFromOffset, getLogicalToday } from '../utils/dateUtils';
 import { eventTaskRuleIdOf } from '../utils/eventTasks';
 import { TRAVEL_LEAD_MINUTES_DEFAULT, travelDisruptionNote, travelSourceOf, travelSourceStart } from '../utils/travelTasks';
@@ -2331,6 +2331,14 @@ describe('demo seed — people', () => {
     // the code and useless as a demo of what the code is for.
     const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
     expect(symptomMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('seeds phone use, so Mood with screen time has something to report', () => {
+    // The card needs ten paired days with a reading and three on each side of
+    // each amount, and it is hidden while the switch is off.
+    expect(useSettingsStore.getState().screenTimeUsage).toBe(true);
+    const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00', [], null, [], dbGetScreenTimeDays());
+    expect(screenTimeMoodContrasts(days).length).toBe(2);
   });
 
   it('seeds notes from further back, so the Looking back card has something to show', () => {

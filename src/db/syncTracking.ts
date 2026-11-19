@@ -361,6 +361,10 @@ export const SYNC_EXCLUDED_TABLES = [
   // nap alarm set on the phone must not also ring on the iPad, and a device
   // that turns one off says nothing about another's.
   'alarms',
+  // Daily phone use as this phone's monitor saw it (see utils/screenTimeUsage.ts).
+  // A reading belongs to the device that took it: the same day on another phone
+  // is a different number, and merging them would be inventing one.
+  'screen_time_days',
 ] as const;
 
 /**

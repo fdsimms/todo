@@ -14,6 +14,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { addDays } from 'date-fns/addDays';
 import { useShallow } from 'zustand/react/shallow';
 import { useMoodStore } from '../store/useMoodStore';
+import { useScreenTimeStore } from '../store/useScreenTimeStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
@@ -30,7 +31,7 @@ import { foodDayInputs, foodKeyNames } from '../utils/nutritionStats';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { retentionCutoff, retentionLabel } from '../utils/retention';
-import { buildMoodDays, categoryMoodContrasts, contextTagMoodContrasts, finishedDaysAverage, foodMoodContrasts, healthFindings, metricAverage, moodBarFraction, contrastBarPercent, moodByTimeOfDay, moodCompletionInsight, moodSummary, nutrientFindings, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, categoryMoodContrasts, contextTagMoodContrasts, finishedDaysAverage, foodMoodContrasts, healthFindings, metricAverage, moodBarFraction, contrastBarPercent, moodByTimeOfDay, moodCompletionInsight, moodSummary, nutrientFindings, screenTimeMoodContrasts, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { trainingDays } from '../utils/workoutRecords';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -41,6 +42,7 @@ import { WideScroll } from '../components/WideScroll';
 import { InlineAction } from '../components/InlineAction';
 import { animateLayout } from '../utils/layoutAnimation';
 import { joinAnd } from '../utils/workoutProgression';
+import { USAGE_STEP_MINUTES, usageHoursLabel } from '../utils/screenTimeUsage';
 import { ContrastBars } from '../components/ContrastBars';
 import { capitalize } from '../utils/capitalize';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
@@ -140,12 +142,25 @@ export function MoodInsightsScreen() {
     [kitchenEnabled, foodEntries],
   );
 
+  // Empty while the recording is off, so every read says nothing rather than
+  // being asked not to look. Readings already stored stay on the phone until it
+  // is turned off, which deletes them.
+  const usageDays = useScreenTimeStore(s => s.usageDays);
+  const usageOn = useSettingsStore(s => s.screenTimeUsage);
+  // Read when the screen is shown, not only when the app comes forward: demo
+  // mode swaps the database under the store, and a crossing may have been
+  // recorded since the last foreground.
+  useFocusEffect(useCallback(() => { useScreenTimeStore.getState().loadUsage(); }, []));
+
   const days = useMemo(
     () => buildMoodDays(
       logs, tasks, settings.dayResetTime, healthHistory ?? [], completionsKnownFrom, foodDays,
+      usageOn ? usageDays : [],
     ),
-    [logs, tasks, settings.dayResetTime, healthHistory, completionsKnownFrom, foodDays],
+    [logs, tasks, settings.dayResetTime, healthHistory, completionsKnownFrom, foodDays, usageOn, usageDays],
   );
+
+  const screenTimeRows = useMemo(() => screenTimeMoodContrasts(days), [days]);
 
   // Days the mood log covers that the task history no longer does. Said out
   // loud on the screen rather than left to quietly weaken the numbers: a
@@ -627,6 +642,36 @@ export function MoodInsightsScreen() {
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days a tag applied, against days it didn’t.
+                </Text>
+              </View>
+            </>
+          )}
+
+          {screenTimeRows.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>MOOD WITH SCREEN TIME</Text>
+              <View style={styles.card}>
+                {screenTimeRows.map((row, i) => {
+                  const hours = usageHoursLabel(row.minutes);
+                  return (
+                    <ContrastBars
+                      key={row.minutes}
+                      first={i === 0}
+                      label={`Over ${hours} hours of screen time`}
+                      detail={`${row.withDays} of ${row.withDays + row.withoutDays} days`}
+                      withLabel="Applied"
+                      withoutLabel="Didn’t"
+                      withFraction={moodBarFraction(row.moodWith)}
+                      withoutFraction={moodBarFraction(row.moodWithout)}
+                      withText={row.moodWith.toFixed(1)}
+                      withoutText={row.moodWithout.toFixed(1)}
+                      accessibilityLabel={`Over ${hours} hours of screen time, average mood ${row.moodWith.toFixed(1)} on days it applied, ${row.moodWithout.toFixed(1)} on days it didn’t`}
+                    />
+                  );
+                })}
+                <Text style={styles.chartCaption}>
+                  Your average mood on days you went over each amount, against days you didn’t.
+                  Screen time is counted in {USAGE_STEP_MINUTES} minute steps, and days with no reading aren’t included.
                 </Text>
               </View>
             </>

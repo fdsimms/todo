@@ -369,7 +369,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodEventTagOffers.ts` — MOOD_TAG_OFFER_DAYS, MoodEventTagOffer, clipAtWord, moodEventTagOffers, filterMoodEventTagOffers, describeMoodEventTagOffer, ruleFromOffer, moodTagOfferWindow
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
-- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +46 more
+- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +48 more
 - `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, MOOD_CHANGES, moodChangeLabel, CHANGE_ANCHOR_WINDOW_MS, changeAnchorFor, asksChange, changeTally, +22 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt
@@ -576,6 +576,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/screenSettings.ts` — SCREEN_SETTINGS, screenSettingsEntries
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
+- `src/utils/screenTimeUsage.ts` — USAGE_GROUP_ID, USAGE_STEP_MINUTES, USAGE_MAX_MINUTES, ScreenTimeDay, UsageRung, usageRungs, isUsageRuleId, usageRuleMinutes, UsageCrossingInput, usageCrossingDay, +3 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
 - `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, ScrollAxisMetrics, hiddenAfter, hiddenBefore, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/sealedNoteTasks.ts` — addSealedNoteReminder, dropSealedNoteReminder
@@ -971,7 +972,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +336 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +339 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`

@@ -936,6 +936,15 @@ function runInitDatabase(): void {
       created_at TEXT NOT NULL
     );
 
+    -- One row per logical day the usage monitor watched: the highest usage rung
+    -- reached, in minutes (utils/screenTimeUsage.ts). Device-local, neither
+    -- synced nor backed up: it is what this phone's monitor saw, and another
+    -- phone's reading of the same day is a different number, not a copy.
+    CREATE TABLE IF NOT EXISTS screen_time_days (
+      day_key TEXT PRIMARY KEY NOT NULL,
+      minutes INTEGER NOT NULL DEFAULT 0
+    );
+
     -- A recipe's nutrition estimate asked for with no connection — see
     -- utils/recipeEstimateQueue.ts. One row per recipe, device-local like
     -- pending_estimates. estimate_key is the sheet's fingerprint of what was
@@ -3197,6 +3206,10 @@ export const BACKUP_EXCLUDED_TABLES = [
   // rows are believed only against a fingerprint of ingredient lines that a
   // restore is about to rewrite.
   'pending_recipe_estimates',
+  // Daily phone use as this phone's monitor saw it. It describes this device's
+  // own days and a restore onto another phone would put someone else's use
+  // beside this phone's mood log.
+  'screen_time_days',
   // Alarms (see Alarm in types). An alarm belongs to the phone it rings on,
   // and a restore onto another phone, or weeks later, would set alarms for a
   // morning nobody planned. They are quick to set again; a wrong one ringing
@@ -3554,7 +3567,7 @@ export function dbHasOwnSyncData(): boolean {
  * Device-only tables about the rows an erase removes: a focus session over
  * tasks that are gone, and meals or recipes waiting for an estimate.
  */
-const ERASED_DEVICE_TABLES = ['focus_sessions', 'pending_estimates', 'pending_recipe_estimates'];
+const ERASED_DEVICE_TABLES = ['focus_sessions', 'pending_estimates', 'pending_recipe_estimates', 'screen_time_days'];
 
 /**
  * Empties this device so it can join sync holding only what its other devices
@@ -4445,6 +4458,32 @@ export function dbGetAllSettings(): Map<string, string> {
 
 export function dbSetSetting(key: string, value: string): void {
   db.runSync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+}
+
+/** Every day the usage monitor has a reading for, oldest first (`screen_time_days`). */
+export function dbGetScreenTimeDays(): { dayKey: string; minutes: number }[] {
+  return db
+    .getAllSync<{ day_key: string; minutes: number }>('SELECT day_key, minutes FROM screen_time_days ORDER BY day_key')
+    .map(r => ({ dayKey: r.day_key, minutes: r.minutes }));
+}
+
+/**
+ * Raises a day's reading to `minutes`, creating the day at that figure. Never
+ * lowers one: a rung is a floor, so a late or repeated crossing for a lower
+ * rung must leave the day where it is. Writing 0 is how a day is marked
+ * watched before any rung fires.
+ */
+export function dbRaiseScreenTimeDay(dayKey: string, minutes: number): void {
+  db.runSync(
+    `INSERT INTO screen_time_days (day_key, minutes) VALUES (?, ?)
+     ON CONFLICT(day_key) DO UPDATE SET minutes = MAX(minutes, excluded.minutes)`,
+    [dayKey, minutes],
+  );
+}
+
+/** Forgets every reading, for when the person turns the recording off. */
+export function dbClearScreenTimeDays(): void {
+  db.runSync('DELETE FROM screen_time_days');
 }
 
 /**
