@@ -23627,7 +23627,7 @@ describe('checkFrankiTasks', () => {
     check();
     const [task] = live('read:');
     expect(task.title).toBe('Read & Listen: Thai');
-    expect(task.linkUrl).toBe('franki://read');
+    expect(task.linkUrl).toBe('franki://read?language=th');
     expect(task.generatedSourceId).toBe('read:2026-10-18:th');
     expect(current.frankiReadSpent).toEqual({ dayKey: '2026-10-18', languages: ['th'] });
 

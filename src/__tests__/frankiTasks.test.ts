@@ -1,4 +1,5 @@
 import {
+  frankiReadUrl,
   FRANKI_REVIEW_THRESHOLD_DEFAULT,
   clampFrankiGoalMinutes,
   clampFrankiReviewThreshold,
@@ -77,6 +78,12 @@ describe('frankiStatusUrl', () => {
     expect(frankiStatusUrl('')).toBeNull();
     expect(frankiStatusUrl('   ')).toBeNull();
     expect(frankiStatusUrl(null)).toBeNull();
+  });
+});
+
+describe('frankiReadUrl', () => {
+  it('opens Franki on the language the task is for', () => {
+    expect(frankiReadUrl('de')).toBe('franki://read?language=de');
   });
 });
 

@@ -5457,7 +5457,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(franki.map(t => t.title).sort()).toEqual(['Read & Listen: Polish', 'Read & Listen: Thai']);
     expect(franki.map(t => t.generatedSourceId).sort()).toEqual([`read:${today}:pl`, `read:${today}:th`]);
     for (const task of franki) {
-      expect(task.linkUrl).toBe('franki://read');
+      expect(task.linkUrl).toBe(`franki://read?language=${task.generatedSourceId?.split(':').pop()}`);
       expect(task.category).toBe('Study');
     }
     expect(settings.frankiReadLanguages).toEqual({ pl: 'daily', th: 'rotate' });

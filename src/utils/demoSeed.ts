@@ -125,7 +125,7 @@ import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './
 import { healthSourceId, defaultHealthRules } from './healthRules';
 import { WAKE_UP_DEFAULT_GET_READY_MINUTES, wakeUpSourceId, wakeUpTitle } from './wakeUpTasks';
 import { WANIKANI_REVIEW_URL, wanikaniReviewSourceId, wanikaniReviewTitle } from './wanikaniTasks';
-import { FRANKI_READ_URL, frankiReadSourceId, frankiReadTitle } from './frankiTasks';
+import { frankiReadSourceId, frankiReadUrl, frankiReadTitle } from './frankiTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -2167,7 +2167,7 @@ export function seedDemoData(): void {
       title: frankiReadTitle({ name }),
       dueDate: today.toISOString(),
       category: 'Study',
-      linkUrl: FRANKI_READ_URL,
+      linkUrl: frankiReadUrl(code),
       ...generatedBy('franki', frankiReadSourceId(dayKeyOf(today), code)),
     });
   }

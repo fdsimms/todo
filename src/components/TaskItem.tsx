@@ -83,6 +83,7 @@ import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotY
 import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
+import { completionLogChips } from '../utils/completionLogChip';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { activeChainStep, chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
 import { isAnsweredByRecord, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
@@ -1979,6 +1980,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // doesn't complete anything until it's answered, and this one always does.
   const mealLogPromptEnabled = useSettingsStore(s => s.mealLogPrompt);
   const offersMealLog = offersMealLogOnCompletion(task, mealLogPromptEnabled);
+  const logChips = completionLogChips(task, mealLogPromptEnabled);
 
   const slipped = isNegative && isFailedToday(task, getCurrentDayStart());
   const slipsLoggedToday = isNegative ? slipsToday(task, getCurrentDayStart()) : 0;
@@ -3444,7 +3446,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
   const penaltyLabel = penaltyChipLabel(task, penaltyShieldEnabled);
-  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || frankiMinutes !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || task.generatedKind === 'eventDetails' || placeReminderLabel !== null;
+  const hasOtherMeta = logChips.length > 0 || penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || frankiMinutes !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || task.generatedKind === 'eventDetails' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   // A task the app wrote by itself says so on its row, in a tab on the card's
   // top-left corner (see `autoTab` in the styles). Only a small sparkle inside
@@ -4485,6 +4487,20 @@ const TaskItemRow = React.memo(function TaskItem({
                 share a category, a shape and (once each is planned) a title
                 that only names food. The glyph is the slot's own, the same one
                 the Settings row that switches the meal on wears. */}
+            {/* What ticking this row records (a dose, a meal), so a row that
+                logs something is told apart from one that doesn't. */}
+            {logChips.map(chip => (
+              <View key={chip.kind} style={styles.logsChip} accessibilityLabel={chip.text}>
+                <Ionicons
+                  name={chip.kind === 'dose' ? 'medkit-outline' : 'restaurant-outline'}
+                  size={iconSize.xs}
+                  color={colors.accentText}
+                />
+                <Text style={styles.logsChipLabel} numberOfLines={1}>
+                  {chip.text}
+                </Text>
+              </View>
+            ))}
             {mealSlot !== null && (
               <View style={styles.metaChip}>
                 <Ionicons
@@ -6612,6 +6628,21 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     alignItems: 'center',
     gap: 4,
     flexShrink: 1,
+  },
+  logsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.xsm,
+    paddingVertical: spacing.xxs,
+  },
+  logsChipLabel: {
+    color: colors.accentText,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   // The streak flame + count read as one glyph, not an icon-label pair, so it
   // wants tighter spacing than every other metaChip (project, category, etc.)
