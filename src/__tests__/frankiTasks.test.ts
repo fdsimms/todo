@@ -13,7 +13,6 @@ import {
   wantsFrankiDailyTask,
   wantsFrankiGoalTask,
   frankiTaskDayKey,
-  frankiReadSince,
   frankiReadSourceId,
   frankiReadTitle,
   frankiReviewSourceId,
@@ -21,22 +20,19 @@ import {
   frankiStatusUrl,
   frankiTaskKind,
   isFrankiTaskReady,
-  plannedFrankiReadLanguages,
-  clampFrankiRotateCount,
-  frankiReadModeOf,
   frankiReadSpentToday,
   frankiReadTaskLanguage,
-  parseFrankiReadModes,
+  wantedFrankiReadLanguages,
   parseFrankiReadSpent,
   withFrankiReadSpent,
   type FrankiReadListen,
+  type FrankiReadToday,
   type FrankiSnapshot,
 } from '../utils/frankiTasks';
 
 const NOW = new Date(2026, 9, 18, 10, 20);
-const DAY_START = new Date(2026, 9, 18, 0, 0);
 
-const POLISH: FrankiReadListen = { language: 'pl', name: 'Polish', waiting: 2, lastReadAt: null };
+const POLISH: FrankiReadListen = { language: 'pl', name: 'Polish', waiting: 2 };
 
 const snapshot = (overrides: Partial<FrankiSnapshot> = {}): FrankiSnapshot => {
   const readListen = overrides.readListen === undefined ? POLISH : overrides.readListen;
@@ -46,16 +42,14 @@ const snapshot = (overrides: Partial<FrankiSnapshot> = {}): FrankiSnapshot => {
     upcoming: [],
     dayEndsAt: null,
     readListen,
-    readLanguages: readListen ? [readListen] : [],
+    readToday: null,
     frankiNew: null,
     studyDays: [],
     ...overrides,
   };
 };
 
-const lang = (language: string, name: string, waiting: number, lastReadAt: Date | null = null): FrankiReadListen => ({
-  language, name, waiting, lastReadAt: lastReadAt ? lastReadAt.toISOString() : null,
-});
+const today = (language: string, name: string, done = false): FrankiReadToday => ({ language, name, done });
 
 const row = (sourceId: string, extra: Record<string, unknown> = {}) => ({
   generatedKind: 'franki' as const,
@@ -125,90 +119,19 @@ describe('source ids and titles', () => {
 });
 
 describe('which languages get a Read & Listen task', () => {
-  const plan = (
-    languages: FrankiReadListen[],
-    modes: Record<string, 'daily' | 'rotate' | 'off'> = {},
-    rotateCount = 1,
-    spentToday: string[] = [],
-  ) => plannedFrankiReadLanguages({
-    snapshot: snapshot({ readLanguages: languages }),
-    dayStart: DAY_START,
-    modes,
-    rotateCount,
-    spentToday,
+  it('wants each language Franki lists that was not read today', () => {
+    expect(wantedFrankiReadLanguages([today('th', 'Thai'), today('pl', 'Polish')], [])).toEqual(['th', 'pl']);
+    expect(wantedFrankiReadLanguages([today('th', 'Thai', true), today('pl', 'Polish')], [])).toEqual(['pl']);
+    expect(wantedFrankiReadLanguages([], [])).toEqual([]);
   });
 
-  it('wants a language while a text is waiting in it and none was read today', () => {
-    expect(plan([lang('pl', 'Polish', 2)])).toEqual(['pl']);
-    expect(plan([lang('pl', 'Polish', 0)])).toEqual([]);
-    expect(plan([lang('pl', 'Polish', 2, new Date(2026, 9, 18, 8))])).toEqual([]);
-  });
-
-  it('counts a text read yesterday as not read today', () => {
-    expect(frankiReadSince(lang('pl', 'Polish', 1, new Date(2026, 9, 17, 23)), DAY_START)).toBe(false);
-    expect(plan([lang('pl', 'Polish', 1, new Date(2026, 9, 17, 23))])).toEqual(['pl']);
-  });
-
-  it('gives every Every day language its task, whatever the rotation count', () => {
-    const languages = [lang('th', 'Thai', 1), lang('fr', 'French', 1), lang('pl', 'Polish', 1)];
-    expect(plan(languages, { th: 'daily', fr: 'daily', pl: 'daily' }, 1)).toEqual(['th', 'fr', 'pl']);
-  });
-
-  it('gives a language nobody set a turn, and one language a day by default', () => {
-    expect(frankiReadModeOf({}, 'fr')).toBe('rotate');
-    const languages = [lang('th', 'Thai', 1, new Date(2026, 9, 17)), lang('fr', 'French', 1, new Date(2026, 9, 10))];
-    expect(plan(languages)).toEqual(['fr']);
-  });
-
-  it('rotates the language read least recently first, a never-read one before any', () => {
-    const languages = [
-      lang('th', 'Thai', 1, new Date(2026, 9, 17)),
-      lang('fr', 'French', 1, new Date(2026, 9, 10)),
-      lang('pl', 'Polish', 1),
-    ];
-    expect(plan(languages, {}, 1)).toEqual(['pl']);
-    expect(plan(languages, {}, 2)).toEqual(['pl', 'fr']);
-    expect(plan(languages, {}, 9)).toEqual(['pl', 'fr', 'th']);
-  });
-
-  it('breaks a tie by name, so the order does not move between reads', () => {
-    const languages = [lang('th', 'Thai', 1), lang('de', 'German', 1)];
-    expect(plan(languages, {}, 1)).toEqual(['de']);
-  });
-
-  it('counts the rotating languages already written today against the count, and never rewrites one', () => {
-    const languages = [lang('th', 'Thai', 1), lang('fr', 'French', 1), lang('pl', 'Polish', 1)];
-    expect(plan(languages, {}, 1, ['fr'])).toEqual([]);
-    expect(plan(languages, {}, 2, ['fr'])).toEqual(['pl']);
-    expect(plan(languages, {}, 1, ['fr', 'pl', 'th'])).toEqual([]);
-  });
-
-  it('does not charge an Every day language against the rotation', () => {
-    const languages = [lang('th', 'Thai', 1), lang('fr', 'French', 1)];
-    expect(plan(languages, { th: 'daily' }, 1, ['th'])).toEqual(['fr']);
-  });
-
-  it('skips a language set to Off', () => {
-    const languages = [lang('th', 'Thai', 1), lang('fr', 'French', 1)];
-    expect(plan(languages, { th: 'off' }, 2)).toEqual(['fr']);
+  it('never rewrites a language whose task was already written today', () => {
+    expect(wantedFrankiReadLanguages([today('th', 'Thai'), today('pl', 'Polish')], ['th'])).toEqual(['pl']);
+    expect(wantedFrankiReadLanguages([today('th', 'Thai')], ['th', 'pl'])).toEqual([]);
   });
 });
 
-describe('the per-language settings', () => {
-  it('reads the stored choices and drops what it cannot use', () => {
-    expect(parseFrankiReadModes('{"th":"daily","fr":"off","pl":"sometimes","de":3}')).toEqual({ th: 'daily', fr: 'off' });
-    expect(parseFrankiReadModes('not json')).toEqual({});
-    expect(parseFrankiReadModes('["th"]')).toEqual({});
-    expect(parseFrankiReadModes(null)).toEqual({});
-  });
-
-  it('keeps the rotation count in the stepper’s range', () => {
-    expect(clampFrankiRotateCount(0)).toBe(1);
-    expect(clampFrankiRotateCount(99)).toBe(10);
-    expect(clampFrankiRotateCount(2.4)).toBe(2);
-    expect(clampFrankiRotateCount(undefined)).toBe(1);
-  });
-
+describe('the Read & Listen languages written today', () => {
   it('records the languages written today, and forgets them when the day passes', () => {
     const first = withFrankiReadSpent(null, '2026-10-18', 'th');
     const second = withFrankiReadSpent(first, '2026-10-18', 'fr');
@@ -224,27 +147,24 @@ describe('the per-language settings', () => {
 
 describe('isFrankiTaskReady', () => {
   it('is ready once no cards are due, or a text was read today', () => {
-    expect(isFrankiTaskReady(row('reviews:2026-10-18T09'), snapshot(), NOW, DAY_START)).toBe(true);
-    expect(isFrankiTaskReady(row('reviews:2026-10-18T09'), snapshot({ reviewsNow: 4 }), NOW, DAY_START)).toBe(false);
-    const read = snapshot({ readListen: lang('pl', 'Polish', 1, new Date(2026, 9, 18, 9)) });
-    expect(isFrankiTaskReady(row('read:2026-10-18:pl'), read, NOW, DAY_START)).toBe(true);
-    expect(isFrankiTaskReady(row('read:2026-10-18:pl'), snapshot(), NOW, DAY_START)).toBe(false);
+    expect(isFrankiTaskReady(row('reviews:2026-10-18T09'), snapshot(), NOW)).toBe(true);
+    expect(isFrankiTaskReady(row('reviews:2026-10-18T09'), snapshot({ reviewsNow: 4 }), NOW)).toBe(false);
+    const read = snapshot({ readToday: [today('pl', 'Polish', true)] });
+    expect(isFrankiTaskReady(row('read:2026-10-18:pl'), read, NOW)).toBe(true);
+    expect(isFrankiTaskReady(row('read:2026-10-18:pl'), snapshot(), NOW)).toBe(false);
   });
 
   it('judges a Read & Listen task by its own language, not the one being read', () => {
-    const both = snapshot({
-      readListen: lang('pl', 'Polish', 1),
-      readLanguages: [lang('pl', 'Polish', 1), lang('th', 'Thai', 1, new Date(2026, 9, 18, 9))],
-    });
-    expect(isFrankiTaskReady(row('read:2026-10-18:th'), both, NOW, DAY_START)).toBe(true);
-    expect(isFrankiTaskReady(row('read:2026-10-18:pl'), both, NOW, DAY_START)).toBe(false);
-    expect(isFrankiTaskReady(row('read:2026-10-18:de'), both, NOW, DAY_START)).toBe(false);
+    const both = snapshot({ readToday: [today('pl', 'Polish'), today('th', 'Thai', true)] });
+    expect(isFrankiTaskReady(row('read:2026-10-18:th'), both, NOW)).toBe(true);
+    expect(isFrankiTaskReady(row('read:2026-10-18:pl'), both, NOW)).toBe(false);
+    expect(isFrankiTaskReady(row('read:2026-10-18:de'), both, NOW)).toBe(false);
   });
 
   it('is never ready while held, or without a read', () => {
     const held = row('reviews:2026-10-18T15', { dueDate: new Date(2026, 9, 18, 12).toISOString(), windowStart: '15:00' });
-    expect(isFrankiTaskReady(held, snapshot(), NOW, DAY_START)).toBe(false);
-    expect(isFrankiTaskReady(row('reviews:2026-10-18T09'), null, NOW, DAY_START)).toBe(false);
+    expect(isFrankiTaskReady(held, snapshot(), NOW)).toBe(false);
+    expect(isFrankiTaskReady(row('reviews:2026-10-18T09'), null, NOW)).toBe(false);
   });
 });
 
@@ -272,10 +192,10 @@ describe('the once-a-day cards task', () => {
   });
 
   it('is ready only once nothing is left and Franki has said how many new cards are', () => {
-    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot({ frankiNew: 0 }), NOW, DAY_START)).toBe(true);
-    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot({ frankiNew: 3 }), NOW, DAY_START)).toBe(false);
+    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot({ frankiNew: 0 }), NOW)).toBe(true);
+    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot({ frankiNew: 3 }), NOW)).toBe(false);
     // No report from Franki today: the new cards left aren't known.
-    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot(), NOW, DAY_START)).toBe(false);
+    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot(), NOW)).toBe(false);
   });
 
   it('defaults to once a day, and reads anything unknown as that', () => {
@@ -303,8 +223,8 @@ describe('the study-time goal', () => {
   it('is ready once the goal is met, counting reading only when it counts', () => {
     const task = row('goal:2026-10-18');
     const snap = snapshot({ studyDays: today(15, 5) });
-    expect(isFrankiTaskReady(task, snap, NOW, DAY_START, '00:00', { minutes: 20, countReading: true })).toBe(true);
-    expect(isFrankiTaskReady(task, snap, NOW, DAY_START, '00:00', { minutes: 20, countReading: false })).toBe(false);
+    expect(isFrankiTaskReady(task, snap, NOW, '00:00', { minutes: 20, countReading: true })).toBe(true);
+    expect(isFrankiTaskReady(task, snap, NOW, '00:00', { minutes: 20, countReading: false })).toBe(false);
   });
 
   it('names the day and says the minutes', () => {

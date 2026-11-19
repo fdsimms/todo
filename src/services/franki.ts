@@ -1,6 +1,6 @@
 import { isDemoModeActive } from '../utils/demoState';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { frankiStatusUrl, type FrankiReadListen, type FrankiSnapshot } from '../utils/frankiTasks';
+import { frankiStatusUrl, type FrankiReadListen, type FrankiReadToday, type FrankiSnapshot } from '../utils/frankiTasks';
 import type { FrankiStudyDay } from '../utils/frankiStudy';
 
 /**
@@ -49,32 +49,36 @@ function instant(value: unknown): string | null {
 }
 
 function readListenFrom(body: unknown): FrankiReadListen | null {
-  const r = body as { language?: unknown; name?: unknown; waiting?: unknown; last_read_at?: unknown } | null;
+  const r = body as { language?: unknown; name?: unknown; waiting?: unknown } | null;
   if (!r || typeof r !== 'object' || typeof r.language !== 'string') return null;
   return {
     language: r.language,
     name: typeof r.name === 'string' ? r.name : r.language,
     waiting: count(r.waiting),
-    lastReadAt: instant(r.last_read_at),
   };
 }
 
 /**
- * Every language Read & Listen reports, in the server's order. A server from
- * before it listed them reports only the language being read, which is then
- * the whole list. An entry with no language is dropped.
+ * The languages Franki says get a Read & Listen task today. Null when the
+ * server doesn't send the list (one from before it chose them), which is not
+ * the same as an empty list: nothing is written or taken away then. An entry
+ * with no language is dropped.
  */
-function readLanguagesFrom(body: unknown, current: FrankiReadListen | null): FrankiReadListen[] {
-  if (!Array.isArray(body)) return current ? [current] : [];
+function readTodayFrom(body: unknown): FrankiReadToday[] | null {
+  if (!Array.isArray(body)) return null;
   const seen = new Set<string>();
-  const languages: FrankiReadListen[] = [];
+  const today: FrankiReadToday[] = [];
   for (const item of body) {
-    const entry = readListenFrom(item);
-    if (!entry || seen.has(entry.language)) continue;
+    const entry = item as { language?: unknown; name?: unknown; done?: unknown } | null;
+    if (!entry || typeof entry.language !== 'string' || seen.has(entry.language)) continue;
     seen.add(entry.language);
-    languages.push(entry);
+    today.push({
+      language: entry.language,
+      name: typeof entry.name === 'string' ? entry.name : entry.language,
+      done: entry.done === true,
+    });
   }
-  return languages;
+  return today;
 }
 
 function studyDaysFrom(body: unknown): FrankiStudyDay[] {
@@ -108,7 +112,7 @@ function frankiNewFrom(body: unknown): number | null {
 export function frankiSnapshotFrom(body: unknown, fetchedAt: string): FrankiSnapshot | null {
   const b = body as {
     reviews?: unknown; learning?: unknown; learning_later?: unknown; day_ends_at?: unknown;
-    read_and_listen?: unknown; read_and_listen_languages?: unknown; franki?: unknown; study_days?: unknown;
+    read_and_listen?: unknown; read_and_listen_today?: unknown; franki?: unknown; study_days?: unknown;
   } | null;
   if (!b || typeof b !== 'object' || typeof b.reviews !== 'number') return null;
   const byInstant = new Map<string, number>();
@@ -129,7 +133,7 @@ export function frankiSnapshotFrom(body: unknown, fetchedAt: string): FrankiSnap
     upcoming,
     dayEndsAt: instant(b.day_ends_at),
     readListen,
-    readLanguages: readLanguagesFrom(b.read_and_listen_languages, readListen),
+    readToday: readTodayFrom(b.read_and_listen_today),
     frankiNew: frankiNewFrom(b.franki),
     studyDays: studyDaysFrom(b.study_days),
   };

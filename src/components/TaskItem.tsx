@@ -1516,7 +1516,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const frankiReady = useFrankiStore(s =>
     isFrankiTask &&
     !task.completed &&
-    isFrankiTaskReady(task, s.snapshot, new Date(), getCurrentDayStart(), useSettingsStore.getState().dayResetTime,
+    isFrankiTaskReady(task, s.snapshot, new Date(), useSettingsStore.getState().dayResetTime,
       { minutes: frankiGoalMinutes, countReading: frankiCountReading })
   );
   // "18 min studied today" under a Franki row, from the same read. A string

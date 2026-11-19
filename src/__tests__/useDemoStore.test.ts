@@ -5460,7 +5460,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       expect(task.linkUrl).toBe(`franki://read?language=${task.generatedSourceId?.split(':').pop()}`);
       expect(task.category).toBe('Study');
     }
-    expect(settings.frankiReadLanguages).toEqual({ pl: 'daily', th: 'rotate' });
     expect(settings.frankiTaskCategory).toBe('Study');
     expect(settings.frankiTasks).toBe(false);
   });

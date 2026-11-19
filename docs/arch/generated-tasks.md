@@ -2266,17 +2266,18 @@ lands. The rules are in `src/utils/frankiTasks.ts`.
   so Anki's new count can differ from what Franki's deck list says. The server works out the study
   day in its `TZ` setting, so it can be off by the time difference while the person travels.
 - **The Read & Listen tasks are day-keyed, one per language** (`read:<day>:<language>`, the
-  device's own record `frankiReadSpent`: the languages written today). A language gets its task only
-  while a text is waiting in it and nothing in it was read to the end since the logical day began,
-  spent by writing it, ready once a text in it is read, and yesterday's goes at the first pass of the
-  new day. The server lists every language (`read_and_listen_languages`); one task named after
-  "the language being read" switched language whenever that setting changed in Franki, which is why
-  it is per language. `frankiReadTasks` switches all of them off inside the generator.
-  - **Which languages** is `frankiReadLanguages` (language code to `daily`, `rotate` or `off`, synced;
-    a language nobody set rotates). Every day always gets its task. Rotate languages share
-    `frankiReadRotateCount` tasks a day (default 1), the one read least recently first, a never-read
-    one before any, ties by name (`plannedFrankiReadLanguages`). The count includes the rotating
-    languages already written today, so reading French doesn't bring Polish's turn on top of it.
+  device's own record `frankiReadSpent`: the languages written today). **Franki chooses which
+  languages get one, this app doesn't**: which language to read next depends on what has been read,
+  which Franki holds, and this app re-deriving it from a snapshot sent German two days running
+  (Franki's own repo: its server's `read_plan.py`, and the Status section of Read & Listen's architecture notes).
+  The server lists today's languages (`read_and_listen_today`: language, name, mode, waiting,
+  done; `readToday` in the snapshot) and this app writes one task for each that wasn't read yet,
+  spent by writing it, ready once Franki says it's `done`, and yesterday's goes at the first pass of
+  the new day. A language Franki stops listing (set to Off there) has its task taken away. A server
+  that doesn't send the list (`readToday` null) gets nothing written or taken away, which is not
+  the same as an empty list. `frankiReadTasks` switches all of them off inside the generator.
+  Which languages is set in Franki's Settings, Read & Listen, Daily reading tasks, not here: the
+  `frankiReadLanguages` and `frankiReadRotateCount` settings this app had were removed.
   - **A task from before this** (`read:<day>`, no language) is deleted at the first pass and its
     language's own written in its place.
 - **The study-time goal** (`frankiGoalMinutes`, null for none): "Franki: 12 of 20 min" once a day

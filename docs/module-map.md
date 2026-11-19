@@ -238,7 +238,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, LIST_CONTENT_WIDTH, DASHBOARD_CONTENT_WIDTH, DASHBOARD_TWO_COLUMN_MIN_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, +12 more
 - `src/utils/frankiStudy.ts` — FrankiStudyDay, studySeconds, studyDayAt, minutesStudiedToday, minutesReadToday, formatStudyMinutes, FrankiWeekBar, FrankiWeek, frankiWeek, describeFrankiWeek
-- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiReadMode, FRANKI_READ_MODE_DEFAULT, FrankiReadModes, FRANKI_ROTATE_COUNT_DEFAULT, FRANKI_ROTATE_COUNT_MIN, FRANKI_ROTATE_COUNT_MAX, clampFrankiRotateCount, parseFrankiReadModes, frankiReadModeOf, +40 more
+- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiReadToday, FrankiReadSpent, parseFrankiReadSpent, frankiReadSpentToday, withFrankiReadSpent, FrankiSnapshot, FrankiReviewMode, FRANKI_REVIEW_MODE_DEFAULT, parseFrankiReviewMode, +31 more
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering, offerFollowUpWriteBack

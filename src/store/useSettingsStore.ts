@@ -196,12 +196,7 @@ import {
 } from '../utils/wanikaniTasks';
 import {
   clampFrankiGoalMinutes,
-  clampFrankiRotateCount,
-  FRANKI_ROTATE_COUNT_DEFAULT,
-  parseFrankiReadModes,
   parseFrankiReadSpent,
-  type FrankiReadModes,
-  type FrankiReadMode,
   type FrankiReadSpent,
   clampFrankiReviewThreshold,
   FRANKI_REVIEW_MODE_DEFAULT,
@@ -2039,10 +2034,8 @@ interface SettingsStore {
   // Franki server. Off by default, and inert without the server's address and
   // its status key in the keychain (useFrankiStore). The reviews task is once
   // a day or in waves (frankiReviewMode); the threshold is how many cards a
-  // wave needs. frankiReadTasks is the Read & Listen tasks' own switch,
-  // frankiReadLanguages how each language is handled (Every day, Rotate or
-  // Off; a language not listed rotates) and frankiReadRotateCount how many
-  // rotating languages get a task a day,
+  // wave needs. frankiReadTasks is the Read & Listen tasks' own switch (which
+  // languages get one is Franki's call, its Settings, Daily reading tasks),
   // frankiGoalMinutes the study-time goal (null for none) and
   // frankiCountReading whether Read & Listen time counts toward it. The review
   // state and the day marks are this device's own and never sync.
@@ -2052,8 +2045,6 @@ interface SettingsStore {
   frankiReviewThreshold: number;
   frankiReadTasks: boolean;
   frankiReviewState: ReviewWaveState;
-  frankiReadLanguages: FrankiReadModes;
-  frankiReadRotateCount: number;
   frankiReadSpent: FrankiReadSpent | null;
   frankiReviewMode: FrankiReviewMode;
   frankiGoalMinutes: number | null;
@@ -2681,8 +2672,6 @@ interface SettingsStore {
   setFrankiReviewThreshold: (count: number) => void;
   setFrankiReadTasks: (on: boolean) => void;
   setFrankiReviewState: (state: ReviewWaveState) => void;
-  setFrankiReadLanguageMode: (language: string, mode: FrankiReadMode) => void;
-  setFrankiReadRotateCount: (count: number) => void;
   setFrankiReadSpent: (spent: FrankiReadSpent) => void;
   setFrankiReviewMode: (mode: FrankiReviewMode) => void;
   setFrankiGoalMinutes: (minutes: number | null) => void;
@@ -3525,8 +3514,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   frankiReviewThreshold: FRANKI_REVIEW_THRESHOLD_DEFAULT,
   frankiReadTasks: true,
   frankiReviewState: REVIEW_WAVE_INITIAL_STATE,
-  frankiReadLanguages: {},
-  frankiReadRotateCount: FRANKI_ROTATE_COUNT_DEFAULT,
   frankiReadSpent: null,
   frankiReviewMode: FRANKI_REVIEW_MODE_DEFAULT,
   frankiGoalMinutes: null,
@@ -4143,9 +4130,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // On unless switched off: the Read & Listen tasks are half of what the switch above turns on.
     const frankiReadTasks = dbGetSetting('frankiReadTasks') !== 'false';
     const frankiReviewState = parseReviewWaveState(dbGetSetting('frankiReviewState'));
-    const frankiReadLanguages = parseFrankiReadModes(dbGetSetting('frankiReadLanguages'));
-    const storedFrankiRotate = parseInt(dbGetSetting('frankiReadRotateCount') ?? '', 10);
-    const frankiReadRotateCount = clampFrankiRotateCount(Number.isFinite(storedFrankiRotate) ? storedFrankiRotate : undefined);
     const frankiReadSpent = parseFrankiReadSpent(dbGetSetting('frankiReadSpent'));
     const frankiReviewMode = parseFrankiReviewMode(dbGetSetting('frankiReviewMode'));
     const storedFrankiGoal = parseInt(dbGetSetting('frankiGoalMinutes') ?? '', 10);
@@ -4458,8 +4442,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       frankiDailyLastDayKey,
       frankiGoalLastDayKey,
       frankiGoalMinutes,
-      frankiReadLanguages,
-      frankiReadRotateCount,
       frankiReadSpent,
       frankiReadTasks,
       frankiReviewMode,
@@ -5757,18 +5739,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFrankiReviewState(state: ReviewWaveState) {
     dbSetSetting('frankiReviewState', JSON.stringify(state));
     set({ frankiReviewState: state });
-  },
-
-  setFrankiReadLanguageMode(language: string, mode: FrankiReadMode) {
-    const next = { ...get().frankiReadLanguages, [language]: mode };
-    dbSetSetting('frankiReadLanguages', JSON.stringify(next));
-    set({ frankiReadLanguages: next });
-  },
-
-  setFrankiReadRotateCount(count: number) {
-    const clamped = clampFrankiRotateCount(count);
-    dbSetSetting('frankiReadRotateCount', String(clamped));
-    set({ frankiReadRotateCount: clamped });
   },
 
   setFrankiReadSpent(spent: FrankiReadSpent) {

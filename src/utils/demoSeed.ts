@@ -2158,10 +2158,7 @@ export function seedDemoData(): void {
   // reading task rather than a reviews one, since WaniKani's above already
   // shows what a review queue looks like as a task.
   useSettingsStore.getState().setFrankiTaskCategory('Study');
-  // Two languages, one task each: Polish every day and Thai taking its turn
-  // (Settings, Automations, Franki).
-  useSettingsStore.getState().setFrankiReadLanguageMode('pl', 'daily');
-  useSettingsStore.getState().setFrankiReadLanguageMode('th', 'rotate');
+  // Two languages, one task each, as Franki lists them for a day.
   for (const [code, name] of [['pl', 'Polish'], ['th', 'Thai']] as const) {
     addTask({
       title: frankiReadTitle({ name }),
