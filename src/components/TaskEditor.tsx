@@ -110,6 +110,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { meetingAtStart, nudgeReminderPastMeeting } from '../utils/reminderNudge';
 import { calendarCovers } from '../utils/eventConflicts';
+import { useOnCallStore } from '../store/useOnCallStore';
+import { onCallWarningForDay, onCallWarningForTime } from '../utils/onCall';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -1188,6 +1190,21 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     if (!calendarCovers(calendarWindowStart, calendarWindowEnd, dayStart, dayEnd)) return null;
     return meetingAtStart(calendarEvents, onLogicalDay(dayStart, windowStart));
   }, [windowStart, dueDate, dayResetTime, calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd, calendarEvents]);
+
+  // Whether the Date lands on an on-call stretch, said under the row. A task with
+  // a time window is a moment (its start), so a day with a shift that ends before
+  // it passes; without one, any stretch that day counts.
+  const onCallSpans = useOnCallStore(s => s.spans);
+  const onCallWarning = useMemo(() => {
+    if (!dueDate) return null;
+    if (!windowStart) return onCallWarningForDay(onCallSpans, dueDate, dayResetTime, use24HourTime);
+    const dayStart = getTaskDayStart(dueDate, dayResetTime);
+    const start = onLogicalDay(dayStart, windowStart);
+    const end = windowEnd ? onLogicalDay(dayStart, windowEnd) : null;
+    return onCallWarningForTime(
+      onCallSpans, start, end && end > start ? end : new Date(start.getTime() + 60000), use24HourTime,
+    );
+  }, [dueDate, windowStart, windowEnd, onCallSpans, dayResetTime, use24HourTime]);
 
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
@@ -5878,6 +5895,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               label="Date"
               hint="The day it shows up on Today."
               value={dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined}
+              caption={onCallWarning ?? undefined}
               onPress={() => setShowWhenPicker(true)}
               onClear={dueDate ? () => { setDueDate(null); setExtraDates([]); setTimeSegments([]); } : undefined}
             />

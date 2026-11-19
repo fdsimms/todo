@@ -115,6 +115,8 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { MealStrip } from '../components/MealStrip';
+import { OnCallStrip } from '../components/OnCallStrip';
+import { useOnCallStore } from '../store/useOnCallStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
 import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, editorChangedSummary, editorHasUnsavedChanges, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
@@ -4910,8 +4912,13 @@ export function TodayScreen() {
   const mealStripBlock = viewMode === 'today' && mealsOnToday === 'top'
     ? <MealStrip dayKey={todayKey} refreshKey={minuteTick} />
     : null;
-  const todayListHeader = mealStripBlock === null && pinnedBlock === null && projectBandsBlock === null ? null : (
+  // On call comes first: it is the one line that must not be scrolled past
+  // unseen. `OnCallStrip` draws nothing on a day that isn't on call.
+  const anyOnCall = useOnCallStore(s => s.spans.length > 0);
+  const onCallBlock = viewMode === 'today' && anyOnCall ? <OnCallStrip refreshKey={minuteTick} /> : null;
+  const todayListHeader = onCallBlock === null && mealStripBlock === null && pinnedBlock === null && projectBandsBlock === null ? null : (
     <>
+      {onCallBlock}
       {mealStripBlock}
       {pinnedBlock}
       {projectBandsBlock}

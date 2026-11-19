@@ -401,6 +401,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, displayFigure, targetProgress, TargetStatus, +30 more
 - `src/utils/occurrenceReset.ts` — freshOccurrenceFields
 - `src/utils/okAgainNotification.ts` — syncOkAgainNotification
+- `src/utils/onCall.ts` — ON_CALL_WINDOW_DAYS, ON_CALL_MAX_WORDS, OnCallConfig, OnCallSpan, onCallConfigured, cleanWords, splitTypedWords, onCallWordsProblem, parseOnCallWords, isOnCallEvent, +7 more
 - `src/utils/openExternalUrl.ts` — ExternalKind, externalKindFor, externalFailureCopy, openExternalUrl
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
@@ -820,6 +821,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useMissionStore.ts` — useMissionStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore
 - `src/store/useNfcKeyStore.ts` — KeyScanResult, EnrollResult, useNfcKeyStore
+- `src/store/useOnCallStore.ts` — useOnCallStore, useOnCallSync
 - `src/store/usePendingEstimateStore.ts` — PendingEstimateDraft, EnqueueResult, RenameResult, usePendingEstimateStore
 - `src/store/usePendingRecipeEstimateStore.ts` — PendingRecipeEstimateDraft, usePendingRecipeEstimateStore
 - `src/store/usePersonGroupStore.ts` — usePersonGroupStore
