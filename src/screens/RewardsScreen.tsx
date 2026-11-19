@@ -98,6 +98,7 @@ import { listItemFinder } from '../utils/listMode';
 import type { CoinEntry, Reward, Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { RewardWishList } from '../components/RewardWishList';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { HelpText } from '../components/HelpText';
@@ -129,7 +130,6 @@ const HISTORY_LIMIT = 50;
 /** Rows each long section shows before "Show more", and how many that button reveals. */
 const HISTORY_PREVIEW = 5;
 const HISTORY_STEP = 20;
-const LIST_PREVIEW = 4;
 
 /** The coin beside the balance. A hero, so a literal size like the number's own. */
 const BALANCE_COIN_SIZE = 52;
@@ -329,10 +329,9 @@ export function RewardsScreen() {
     [list, tasks, pricedTaskIds],
   );
   const [listPickerOpen, setListPickerOpen] = useState(false);
-  // Long sections show a few rows and grow on request, so a big wish list or a
-  // year of history doesn't push everything else off the page.
+  // Long sections show a few rows and grow on request, so a year of history
+  // doesn't push everything else off the page.
   const [historyShown, setHistoryShown] = useState(HISTORY_PREVIEW);
-  const [listExpanded, setListExpanded] = useState(false);
 
   // Live bounties, worth the most first. Posted from a task's editor, so this
   // section lists and withdraws them rather than posting.
@@ -636,7 +635,6 @@ export function RewardsScreen() {
   const history = recentEntries.slice(0, historyShown);
   const historyHidden = recentEntries.length - history.length;
   const pickableItems = listItems.filter(t => !(draft?.mode === 'item' && draft.taskId === t.id));
-  const pickableShown = listExpanded ? pickableItems : pickableItems.slice(0, LIST_PREVIEW);
   const customLink = savedLinks.isChip(draftLink) ? '' : draftLink;
   // The name of a link's chip, or null for a typed address, so the claim card's
   // button says "Open" rather than printing a URL.
@@ -1466,7 +1464,7 @@ export function RewardsScreen() {
 
         {hasLists && (
           <>
-            <Text style={styles.sectionHeader}>{list ? `From ${list.title}` : 'From a project'}</Text>
+            <Text style={styles.sectionHeader}>{list ? `From ${list.title}${pickableItems.length > 0 ? ` · ${pickableItems.length}` : ''}` : 'From a project'}</Text>
             {list === null ? (
               <View style={styles.listPrompt}>
                 <Text style={styles.sectionHint}>
@@ -1486,26 +1484,7 @@ export function RewardsScreen() {
                     </View>
                   )
                 ) : (
-                  <View style={styles.historyCard}>
-                    {pickableShown.map((item, i) => (
-                      <View key={item.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
-                        <Text style={[styles.historyLabel, styles.historyText]}>{item.title}</Text>
-                        <InlineAction
-                          label="Price it"
-                          icon="pricetag-outline"
-                          onPress={() => openDraft({ mode: 'item', taskId: item.id })}
-                          accessibilityLabel={`Make ${item.title} a reward`}
-                        />
-                      </View>
-                    ))}
-                    {pickableItems.length > LIST_PREVIEW && (
-                      <ShowMoreRow
-                        label={listExpanded ? 'Show less' : `Show ${pickableItems.length - LIST_PREVIEW} more`}
-                        onPress={() => setListExpanded(open => !open)}
-                        styles={styles}
-                      />
-                    )}
-                  </View>
+                  <RewardWishList key={list.id} items={pickableItems} onPrice={taskId => openDraft({ mode: 'item', taskId })} />
                 )}
                 <View style={styles.addRow}>
                   <InlineAction label="Change project" icon="swap-horizontal" variant="neutral" surface="page" onPress={() => setListPickerOpen(true)} />
