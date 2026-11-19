@@ -47,6 +47,7 @@ import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import { isAutoMatch, matchExerciseName, type ImportedSession, type NameResolution } from '../utils/workoutCsv';
 import {
   DESCRIBE_MAX_LENGTH,
+  describeContext,
   draftNames,
   routineFromDraft,
   sessionFromDraft,
@@ -220,6 +221,14 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
         exerciseNames: exercises.filter(e => !e.archived).map(e => e.name),
         unit,
         today: dayKeyOf(getLogicalToday()),
+        context: describeContext({
+          routines: useWorkoutStore.getState().routines,
+          sessions: useWorkoutStore.getState().sessions,
+          setsOf: id => useWorkoutStore.getState().loadSets(id),
+          exercises,
+          unit,
+          dumbbellEntry,
+        }),
       });
       if (mine !== ticket.current || !visibleRef.current) return;
       received(d);
@@ -319,7 +328,7 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
             </PressableScale>
             {/* A consequence to read before tapping, so a plain Text: Hide help text must not remove it. */}
             <Text style={styles.note}>
-              {`Sent to Claude along with the names of your exercises. Nothing is ${into ? 'added' : 'saved'} until you check it.`}
+              {`Sent to Claude along with your exercise names, routines and recent workouts. Nothing is ${into ? 'added' : 'saved'} until you check it.`}
             </Text>
           </ScrollView>
         ) : (

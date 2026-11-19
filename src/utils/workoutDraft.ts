@@ -17,10 +17,10 @@
 //
 // The model call is `draftWorkoutFromText` in `src/services/aiSuggestions.ts`;
 // docs/arch/workouts.md ("Describing a workout") has the reasoning.
-import type { Exercise, ExerciseKind, ProgressionScheme, RoutineSetTarget, WorkoutRoutineItem, WorkoutSetKind } from '../types';
+import type { Exercise, ExerciseKind, ProgressionScheme, RoutineSetTarget, WorkoutRoutine, WorkoutRoutineItem, WorkoutSession, WorkoutSet, WorkoutSetKind } from '../types';
 import type { ExerciseInput } from '../store/useWorkoutStore';
 import { MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets } from './workoutRoutine';
-import { REST_SECONDS_MAX, cleanWorkoutName, exerciseNameKey } from './workoutData';
+import { REST_SECONDS_MAX, cleanWorkoutName, exerciseNameKey, formatWeightNumber } from './workoutData';
 import { MAX_WEIGHT_KG, unitToKg, type WeightUnit } from './weightLog';
 import {
   NEW_EXERCISE_PREFIX,
@@ -33,7 +33,8 @@ import {
 } from './workoutCsv';
 import { generateId } from './id';
 import { onLogicalDay } from './clockTime';
-import { storedKgFromShown } from './dumbbellLoad';
+import { storedKgFromShown, weightScale, type DumbbellEntry } from './dumbbellLoad';
+import { catalogExercise } from './exerciseCatalog';
 
 /** What a description is read as. A routine is a plan; a log is a workout that already happened. */
 export type DescribeMode = 'routine' | 'log';
@@ -118,9 +119,11 @@ function readSet(raw: unknown): DraftSet | null {
 }
 
 /**
- * The model's tool input as a draft. Throws `No answer returned` when no
- * exercise survives, which `describeAIError` already words ("Nothing usable
- * came back"). Set counts are capped at what the editor holds, and a set cut
+ * The model's tool input as a draft. Throws `No answer returned` when there
+ * is no tool input at all, and `No exercises described` when the model answered
+ * but no exercise survives (a description with no lift in it, or one leaning on
+ * history the model wasn't shown): `describeAIError` words that one as what to
+ * type, since trying the same words again can't help. Set counts are capped at what the editor holds, and a set cut
  * for it is said in the notes rather than lost.
  */
 export function readWorkoutDraft(input: unknown): WorkoutDraft {
@@ -147,7 +150,8 @@ export function readWorkoutDraft(input: unknown): WorkoutDraft {
     });
     if (exercises.length >= MAX_DRAFT_EXERCISES) break;
   }
-  if (exercises.length === 0) throw new Error('No answer returned');
+  if (!r) throw new Error('No answer returned');
+  if (exercises.length === 0) throw new Error('No exercises described');
 
   const notes = [
     text(r?.notes, 2000),
@@ -424,4 +428,120 @@ export function sessionFromDraft(
       sets,
     },
   };
+}
+
+// ==== what the person usually does ====
+
+/** How many of the newest finished workouts are summarized for the model. */
+export const DESCRIBE_RECENT_WORKOUTS = 8;
+/** How many routines are summarized. */
+export const DESCRIBE_ROUTINES = 20;
+/** The longest one routine or workout line, so one huge workout can't crowd out the rest. */
+const CONTEXT_LINE_MAX = 600;
+
+export interface DescribeContextInput {
+  routines: readonly WorkoutRoutine[];
+  /** Newest first, as the store holds them. */
+  sessions: readonly WorkoutSession[];
+  /** A session's sets (the store's `loadSets`). Only called for the sessions summarized. */
+  setsOf: (sessionId: string) => readonly WorkoutSet[];
+  exercises: readonly Exercise[];
+  unit: WeightUnit;
+  dumbbellEntry: DumbbellEntry;
+}
+
+/** What the model is shown of the person's routines and recent workouts. Empty lists when there are none. */
+export interface DescribeContext {
+  routines: string[];
+  workouts: string[];
+}
+
+/**
+ * The person's live routines and newest finished workouts as one short line
+ * each, so a description that leans on them ("my usual workout but only upper
+ * body", "push day but lighter") has something to be read against. Weights are
+ * written the way the person types them (a pair total where Dumbbell weights is
+ * Pair total), the same convention `routineFromDraft` reads a weight back in.
+ * No dates, times or notes are included: only names, sets, reps and loads.
+ */
+export function describeContext(input: DescribeContextInput): DescribeContext {
+  const nameOf = (id: string) => catalogExercise(input.exercises, id)?.name ?? null;
+  const scaleOf = (id: string) => weightScale(catalogExercise(input.exercises, id), input.dumbbellEntry);
+  const clip = (line: string) => line.length > CONTEXT_LINE_MAX ? `${line.slice(0, CONTEXT_LINE_MAX - 1)}…` : line;
+
+  const routines = input.routines
+    .filter(r => !r.archived && r.items.length > 0)
+    .slice(0, DESCRIBE_ROUTINES)
+    .map(r => {
+      const parts = r.items.flatMap(item => {
+        const name = nameOf(item.exerciseId);
+        if (!name) return [];
+        const scale = scaleOf(item.exerciseId);
+        const sets = item.targets.filter(t => t.kind !== 'warmup').map(t => contextSet({
+          reps: t.repsMin, repsMax: t.repsMax, weightKg: t.weightKg ?? null,
+          durationSeconds: t.durationSeconds ?? null, distanceM: t.distanceM ?? null,
+        }, input.unit, scale));
+        return [`${name} ${runs(sets)}`.trim()];
+      });
+      return parts.length > 0 ? clip(`${r.name}: ${parts.join('; ')}`) : null;
+    })
+    .filter((l): l is string => l !== null);
+
+  const workouts: string[] = [];
+  for (const s of input.sessions) {
+    if (workouts.length >= DESCRIBE_RECENT_WORKOUTS) break;
+    if (s.endedAt === null) continue;
+    const done = input.setsOf(s.id).filter(x => x.completedAt !== null && x.kind !== 'warmup');
+    const byPosition = new Map<number, WorkoutSet[]>();
+    for (const x of done) byPosition.set(x.position, [...(byPosition.get(x.position) ?? []), x]);
+    const parts = [...byPosition.entries()].sort((a, b) => a[0] - b[0]).flatMap(([, sets]) => {
+      const ordered = [...sets].sort((a, b) => a.setIndex - b.setIndex);
+      const name = nameOf(ordered[0].exerciseId);
+      if (!name) return [];
+      const scale = scaleOf(ordered[0].exerciseId);
+      return [`${name} ${runs(ordered.map(x => contextSet({ ...x, repsMax: null }, input.unit, scale)))}`.trim()];
+    });
+    if (parts.length === 0) continue;
+    workouts.push(clip(`${s.title.trim() || 'Workout'}: ${parts.join('; ')}`));
+  }
+  return { routines, workouts };
+}
+
+interface ContextSetFields {
+  reps: number | null;
+  repsMax: number | null;
+  weightKg: number | null;
+  durationSeconds: number | null;
+  distanceM: number | null;
+}
+
+/** "5 @ 185 lb", "8-12", "60 s", "400 m". Empty for a set with nothing stated. */
+function contextSet(s: ContextSetFields, unit: WeightUnit, scale: number): string {
+  const reps = s.reps !== null
+    ? (s.repsMax !== null && s.repsMax !== s.reps ? `${s.reps}-${s.repsMax}` : String(s.reps))
+    : (s.repsMax !== null ? String(s.repsMax) : '');
+  const parts = [
+    reps,
+    s.weightKg !== null && s.weightKg > 0 ? `@ ${formatWeightNumber(s.weightKg * scale, unit)} ${unit}` : '',
+    s.durationSeconds !== null ? `${s.durationSeconds} s` : '',
+    s.distanceM !== null ? `${s.distanceM} m` : '',
+  ].filter(Boolean);
+  return parts.join(' ');
+}
+
+/** Sets in order with repeats folded: ["5 @ 185 lb" x3, "3 @ 205 lb"] is "3x5 @ 185 lb, 3 @ 205 lb". */
+function runs(sets: readonly string[]): string {
+  const out: string[] = [];
+  let i = 0;
+  while (i < sets.length) {
+    let j = i;
+    while (j < sets.length && sets[j] === sets[i]) j++;
+    const n = j - i;
+    const one = sets[i];
+    if (one === '') out.push(n === 1 ? '1 set' : `${n} sets`);
+    else if (n === 1) out.push(one);
+    else out.push(/^\d/.test(one) ? `${n}x${one}` : `${n} sets ${one}`);
+    i = j;
+  }
+  return out.join(', ');
 }

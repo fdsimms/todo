@@ -1,4 +1,5 @@
 import {
+  describeContext,
   draftNames,
   readWorkoutDraft,
   routineFromDraft,
@@ -7,7 +8,7 @@ import {
   type WorkoutDraft,
 } from '../utils/workoutDraft';
 import { buildImportPlan } from '../utils/workoutCsv';
-import type { ExerciseKind } from '../types';
+import type { ExerciseKind, WorkoutRoutine, WorkoutSession, WorkoutSet } from '../types';
 
 const kinds = (id: string): ExerciseKind => (id === 'plank' ? 'duration' : 'weight_reps');
 const set = (over: Record<string, unknown> = {}) => ({ kind: 'working', reps: 5, ...over });
@@ -33,9 +34,9 @@ describe('readWorkoutDraft', () => {
   });
 
   it('refuses a reply with no exercise in it', () => {
-    expect(() => readWorkoutDraft({ exercises: [] })).toThrow('No answer returned');
+    expect(() => readWorkoutDraft({ exercises: [] })).toThrow('No exercises described');
     expect(() => readWorkoutDraft(null)).toThrow('No answer returned');
-    expect(() => readWorkoutDraft({ exercises: [{ name: '  ', sets: [] }] })).toThrow('No answer returned');
+    expect(() => readWorkoutDraft({ exercises: [{ name: '  ', sets: [] }] })).toThrow('No exercises described');
   });
 
   it('turns a number out of range into nothing rather than a believable one', () => {
@@ -334,5 +335,75 @@ describe('sessionFromDraft', () => {
       [{ id: 'other', startedAt: r.session.startedAt }]);
     expect(plan.duplicates).toBe(1);
     expect(plan.sessions).toHaveLength(0);
+  });
+});
+
+describe('describeContext', () => {
+  const routine = (over: Partial<WorkoutRoutine>): WorkoutRoutine => ({
+    id: 'r1', name: 'Push A', notes: '', programId: null, sortOrder: 0, createdAt: '2026-10-01T12:00',
+    groupName: null, archived: false, items: [], ...over,
+  } as WorkoutRoutine);
+  const session = (id: string, over: Partial<WorkoutSession> = {}): WorkoutSession => ({
+    id, routineId: null, programId: null, taskId: null, title: 'Upper', startedAt: '2026-11-10T08:00',
+    endedAt: '2026-11-10T09:00', notes: 'felt strong', effort: null, healthWorkoutId: null,
+    healthWritePending: false, measuredOnWatch: false, timesEdited: false, ...over,
+  });
+  const done = (sessionId: string, exerciseId: string, position: number, setIndex: number, over: Partial<WorkoutSet> = {}): WorkoutSet => ({
+    id: `${sessionId}-${position}-${setIndex}`, sessionId, exerciseId, position, setIndex, kind: 'working',
+    weightKg: 80, reps: 5, durationSeconds: null, distanceM: null, rpe: null,
+    completedAt: '2026-11-10T08:10', supersetKey: null, note: null, ...over,
+  });
+  const base = { exercises: [], unit: 'kg' as const, dumbbellEntry: 'each' as const };
+
+  it('writes a routine with repeats folded and warm-ups left out', () => {
+    const c = describeContext({
+      ...base,
+      routines: [
+        routine({ items: [{
+          exerciseId: 'lib:barbell-bench-press', restSeconds: null, progression: null,
+          targets: [
+            { kind: 'warmup', repsMin: 5, repsMax: null, weightKg: 40 },
+            { kind: 'working', repsMin: 5, repsMax: null, weightKg: 80 },
+            { kind: 'working', repsMin: 5, repsMax: null, weightKg: 80 },
+            { kind: 'working', repsMin: 8, repsMax: 12, weightKg: null },
+          ],
+        }] }),
+        routine({ id: 'r2', name: 'Old', archived: true, items: [{ exerciseId: 'lib:barbell-bench-press', restSeconds: null, progression: null, targets: [] }] }),
+      ],
+      sessions: [],
+      setsOf: () => [],
+    });
+    expect(c.routines).toEqual(['Push A: Barbell bench press 2x5 @ 80 kg, 8-12']);
+    expect(c.workouts).toEqual([]);
+  });
+
+  it('writes finished workouts newest first from their done sets, without notes or dates', () => {
+    const sets: Record<string, WorkoutSet[]> = {
+      live: [done('live', 'lib:barbell-bench-press', 0, 0)],
+      a: [
+        done('a', 'lib:dumbbell-bench-press', 1, 0, { weightKg: 20, reps: 10 }),
+        done('a', 'lib:barbell-bench-press', 0, 1),
+        done('a', 'lib:barbell-bench-press', 0, 0),
+        done('a', 'lib:barbell-bench-press', 0, 2, { completedAt: null }),
+      ],
+      b: [done('b', 'lib:barbell-bench-press', 0, 0, { kind: 'warmup' })],
+    };
+    const c = describeContext({
+      ...base,
+      dumbbellEntry: 'pair',
+      routines: [],
+      sessions: [session('live', { endedAt: null }), session('a'), session('b')],
+      setsOf: id => sets[id] ?? [],
+    });
+    // A pair total is written the way the person types it.
+    expect(c.workouts).toEqual(['Upper: Barbell bench press 2x5 @ 80 kg; Dumbbell bench press 10 @ 40 kg']);
+    expect(c.workouts.join('')).not.toContain('felt strong');
+    expect(c.workouts.join('')).not.toContain('2026');
+  });
+
+  it('keeps only the newest eight finished workouts', () => {
+    const sessions = Array.from({ length: 12 }, (_, i) => session(`s${i}`, { title: `W${i}` }));
+    const c = describeContext({ ...base, routines: [], sessions, setsOf: id => [done(id, 'lib:barbell-bench-press', 0, 0)] });
+    expect(c.workouts.map(w => w.split(':')[0])).toEqual(['W0', 'W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7']);
   });
 });

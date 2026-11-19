@@ -1,0 +1,1 @@
+{ "message": "Describing a workout can now lean on what you usually do (for example \"my normal workout but only upper body\"): your routines and recent workouts are sent to Claude along with your exercise names. When no exercises can be read from a description, it now says to name the lifts instead of asking you to try again.", "date": "2026-11-19" }

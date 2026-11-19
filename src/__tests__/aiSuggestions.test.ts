@@ -640,6 +640,10 @@ describe('describeAIError', () => {
     }
   });
 
+  it('says what to type when a description named no exercises', () => {
+    expect(describeAIError(new Error('No exercises described'))).toContain('Name the lifts');
+  });
+
   it('blames the connection for a failed fetch', () => {
     expect(describeAIError(new TypeError('Network request failed'))).toContain('connection');
     expect(describeAIError(new Error('Network request failed'))).toContain('connection');
@@ -2818,7 +2822,10 @@ describe('estimateMealNutrition with a photo', () => {
 // ============================================================================
 
 describe('draftWorkoutFromText', () => {
-  const options = { exerciseNames: ['Bench press', 'Cable fly', 'Bench press'], unit: 'lb' as const, today: '2026-10-21' };
+  const options = {
+    exerciseNames: ['Bench press', 'Cable fly', 'Bench press'], unit: 'lb' as const, today: '2026-10-21',
+    context: { routines: [], workouts: [] },
+  };
   const reply = { title: 'Push', exercises: [{ name: 'Bench press', sets: [{ kind: 'working', reps: 5, weight: 185 }] }] };
 
   it('reads the reply into a draft, asking for the one tool and sending the library by name', async () => {
@@ -2846,9 +2853,26 @@ describe('draftWorkoutFromText', () => {
     expect(JSON.parse((plan.mock.calls[plan.mock.calls.length - 1][1] as RequestInit).body as string).system).not.toContain('Today is');
   });
 
-  it('says nothing came back for a reply with no exercises, without a request for a blank description', async () => {
+  it('sends the routines and recent workouts only when there are some', async () => {
+    const spy = mockFetchOnce(toolUseResponse('draft_workout', reply));
+    await draftWorkoutFromText('my usual but only upper body', 'routine', {
+      ...options,
+      context: { routines: ['Push A: Bench press 3x5 @ 185 lb'], workouts: ['Full body: Squat 3x5 @ 225 lb'] },
+    });
+    const content = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string).messages[0].content;
+    expect(content).toContain('Their routines:\nPush A: Bench press 3x5 @ 185 lb');
+    expect(content).toContain('Their recent workouts, newest first:\nFull body: Squat 3x5 @ 225 lb');
+
+    const bare = mockFetchOnce(toolUseResponse('draft_workout', reply));
+    await draftWorkoutFromText('bench 3x5', 'routine', options);
+    const plain = JSON.parse((bare.mock.calls[bare.mock.calls.length - 1][1] as RequestInit).body as string).messages[0].content;
+    expect(plain).not.toContain('Their routines');
+    expect(plain).not.toContain('Their recent workouts');
+  });
+
+  it('says no exercises were described for a reply with none, without a request for a blank description', async () => {
     mockFetchOnce(toolUseResponse('draft_workout', { exercises: [] }));
-    await expect(draftWorkoutFromText('hmm', 'routine', options)).rejects.toThrow('No answer returned');
+    await expect(draftWorkoutFromText('hmm', 'routine', options)).rejects.toThrow('No exercises described');
     await expect(draftWorkoutFromText('   ', 'routine', options)).rejects.toThrow('No answer returned');
   });
 
