@@ -1,0 +1,1 @@
+{ "message": "A sync that fails once is now retried right away, so a one-off hiccup no longer flashes a sync error on Today.", "date": "2026-11-19" }

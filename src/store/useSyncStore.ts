@@ -698,6 +698,9 @@ async function joinTransport(destination: SyncDestination, state: SyncConfig): P
   return serverTransport(config, state);
 }
 
+/** How long a failed run waits before its one quiet retry. */
+const SYNC_RETRY_MS = 2000;
+
 async function syncOnce(state: SyncConfig, claimId: number): Promise<SyncSummary | null> {
   const set = useSyncStore.setState;
 
@@ -717,7 +720,16 @@ async function syncOnce(state: SyncConfig, claimId: number): Promise<SyncSummary
     // see `onApplied` in runSync for the edit that would otherwise be lost.
     // Including on a run that then failed, since the rows are in the database
     // either way, and skipped when nothing came in, which is most runs.
-    const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal(), reloadAfterSync));
+    let runs = await runSyncAll(transports, databaseSyncLocal(), reloadAfterSync);
+    // A one-off failure (a dropped request, a busy database) mostly works a moment later, and
+    // `problem` shows as a banner until the next sync clears it. So a failed run is tried once more
+    // before it's reported; applying is idempotent, so the repeat is safe. Not when this run was
+    // abandoned while it waited: the run that replaced it owns the state.
+    if (runs.some(r => r.result.status === 'failed')) {
+      await new Promise(resolve => setTimeout(resolve, SYNC_RETRY_MS));
+      if (claimId === syncClaimId) runs = await runSyncAll(transports, databaseSyncLocal(), reloadAfterSync);
+    }
+    const summary = summarizeRuns(runs);
 
     if (summary.imagesReceived > 0) set(s => ({ recipeImagesVersion: s.recipeImagesVersion + 1 }));
 
