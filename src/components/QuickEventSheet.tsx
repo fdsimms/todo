@@ -29,6 +29,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { CalendarPicker } from './CalendarPicker';
 import { EventOptionSheet, type EventOption } from './EventOptionSheet';
 import { CustomMinutesPrompt } from './CustomMinutesPrompt';
+import { ArriveAtSheet } from './ArriveAtSheet';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { NameSheet, type NameRequest } from './NameSheet';
@@ -42,7 +43,7 @@ import {
   TRAVEL_MODE_LABELS,
   TRAVEL_ORIGIN_PHONE,
   TRAVEL_SKIP_KEY,
-  describeArrival,
+  describeArrivalWithClock,
   travelArrivePickerOptions,
   originCandidates,
   travelModePickerOptions,
@@ -314,6 +315,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
   const [alertCustomVisible, setAlertCustomVisible] = useState(false);
+  const [arriveAtVisible, setArriveAtVisible] = useState(false);
   // How this event is travelled to, how early to arrive and where the trip
   // starts: app-only, written to travelEventPrefs once the event saves. A null
   // mode or origin follows Settings.
@@ -1129,7 +1131,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   ];
   const travelModeOptions: EventOption[] = travelModePickerOptions(defaultTravelMode, walkUnderMinutes);
   const travelChipLabel = effectiveTravelSkip ? 'No leave-by task' : TRAVEL_MODE_LABELS[effectiveTravelMode ?? defaultTravelMode];
-  const arriveOptions: EventOption[] = travelArrivePickerOptions(defaultArriveEarly);
+  const arriveOptions: EventOption[] = travelArrivePickerOptions(defaultArriveEarly, effectiveArriveEarly, effectiveStart, d => formatTimeOfDay(d, use24Hour));
   // Only for an event with a place and a time, the only kind a "Leave for" task is written for.
   // A trip clause typed in the line shows its chip even before a place is named.
   const typedTrip = draft.travelMode !== undefined || draft.arriveEarlyMinutes !== undefined || draft.travelOriginId !== undefined;
@@ -1301,7 +1303,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       <EditorRow
         icon="walk-outline"
         label="Arrive"
-        value={effectiveArriveEarly !== null ? describeArrival(shownArriveEarly) : undefined}
+        value={effectiveArriveEarly !== null ? describeArrivalWithClock(shownArriveEarly, effectiveStart, d => formatTimeOfDay(d, use24Hour)) : undefined}
         onPress={openPicker(() => setArrivePickerVisible(true))}
       />
     ),
@@ -1828,7 +1830,18 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
           if (draft.arriveSpan) cutFromLine(draft.arriveSpan);
           setArriveEarlyPick(key === 'default' ? null : Number(key));
         }}
+        onOther={() => setArriveAtVisible(true)}
         onClose={() => setArrivePickerVisible(false)}
+      />
+      <ArriveAtSheet
+        visible={arriveAtVisible}
+        start={effectiveStart}
+        currentMinutes={shownArriveEarly}
+        onSubmit={minutes => {
+          if (draft.arriveSpan) cutFromLine(draft.arriveSpan);
+          setArriveEarlyPick(minutes);
+        }}
+        onClose={() => setArriveAtVisible(false)}
       />
       <EventOptionSheet
         visible={originPickerVisible}

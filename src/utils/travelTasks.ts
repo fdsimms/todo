@@ -118,13 +118,41 @@ export type TravelEventPrefs = Readonly<Record<string, TravelEventPref>>;
 /** The arrival choices the event sheet offers: early (positive), on time, late (negative). */
 export const TRAVEL_ARRIVE_CHOICES: readonly number[] = [30, 15, 10, 5, 0, -5, -10, -15];
 
+/** The Settings stepper's range; an event's own pick can go further (see below). */
 export const TRAVEL_ARRIVE_EARLY_MIN = -30;
 export const TRAVEL_ARRIVE_EARLY_MAX = 60;
+
+/**
+ * What one event may hold: up to 4 hours before the start, or any time later
+ * the same day (20 hours after), so "arrive at 8 for a 5 PM to 10 PM event"
+ * (`arriveMinutesForClock`) always resolves to a value that is stored as picked.
+ */
+export const TRAVEL_ARRIVE_EVENT_EARLY_MAX = 240;
+export const TRAVEL_ARRIVE_EVENT_LATE_MAX = 20 * 60;
 
 export function clampArriveEarlyMinutes(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   const stepped = Math.round(value / 5) * 5;
-  return Math.min(TRAVEL_ARRIVE_EARLY_MAX, Math.max(TRAVEL_ARRIVE_EARLY_MIN, stepped));
+  return Math.min(TRAVEL_ARRIVE_EVENT_EARLY_MAX, Math.max(-TRAVEL_ARRIVE_EVENT_LATE_MAX, stepped));
+}
+
+/**
+ * Minutes before the start (negative is after it) for arriving at the clock
+ * time `picked` shows, on the event's day. A time more than 4 hours before the
+ * start is read as that time the next day, so a wheel time always means
+ * something. Rounded to the 5 minutes an arrival is stored in.
+ */
+export function arriveMinutesForClock(start: Date, picked: Date): number {
+  const at = new Date(start);
+  at.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
+  let minutes = Math.round((start.getTime() - at.getTime()) / 60000);
+  if (minutes > TRAVEL_ARRIVE_EVENT_EARLY_MAX) minutes -= 24 * 60;
+  return clampArriveEarlyMinutes(minutes);
+}
+
+/** The inverse: the clock time an arrival of `arriveEarlyMinutes` before `start` lands on. */
+export function arriveClockFor(start: Date, arriveEarlyMinutes: number): Date {
+  return new Date(start.getTime() - arriveEarlyMinutes * 60000);
 }
 
 /** A stored per-event arrival: a number is the event's own pick, anything else follows the default. */
@@ -188,16 +216,29 @@ export function arriveEarlyFor(eventId: string, prefs: TravelEventPrefs, default
 /** "10 min early", "On time", "5 min late". */
 export function describeArrival(arriveEarlyMinutes: number): string {
   if (arriveEarlyMinutes === 0) return 'On time';
-  return `${Math.abs(arriveEarlyMinutes)} min ${arriveEarlyMinutes > 0 ? 'early' : 'late'}`;
+  const away = Math.abs(arriveEarlyMinutes);
+  const amount = away < 60 ? `${away} min` : away % 60 === 0 ? `${away / 60} hr` : `${Math.floor(away / 60)} hr ${away % 60} min`;
+  return `${amount} ${arriveEarlyMinutes > 0 ? 'early' : 'late'}`;
+}
+
+/** "8:00 PM (3 hr late)" for an arrival the presets don't have, when the event's start is known; else `describeArrival`. */
+export function describeArrivalWithClock(
+  arriveEarlyMinutes: number,
+  start: Date | null,
+  /** The app's clock format (`formatTimeOfDay`), passed in because dateUtils reads the settings store, which imports this file. */
+  formatTime: (date: Date) => string,
+): string {
+  if (!start || TRAVEL_ARRIVE_CHOICES.includes(arriveEarlyMinutes)) return describeArrival(arriveEarlyMinutes);
+  return `${formatTime(arriveClockFor(start, arriveEarlyMinutes))} (${describeArrival(arriveEarlyMinutes)})`;
 }
 
 /**
  * The reminder lead for an event: the trip (typed or estimated) plus how early
- * it should arrive, never below zero, so arriving late can't put the reminder
- * after the start.
+ * it should arrive. An arrival later than the trip is long (arriving at 8 for a
+ * 5 PM event) gives a lead below zero, which puts the reminder after the start.
  */
 export function leadWithArrival(leadMinutes: number, arriveEarlyMinutes: number): number {
-  return Math.max(0, leadMinutes + arriveEarlyMinutes);
+  return leadMinutes + arriveEarlyMinutes;
 }
 
 /**
@@ -394,10 +435,17 @@ export function travelModePickerOptions(
  * arrival line, so the two can't list different choices. Keys are `'default'`
  * or the minutes as a string.
  */
-export function travelArrivePickerOptions(defaultMinutes: number): { key: string; label: string }[] {
+export function travelArrivePickerOptions(
+  defaultMinutes: number,
+  /** The event's own pick; one the presets lack gets a row of its own so it shows as picked. */
+  picked: number | null,
+  start: Date | null,
+  formatTime: (date: Date) => string,
+): { key: string; label: string }[] {
+  const custom = picked !== null && !TRAVEL_ARRIVE_CHOICES.includes(picked) ? [picked] : [];
   return [
     { key: 'default', label: `Settings default (${describeArrival(defaultMinutes)})` },
-    ...TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) })),
+    ...[...TRAVEL_ARRIVE_CHOICES, ...custom].map(m => ({ key: String(m), label: describeArrivalWithClock(m, start, formatTime) })),
   ];
 }
 

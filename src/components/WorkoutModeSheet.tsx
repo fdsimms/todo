@@ -25,9 +25,11 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { WorkoutVolumePill } from './WorkoutVolumePill';
 import { ActionMenu } from './ActionMenu';
 import { CardSheet, type CardAnchor } from './CardSheet';
+import { WorkoutTimesSheet } from './WorkoutTimesSheet';
 import { RecordsCard } from './RecordsCard';
 import { CountStepper } from './CountStepper';
 import { CheckPop } from './CheckPop';
+import { RecordPop } from './RecordPop';
 import { InlineAction } from './InlineAction';
 import { ProgressBar } from './ProgressBar';
 import { EmptyNote } from './EmptyNote';
@@ -168,6 +170,7 @@ function SetKindBadge({ kind }: { kind: WorkoutSetKind }) {
 
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
+import { sameMinute } from '../utils/workoutTimes';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** "today" is this workout's note on the exercise, "always" the exercise's own. */
@@ -293,6 +296,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [viewedId, setViewedId] = useState<string | null>(null);
   // The set whose type popover is open, and where it opens from (the set button's touch).
   const [openSetId, setOpenSetId] = useState<string | null>(null);
+  // The set whose record badge plays its entrance: the one just ticked into a record (RecordPop).
+  const [recordPopId, setRecordPopId] = useState<string | null>(null);
   const [setMenuAnchor, setSetMenuAnchor] = useState<CardAnchor | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [effort, setEffort] = useState<number | null>(null);
@@ -419,6 +424,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (!session) return;
     if (set.completedAt !== null) {
       haptics.tap();
+      setRecordPopId(null);
       edit(set.id, { completedAt: null });
       return;
     }
@@ -441,7 +447,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       sessionsList,
       dayResetTime,
     );
-    if (records.has(set.id)) haptics.success();
+    if (records.has(set.id)) {
+      haptics.success();
+      setRecordPopId(set.id);
+    }
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
@@ -576,6 +585,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // This workout's rest timers are turned off (`restsAreOff`): no rest starts, and the Rest chips are hidden.
   const restsOff = restsAreOff(session?.restOverrides);
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
+  // The header clock's menu, and the card that moves the running workout's start.
+  const [clockMenu, setClockMenu] = useState<CardAnchor | null>(null);
+  const [startOpen, setStartOpen] = useState(false);
   // The trophy's card keeps the lines it was opened with, so it reads the same while it fades.
   const [recordCard, setRecordCard] = useState<{ lines: ReturnType<typeof recordLines>; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
@@ -639,6 +651,27 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       [
         { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: run },
+      ],
+    );
+  };
+
+  // ==== the clock ====
+  // The elapsed time is "now minus the start", so changing it is changing the
+  // start. A finished workout's times are edited on its own page.
+  const changeStart = (next: Date) => {
+    if (!session || sameMinute(next, new Date(session.startedAt))) return;
+    useWorkoutStore.getState().updateSession(session.id, { startedAt: next.toISOString() });
+    haptics.success();
+  };
+  const restartClock = () => {
+    if (!session) return;
+    haptics.tap();
+    Alert.alert(
+      'Restart the timer?',
+      'The workout will show as started now. Sets you already logged stay in it.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Restart', style: 'destructive', onPress: () => { useWorkoutStore.getState().updateSession(session.id, { startedAt: new Date().toISOString() }); haptics.success(); } },
       ],
     );
   };
@@ -846,8 +879,25 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           >
             <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
           </TouchableOpacity>
-          <View style={styles.headerTitle} pointerEvents="none">
-            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
+          <View style={styles.headerTitle} pointerEvents="box-none">
+            {session && (finishing
+              ? <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
+              : (
+                <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                  onPress={e => {
+                    haptics.tap();
+                    Keyboard.dismiss();
+                    setClockMenu({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Change workout time"
+                  accessibilityHint="Change the start time or restart the timer"
+                >
+                  <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
+                </TouchableOpacity>
+              ))}
           </View>
           {!finishing && session ? (
             <View style={styles.headerRight}>
@@ -1489,6 +1539,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
                         )}
                         {lines.length > 0 && (
+                          <RecordPop celebrate={recordPopId === set.id}>
                           <TouchableOpacity
                             style={styles.recordPill}
                             activeOpacity={interaction.activeOpacity}
@@ -1503,6 +1554,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
                           </TouchableOpacity>
+                          </RecordPop>
                         )}
                         {fields.map(f => (
                           <SetInput
@@ -1702,6 +1754,26 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           />
         );
       })()}
+      <ActionMenu
+        visible={clockMenu !== null}
+        title="Workout time"
+        anchor={clockMenu}
+        onClose={() => setClockMenu(null)}
+        actions={[
+          { key: 'start', label: 'Change start time', icon: 'time-outline', onPress: () => setStartOpen(true) },
+          { key: 'restart', label: 'Restart timer', icon: 'refresh-outline', onPress: restartClock },
+        ]}
+      />
+      <WorkoutTimesSheet
+        visible={visible && startOpen && session !== null}
+        live
+        start={session ? new Date(session.startedAt) : new Date(0)}
+        end={new Date(0)}
+        initial="start"
+        healthLimited={writesToHealth}
+        onConfirm={start => changeStart(start)}
+        onClose={() => setStartOpen(false)}
+      />
       <ManualRestSheet
         visible={visible && timerOpen && session !== null}
         initialSeconds={defaultRestSeconds}

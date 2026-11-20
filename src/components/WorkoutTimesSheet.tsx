@@ -15,7 +15,7 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { changedList } from '../utils/editorChangeSummary';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { describeEventLength } from '../utils/eventLength';
-import { sameMinute, shiftDays, spanMinutes, withClock, workoutTimesProblem } from '../utils/workoutTimes';
+import { liveStartProblem, sameMinute, shiftDays, spanMinutes, withClock, workoutTimesProblem } from '../utils/workoutTimes';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** Which of the two times is being changed. */
@@ -30,6 +30,8 @@ interface Props {
   initial: TimeEnd;
   /** Whether the new times would be written to Health, which holds a workout to a day. */
   healthLimited: boolean;
+  /** A workout still running: only the start is changed, and the finish is now. `end` is ignored. */
+  live?: boolean;
   onConfirm: (start: Date, end: Date) => void;
   onClose: () => void;
 }
@@ -58,14 +60,15 @@ function dayName(date: Date, now: Date): string {
  * - **The wheel is mounted once the card is on screen** (`onShow`), like
  *   `CalendarPicker`'s: a native picker mounting mid-scale glitches.
  */
-export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited, onConfirm, onClose }: Props) {
+export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited, live = false, onConfirm, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [draftStart, setDraftStart] = useState(start);
   const [draftEnd, setDraftEnd] = useState(end);
-  const [which, setWhich] = useState<TimeEnd>(initial);
+  const [whichPicked, setWhich] = useState<TimeEnd>(initial);
+  const which = live ? 'start' : whichPicked;
   const [wheelReady, setWheelReady] = useState(false);
 
   useEffect(() => {
@@ -83,9 +86,11 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
   const now = new Date();
   const active = which === 'start' ? draftStart : draftEnd;
   const setActive = (next: Date) => (which === 'start' ? setDraftStart(next) : setDraftEnd(next));
-  const problem = workoutTimesProblem(draftStart, draftEnd, { now, healthLimited });
-  const changed = changedList([['start time', !sameMinute(draftStart, start)], ['end time', !sameMinute(draftEnd, end)]]);
-  const minutes = spanMinutes(draftStart, draftEnd);
+  const problem = live
+    ? liveStartProblem(draftStart, { now, healthLimited })
+    : workoutTimesProblem(draftStart, draftEnd, { now, healthLimited });
+  const changed = changedList([['start time', !sameMinute(draftStart, start)], ['end time', !live && !sameMinute(draftEnd, end)]]);
+  const minutes = spanMinutes(draftStart, live ? now : draftEnd);
 
   const handleCancel = (close: (after?: () => void) => void) => {
     if (!changed) { close(); return; }
@@ -130,7 +135,7 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
         <>
           <View style={styles.header}>
             <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => handleCancel(close)} minWidth={64} />
-            <Text style={styles.title}>Workout times</Text>
+            <Text style={styles.title}>{live ? 'Start time' : 'Workout times'}</Text>
             <View style={styles.headerEnd}>
               <SheetHeaderButton
                 label={BUTTON_LABEL.done}
@@ -167,11 +172,11 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
 
           <View style={styles.tiles}>
             {tile('start', 'Started', draftStart)}
-            {tile('end', 'Finished', draftEnd)}
+            {!live && tile('end', 'Finished', draftEnd)}
           </View>
 
           <Text style={[styles.length, problem !== null && styles.problem]} accessibilityLiveRegion="polite">
-            {problem ?? describeEventLength(minutes)}
+            {problem ?? (live ? `Running for ${describeEventLength(minutes)}` : describeEventLength(minutes))}
           </Text>
 
           <View style={styles.wheel}>

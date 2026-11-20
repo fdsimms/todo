@@ -103,6 +103,7 @@ Where each component can appear.
 - `src/components/AppLockGate.tsx` — on app shell
 - `src/components/ApplyTemplateSheet.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SearchScreen, StackDetailScreen, TagsScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
 - `src/components/ApplyToAllAccessory.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more
+- `src/components/ArriveAtSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/AskClaudeHost.tsx` — on app shell
 - `src/components/AskClaudeSheet.tsx` — on app shell
 - `src/components/AwayShiftSheet.tsx` — on CalendarScreen, ProjectDetailScreen, ProjectsScreen, TodayScreen
@@ -408,6 +409,7 @@ Where each component can appear.
 - `src/components/RecipeTimerRow.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeToListSheet.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/RecordBadge.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +6 more
+- `src/components/RecordPop.tsx` — on app shell
 - `src/components/RecordsCard.tsx` — on app shell
 - `src/components/RecurrencePicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/RemindMePicker.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +5 more
@@ -569,7 +571,7 @@ Where each component can appear.
 - `src/components/WorkoutRecordsCard.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutStatTiles.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutStatsCards.tsx` — on StatsScreen, WorkoutsScreen
-- `src/components/WorkoutTimesSheet.tsx` — on WorkoutsScreen
+- `src/components/WorkoutTimesSheet.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutVolumePill.tsx` — on app shell
 - `src/components/YearOfBirthSheet.tsx` — on SettingsGroupScreen
 - `src/screens/settings/AboutSettings.tsx` — on SettingsGroupScreen
