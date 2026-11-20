@@ -72,6 +72,7 @@ export function OnCallRows({ calendars }: Props) {
         label="On-call calendars"
         hint="Every event on these calendars counts as on call. Today shows when you are, and adding something over it warns you."
         value={summary}
+        stackValue
         expanded={pickerOpen}
         onPress={() => { animateLayout(); setPickerOpen(open => !open); }}
         accessibilityLabel="Choose which calendars are on call"
@@ -121,6 +122,7 @@ export function OnCallRows({ calendars }: Props) {
             label="Skip for swap tasks"
             hint="Events on these calendars never get a task to find someone to swap with. Pick your work calendar here."
             value={ignoredSummary}
+            stackValue
             expanded={ignoredOpen}
             onPress={() => { animateLayout(); setIgnoredOpen(open => !open); }}
             accessibilityLabel="Choose which calendars to skip for swap tasks"
