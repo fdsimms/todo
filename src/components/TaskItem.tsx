@@ -6148,6 +6148,7 @@ const TaskItemRow = React.memo(function TaskItem({
         <TravelArriveSheet
           visible={showArrivePicker}
           eventId={task.generatedSourceId ? localTravelEventId(task.generatedSourceId) : null}
+          sourceId={task.generatedSourceId ?? null}
           onClose={() => setShowArrivePicker(false)}
         />
       )}
