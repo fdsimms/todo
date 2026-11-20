@@ -24,12 +24,11 @@ import { SheetModal } from './SheetModal';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WorkoutVolumePill } from './WorkoutVolumePill';
 import { ActionMenu } from './ActionMenu';
-import type { CardAnchor } from './CardSheet';
+import { CardSheet, type CardAnchor } from './CardSheet';
 import { RecordsCard } from './RecordsCard';
 import { CountStepper } from './CountStepper';
 import { CheckPop } from './CheckPop';
 import { InlineAction } from './InlineAction';
-import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { ProgressBar } from './ProgressBar';
 import { EmptyNote } from './EmptyNote';
 import { TextField } from './TextField';
@@ -107,19 +106,21 @@ import {
 import { tickSet, type TickValues } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
 
-// The four kinds of set, in the order the tray offers them. Each segment leads
-// with the letter its row shows (W, D, F; a dot for a working set, which has
-// none), so the tray reads as the same thing as the badge. `amrap` is
-// "Failure" to match the F badge and `setName`'s "To failure". The short visible
-// labels are what fit four to a track; `accessibilityLabel` keeps the full name.
-const SET_KIND_SEGMENTS: { value: WorkoutSetKind; label: string; full: string }[] = [
-  { value: 'working', label: 'Work', full: 'Working' },
-  { value: 'warmup', label: 'Warm', full: 'Warm-up' },
-  { value: 'drop', label: 'Drop', full: 'Drop' },
-  { value: 'amrap', label: 'Fail', full: 'Failure' },
+// The four kinds of set, in the order the set-type popover offers them. Each row
+// leads with the letter the set's row shows (W, D, F; a dot for a working set,
+// which has none), so the popover reads as the same thing as the badge.
+// `amrap` is "Failure" to match the F badge and `setName`'s "To failure".
+/** Width of the set column: the set button, and the header and plate line that line up with it. */
+const SET_COL_WIDTH = 42;
+
+const SET_KIND_ORDER: { value: WorkoutSetKind; label: string }[] = [
+  { value: 'working', label: 'Working' },
+  { value: 'warmup', label: 'Warm-up' },
+  { value: 'drop', label: 'Drop' },
+  { value: 'amrap', label: 'Failure' },
 ];
 
-/** One line under the tray saying what the chosen type does. Counting follows `countsForRecords`. */
+/** One line under each type in the popover saying what it does. Counting follows `countsForRecords`. */
 const SET_KIND_HELP: Record<WorkoutSetKind, string> = {
   working: 'Counts toward records and volume.',
   warmup: 'Left out of records and volume.',
@@ -146,42 +147,25 @@ function ExerciseName({ name, style }: { name: string; style: StyleProp<TextStyl
   );
 }
 
-function SetKindSegment({ kind, label, selected }: { kind: WorkoutSetKind; label: string; selected: boolean }) {
+function SetKindBadge({ kind }: { kind: WorkoutSetKind }) {
   const colors = useColors();
   const badge = setBadge(kind);
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xsm }}>
-      <View
-        style={{
-          width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
-          backgroundColor: badge ? colors.orangeText + '26' : colors.textSecondary + '26',
-        }}
-      >
-        {badge ? (
-          <Text style={{ color: colors.orangeText, fontSize: font.xs, fontWeight: fontWeight.bold }}>{badge}</Text>
-        ) : (
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textSecondary }} />
-        )}
-      </View>
-      <Text
-        numberOfLines={1}
-        style={{
-          color: selected ? colors.text : colors.textSecondary, fontSize: font.sm,
-          fontWeight: selected ? fontWeight.semibold : fontWeight.medium,
-        }}
-      >
-        {label}
-      </Text>
+    <View
+      style={{
+        width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: badge ? colors.orangeText + '26' : colors.textSecondary + '26',
+      }}
+    >
+      {badge ? (
+        <Text style={{ color: colors.orangeText, fontSize: font.xs, fontWeight: fontWeight.bold }}>{badge}</Text>
+      ) : (
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textSecondary }} />
+      )}
     </View>
   );
 }
 
-const SET_KIND_OPTIONS: SegmentOption<WorkoutSetKind>[] = SET_KIND_SEGMENTS.map(o => ({
-  value: o.value,
-  label: o.full,
-  accessibilityLabel: o.full,
-  node: (selected: boolean) => <SetKindSegment kind={o.value} label={o.label} selected={selected} />,
-}));
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -307,7 +291,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 
   // ==== screen state: which exercise is shown, which set is open ====
   const [viewedId, setViewedId] = useState<string | null>(null);
+  // The set whose type popover is open, and where it opens from (the set button's touch).
   const [openSetId, setOpenSetId] = useState<string | null>(null);
+  const [setMenuAnchor, setSetMenuAnchor] = useState<CardAnchor | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [effort, setEffort] = useState<number | null>(null);
   const [sessionNotes, setSessionNotes] = useState('');
@@ -455,10 +441,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setOpenSetId(null);
   };
 
-  const openRow = (set: WorkoutSet, open: WorkoutSet | null) => {
+  const openSetMenu = (set: WorkoutSet, anchor: CardAnchor) => {
     haptics.tap();
-    animateLayout();
-    setOpenSetId(set.id === open?.id ? null : set.id);
+    setSetMenuAnchor(anchor);
+    setOpenSetId(set.id);
   };
 
   const addSet = (exercise: SessionExercise) => {
@@ -486,10 +472,20 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     edit(set.id, { weightKg: prev.weightKg, reps: prev.reps, durationSeconds: prev.durationSeconds, distanceM: prev.distanceM });
   };
 
+  // The plates for a set's weight, for a barbell, EZ bar or trap bar: a dumbbell or a machine
+  // has nothing to load. A pound lifter who never set an inventory gets the pound default
+  // (`effectivePlateInventory`).
+  const plateOf = (exercise: SessionExercise, s: WorkoutSet) => {
+    const info = catalogExercise(exerciseRows, exercise.exerciseId);
+    if (!info || !isPlateLoaded(info.equipment) || info.kind !== 'weight_reps' || !s.weightKg) return null;
+    const inventory = effectivePlateInventory(plateInventory, unit);
+    const gymSetting = gymSettingFor(gymSettings, gym?.id, exercise.exerciseId);
+    return plateLoad(s.weightKg, barKgFor(withGymBar(info, gymSetting).barKg, inventory, info.equipment, unit), inventory, unit);
+  };
+
   const changeKind = (set: WorkoutSet, next: WorkoutSetKind) => {
     if (next === set.kind) return;
     haptics.tap();
-    animateLayout();
     edit(set.id, { kind: next });
   };
 
@@ -1145,7 +1141,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const viewedInfo = catalogExercise(exerciseRows, viewed.exerciseId);
               const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
               const fields = setFieldsFor(kind);
-              // The set whose tray is open: only one tapped by hand, none by default.
+              // The set whose type popover is open: only one tapped by hand, none by default.
               const openSet = viewed.sets.find(s => s.id === openSetId) ?? null;
               const gymSetting = gymSettingFor(gymSettings, gym?.id, viewed.exerciseId);
               // A pair total reads each stored dumbbell weight doubled (`dumbbellLoad.ts`).
@@ -1156,19 +1152,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const doneSets = viewed.sets.filter(s => s.completedAt !== null);
               const collapsedSummary = collapsedSetSummary(doneSets.map(s => formatSetLine(s, kind, unit, false, scale)), viewed.sets.length);
 
-              // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
-              // dumbbell or a machine has nothing to load. A pound lifter who never set an
-              // inventory gets the pound default (`effectivePlateInventory`).
-              const inventory = effectivePlateInventory(plateInventory, unit);
-              const plateFor = (s: WorkoutSet) => viewedInfo && isPlateLoaded(viewedInfo.equipment) && kind === 'weight_reps' && s.weightKg
-                ? plateLoad(s.weightKg, barKgFor(withGymBar(viewedInfo, gymSetting).barKg, inventory, viewedInfo.equipment, unit), inventory, unit)
-                : null;
-              const plate = openSet ? plateFor(openSet) : null;
               // The first set not yet checked off shows its plates under its row without a tap, so
-              // the line is found by use rather than by knowing the set number opens a tray. The
-              // open set's tray carries its own copy, so it isn't drawn twice.
+              // the line is found by use rather than by knowing the set button opens a popover.
+              // The popover carries its own copy for the set it is open on, so it isn't drawn twice.
               const nextSet = viewed.sets.find(s => s.completedAt === null) ?? null;
-              const nextPlate = nextSet && nextSet.id !== openSet?.id ? plateFor(nextSet) : null;
+              const nextPlate = nextSet && nextSet.id !== openSet?.id ? plateOf(viewed, nextSet) : null;
 
               // Last time, for this exercise: one read per exercise shown, not per row.
               const previous = session ? useWorkoutStore.getState().lastTimeFor(viewed.exerciseId, session.id) : [];
@@ -1449,7 +1437,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
 
                 {viewed.sets.map(set => {
-                  const isTray = openSet?.id === set.id;
+                  const isOpen = openSet?.id === set.id;
                   const done = set.completedAt !== null;
                   const prev = previousBySet.get(set.id);
                   const prevLine = prev ? formatSetLine(prev, kind, unit, false, scale) : null;
@@ -1467,14 +1455,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       <View style={styles.setRow}>
                         <TouchableOpacity
                           activeOpacity={interaction.activeOpacity}
-                          style={styles.colSet}
-                          onPress={() => openRow(set, openSet)}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
+                          style={styles.setButton}
+                          onPress={e => openSetMenu(set, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
                           accessibilityRole="button"
-                          accessibilityState={{ expanded: isTray }}
-                          accessibilityLabel={`${setName(set.kind, label)}, more options`}
+                          accessibilityState={{ expanded: isOpen }}
+                          accessibilityLabel={`${setName(set.kind, label)}, set type`}
+                          accessibilityHint="Changes the set type"
                         >
-                          <Text style={[setBadge(set.kind) ? styles.setBadge : styles.setNumber, styles.setLabel]}>{label}</Text>
+                          <Text style={setBadge(set.kind) ? styles.setBadge : styles.setNumber}>{label}</Text>
+                          <Ionicons name="chevron-down" size={iconSize.xs} color={colors.textSecondary} />
                         </TouchableOpacity>
                         {prev ? (
                           <TouchableOpacity
@@ -1544,18 +1534,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           <PlateLine load={nextPlate} unit={unit} />
                         </View>
                       )}
-                      {isTray && (
-                        <View style={styles.tray}>
-                          <SegmentedControl
-                            label="Set type"
-                            options={SET_KIND_OPTIONS}
-                            value={set.kind}
-                            onChange={next => changeKind(set, next)}
-                          />
-                          <HelpText style={styles.kindHelp}>{SET_KIND_HELP[set.kind]}</HelpText>
-                          {!!plate && <PlateLine load={plate} unit={unit} />}
-                        </View>
-                      )}
                     </DeletableSet>
                   );
                 })}
@@ -1608,6 +1586,53 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       </View>
       {/* Inside this Modal, not beside it: a second sheet presented from the
           same view controller as this one never appears. */}
+      {(() => {
+        const menuExercise = exercises.find(e => e.sets.some(x => x.id === openSetId)) ?? null;
+        const menuSet = menuExercise?.sets.find(x => x.id === openSetId) ?? null;
+        const menuPlate = menuExercise && menuSet ? plateOf(menuExercise, menuSet) : null;
+        return (
+          <CardSheet
+            name="SetKindCard"
+            visible={menuSet !== null}
+            onClose={() => setOpenSetId(null)}
+            anchor={setMenuAnchor}
+            popoverWidth={290}
+            scrimLabel="Close"
+          >
+            {close => (
+              <>
+                <Text style={styles.kindLabel}>Set type</Text>
+                {SET_KIND_ORDER.map(o => {
+                  const selected = menuSet?.kind === o.value;
+                  return (
+                    <TouchableOpacity
+                      key={o.value}
+                      activeOpacity={interaction.activeOpacity}
+                      style={styles.kindRow}
+                      onPress={() => { if (menuSet) changeKind(menuSet, o.value); close(); }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`${o.label}. ${SET_KIND_HELP[o.value]}`}
+                    >
+                      <SetKindBadge kind={o.value} />
+                      <View style={styles.kindText}>
+                        <Text style={styles.kindName}>{o.label}</Text>
+                        <HelpText style={styles.kindHelp}>{SET_KIND_HELP[o.value]}</HelpText>
+                      </View>
+                      {selected && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />}
+                    </TouchableOpacity>
+                  );
+                })}
+                {!!menuPlate && (
+                  <View style={styles.kindPlates}>
+                    <PlateLine load={menuPlate} unit={unit} />
+                  </View>
+                )}
+              </>
+            )}
+          </CardSheet>
+        );
+      })()}
       <RecordsCard
         visible={recordCard !== null}
         lines={recordCard?.lines ?? []}
@@ -2143,10 +2168,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headCell: {
     color: colors.textSecondary, fontSize: font.xxs, fontWeight: fontWeight.semibold, letterSpacing: 0.8, textTransform: 'uppercase',
   },
-  colSet: { width: 34, textAlign: 'center' },
+  colSet: { width: SET_COL_WIDTH, textAlign: 'center' },
   colPrev: { flex: 1 },
   colValue: { width: 64 },
-  setLabel: { textAlign: 'center' },
   cellInput: {
     color: colors.text, fontSize: font.md, fontVariant: ['tabular-nums'], textAlign: 'center',
     paddingVertical: spacing.xsm, paddingHorizontal: spacing.xs, backgroundColor: colors.bgTertiary, borderRadius: radius.sm, minHeight: 36,
@@ -2155,6 +2179,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 46,
     paddingHorizontal: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
+  },
+  // The set number as a button: a tile like the value cells, with a chevron saying it opens something.
+  setButton: {
+    width: SET_COL_WIDTH, minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxs,
+    backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
   },
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold },
   setBadge: { color: colors.orangeText, fontSize: font.md, fontWeight: fontWeight.bold },
@@ -2170,10 +2199,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   checkDone: { backgroundColor: colors.done, borderColor: colors.done },
-  tray: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
-  kindHelp: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.xs },
+  kindLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xsm,
+  },
+  kindRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.smd,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
+  },
+  kindText: { flex: 1 },
+  kindName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  kindHelp: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  kindPlates: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   // Lines up under the "Previous" column, past the set number's column.
-  nextPlates: { paddingLeft: spacing.md + 34 + spacing.sm, paddingRight: spacing.md, paddingBottom: spacing.smd },
+  nextPlates: { paddingLeft: spacing.md + SET_COL_WIDTH + spacing.sm, paddingRight: spacing.md, paddingBottom: spacing.smd },
   setFace: { backgroundColor: colors.bgSecondary },
   deletePanel: { width: 88, alignSelf: 'stretch', backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
   deleteText: { color: colors.onFill, fontSize: font.sm, fontWeight: fontWeight.semibold },
