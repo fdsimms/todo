@@ -35,7 +35,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'themeMode', 'appFont', 'appFontRandomize', 'appFontPool', 'use24HourTime', 'hideHelpText',
     'sortOption', 'hideGroceryRecipeNames', 'projectSortOption', 'recipeSortOption', 'recipeLovedOnly',
     'collapsedRecipeSections', 'limitsTodayHidden', 'goalsTodayHidden', 'healthTodayHidden',
-    'keepOpenAfterFoodLog',
+    'keepOpenAfterFoodLog', 'biostatsCollapsed',
   ],
 
   // What the app remembers about prompts it has shown and answers it has had,
@@ -54,7 +54,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
  */
 const NOT_DECIDED: string[] = [
   'autoArchiveProjectsOnComplete', 'generatorEstimates', 'mealSlotStepEstimates', 'mealLogPrompt',
-  'travelOriginPlaceId', 'goalsTodayCategory', 'stepGoal', 'journalCustomPrompts', 'moodContextSources',
+  'travelOriginPlaceId', 'goalsTodayShown', 'stepGoal', 'journalCustomPrompts', 'moodContextSources',
   'moodEventTags', 'limitWarningAutoSlips', 'catalogAuditDismissed', 'weightUnit', 'foodLogPinnedNutrients',
   'shortNightNoteEnabled', 'shortNightMinutes', 'maxHeartRate', 'sleepGoalMinutes', 'bodyProfile',
   'weightGoal', 'proteinPerWeight', 'activeEnergyBoost', 'waterExerciseBoost', 'tag_registry',

@@ -82,7 +82,7 @@ Where each component can appear.
 - `src/components/ActionRow.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, app shell
 - `src/components/ActiveFilterPill.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, RemindersScreen, SearchScreen, +7 more
 - `src/components/ActiveTripBanner.tsx` — on GroceryScreen, KitchenScreen, MealPlanScreen, RecipesScreen
-- `src/components/ActivityRingsCard.tsx` — on SettingsGroupScreen, TodayScreen
+- `src/components/ActivityRingsCard.tsx` — on SettingsGroupScreen
 - `src/components/ActivitySourceSheet.tsx` — on UnattendedLogScreen
 - `src/components/AddGuestsSheet.tsx` — on ProjectDetailScreen, ProjectsScreen
 - `src/components/AddMealsToListSheet.tsx` — on MealPlanScreen

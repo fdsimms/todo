@@ -2638,8 +2638,10 @@ function seedFoodLog(today: Date): void {
   setNutritionTarget('satFatG', 20);
   useSettingsStore.getState().setNutritionLimits(['satFatG']);
   useSettingsStore.getState().setFoodLogPinnedNutrients(['calorieKcal', 'proteinG', 'satFatG']);
-  useCategoryStore.getState().addCategory('Biostats');
-  useSettingsStore.getState().setLimitsTodayCategory('Biostats');
+  // Both read in the Biostats card at the top of Today: the goals give it the
+  // calorie ring it folds to, and the limit its bar and the warning colors.
+  useSettingsStore.getState().setLimitsTodayShown(true);
+  useSettingsStore.getState().setGoalsTodayShown(true);
   const { items } = useGroceryStore.getState();
 
   /**

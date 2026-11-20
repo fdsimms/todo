@@ -1116,8 +1116,8 @@ it), the project's own default, or one a title rule supplies. A new category is 
 asked for in so many words (`newCategory: true`), and is created inside the write that uses it.
 `quick_add` does not go through `taskPatch`, so it asks the same question of the task a line would
 create (`categoryForDraft`, which also counts the new-task default) and sends a line with no answer
-back as a problem row. The settings that file things under a name (`limitsTodayCategory`,
-`groceryUseUpTaskCategory`, `leftoverUseUpTaskCategory`, `newTaskDefaults.category`) are checked the same way, and `rewardListProjectId` against the real
+back as a problem row. The settings that file things under a name (`groceryUseUpTaskCategory`,
+`leftoverUseUpTaskCategory`, `newTaskDefaults.category`) are checked the same way, and `rewardListProjectId` against the real
 projects, before anything is stored.
 `list_categories` is what the model chooses from, with a few open tasks per category so it can
 judge what belongs where. A checklist item is exempt: it has no section of its own.
@@ -1581,10 +1581,11 @@ half of it applied; then every write goes through the store's own setter, which 
 Settings stepper does, and a value the app stored differently from what was asked is named in the
 result. The entry in Activity is a record (subject `automation`) listing what changed, from and to.
 
-`healthCategory` ("Show Health readings under") is on the list too. The readings are rows, not
-tasks, so no task tool can move them, and a category only comes into being when something is filed
-under it. Writing it names the category and `applySettings` creates it if missing (outside the dry
-run, which must not write), as the app's own picker does. `null` hides the readings from Today.
+`healthTodayShown` ("Show Health readings on Today") and `limitsTodayShown` are on the list too:
+plain switches for what the Biostats card at the top of Today draws. They replaced
+`healthCategory` and `limitsTodayCategory`, which named a category the rows filed under, so a
+write no longer needs to create or check one. The collapse (`biostatsCollapsed`) is appearance and
+is not exposed.
 
 Adding these found that most generators' "File them under" categories and their own parameters
 (lead days, time segments, thresholds) were missing from `SYNCED_SETTING_KEYS`, so they never

@@ -1659,31 +1659,33 @@ holds for them. What follows is only where they differ.
   from a newer device reads as an ordinary task on a build that predates its
   metric, and saving it there clears the target.
 
-## The row on Today, and where it files
+## The readings on Today: the Biostats widget
 
-The reading is a fourth `ContextRow` kind, beside `event`, `meal` and
-`kitchen`. It is a reading with no tick box, which `DayContextRow` already
-argues for at length, and the strictest case of it: this app cannot write a step,
-so there is nothing a tick could mean, and it is the one kind with no `onPress`
-either. Health holds the detail and sending somebody out to another app for a
-line they have already read is not worth a tap target.
+The reading is a `ContextRow` of kind `health`, built by `healthContextRows`, but
+it is **not a row in the task list**. It draws in `BiostatsWidget`, a card in
+`TodayScreen`'s list header (after On call, before the meal strip) that scrolls
+with the rows. It used to be a row filed under a category (`healthCategory`,
+"Biostats" by default), and a day's readings gained nothing from a category's
+ordering, dragging or section header, while paying for all of it. The widget
+also carries the Stay under and Aim for rows (`limitContextRows`,
+`goalContextRows`), so the day's figures sit in one place.
 
-**It has its own category setting (`healthCategory`), and that is what took the
-deciding.** The other three sources either had a category already or could
-borrow one on a subject argument — the kitchen files with the meals because
-`mealCookTaskCategory` is already "where food goes on Today". A step count
-shares a subject with nothing here, and the alternative to a setting is
-`category: null`, which `insertContextRows` puts at the very top of the list
-above every section: the pinned strip this whole mechanism was built to remove.
-So it follows `calendarEventCategory` exactly, `ensureHealthCategory` and all.
+It folds to a calorie ring and the two bars most worth a glance (an over or close
+limit first, then steps), chosen by `biostatsCollapsed` in
+`src/utils/biostatsWidget.ts`, and opens to a tile per reading. The fold is
+persisted (`biostatsCollapsed`, folded by default). A tile for a nutrient opens
+its food contribution sheet; steps and the rings have nowhere to go, since this
+app cannot write a step and Health holds the detail. A row carries its figure in
+parts (`ContextRow.reading`) for the tiles, beside the `title` sentence that a
+screen reader and the fallback line read.
 
-That also answers the switch question, which is why there is **no
-`healthOnToday` beside it**. A cleared category is a real answer rather than a
-missing one, so clearing it is how somebody says "read Health, but not onto my
-list", and the reading stays visible in Settings. Two switches would only give
-them a way to contradict each other. `mealsOnToday` exists because its area is
-on by default and has many surfaces; this one is an explicit opt-in with
-exactly one.
+**Each source has its own switch**: `healthTodayShown`, `limitsTodayShown` and
+`goalsTodayShown`. They replaced the three category settings, where a cleared
+category was the off switch. An install that has not written the new key reads the
+old one (`shownFromStored`): a category set means on, a cleared one means off, and
+one that never answered gets the old startup default (on for Health when the read
+is on). Turning the Health read on in Settings turns the readings on, as it
+used to assign the category.
 
 **Three inputs draw no row**, and only one of them is a choice:
 
@@ -1699,24 +1701,23 @@ exactly one.
   steps" line every morning — a scold to somebody who cannot walk, a bug to
   everybody else, and in practice indistinguishable from not-synced-yet.
 
-Demo mode needs no gate of its own for the row, and gets one anyway from the
-category: `healthCategory` lives in the database, the demo's copy has never had
-one, so a demo session cannot surface a real reading left in the store by the
-session before it.
+**Demo mode is gated twice.** The demo database has no `healthTodayShown` and
+keeps the Health read off, so the switch reads off there. The health store is not
+part of the database swap, though, so `TodayScreen` also refuses the Health rows
+while demo mode is active (`!demoActive`), or a real reading left in the store by
+the session before would draw on a phone handed over as a demo.
 
-**A run of readings draws as one joined card, and only a row with no action may
-join one.** Health readings and calendar events share this: a consecutive run of
-either is a single card with hairlines between rows (`contextCardPositions`,
-drawn by `DayContextRow`'s `cardPosition`), and a folded section says what is in
-it on its own header (`contextSectionSummaries`). The line that keeps this safe
-is `isCardRow` in `src/utils/contextCards.ts`: a meal row has a tick and a
-moved-off-today event carries the "move tasks" offer, so both stay on their own
-cards. Folding a section hides its rows, so anything that asks for an answer
-must never be inside one. A new context kind joins a card only if it is as
-inert as a health reading; tapping through to a read-only sheet (an event) is
-fine, anything that changes data is not. Health's section starts folded the
-first time the app assigns it (`ensureHealthCategory`), because its header
-already states the figures.
+**A run of calendar events draws as one joined card, and only a row with no
+action may join one.** A consecutive run of events is a single card with
+hairlines between rows (`contextCardPositions`, drawn by `DayContextRow`'s
+`cardPosition`), and a folded section says what is in it on its own header
+(`contextSectionSummaries`). The line that keeps this safe is `isCardRow` in
+`src/utils/contextCards.ts`: a meal row has a tick and a moved-off-today event
+carries the "move tasks" offer, so both stay on their own cards. Folding a
+section hides its rows, so anything that asks for an answer must never be inside
+one. A new context kind joins a card only if it is as inert as an event; tapping
+through to a read-only sheet is fine, anything that changes data is not. Health
+rows used to be in this group and are not any more.
 
 ## The Mood screen's health axis
 

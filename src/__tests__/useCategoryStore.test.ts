@@ -1,8 +1,6 @@
 import {
   useCategoryStore,
   ensureCalendarEventCategory,
-  ensureHealthCategory,
-  HEALTH_CATEGORY,
   ensureGeneratedTaskCategory,
   ensureGeneratedTaskCategories,
   CALENDAR_EVENTS_CATEGORY,
@@ -69,9 +67,6 @@ beforeEach(() => {
     calendarReadEnabled: false,
     calendarEventCategory: null,
     healthReadEnabled: false,
-    healthCategory: null,
-    // ensureHealthCategory folds the new section, so a test that ran it leaves
-    // Health here for whichever test the random order puts next.
     collapsedCategories: [],
     mealCookTasks: false,
     mealCookTaskCategory: null,
@@ -118,54 +113,6 @@ describe('ensureCalendarEventCategory', () => {
     useSettingsStore.setState({ calendarReadEnabled: true });
     ensureCalendarEventCategory();
     expect(useSettingsStore.getState().calendarEventCategory).toBeNull();
-    expect(dbInsertCategory).not.toHaveBeenCalled();
-  });
-});
-
-describe('ensureHealthCategory', () => {
-  it('does nothing while the Health read is off', () => {
-    ensureHealthCategory({ force: true });
-    expect(useSettingsStore.getState().healthCategory).toBeNull();
-    expect(useCategoryStore.getState().categories).toEqual([]);
-  });
-
-  it('creates the category and points the setting at it when the read goes on', () => {
-    useSettingsStore.setState({ healthReadEnabled: true });
-    ensureHealthCategory({ force: true });
-    expect(useSettingsStore.getState().healthCategory).toBe(HEALTH_CATEGORY);
-    expect(useCategoryStore.getState().categories.map(c => c.name)).toEqual([HEALTH_CATEGORY]);
-  });
-
-  it('starts the new section folded, once', () => {
-    useSettingsStore.setState({ healthReadEnabled: true });
-    ensureHealthCategory({ force: true });
-    expect(useSettingsStore.getState().collapsedCategories).toEqual([HEALTH_CATEGORY]);
-    // Opened since, then the read toggled again: it stays open.
-    useSettingsStore.getState().setCollapsedCategories([]);
-    ensureHealthCategory({ force: true });
-    expect(useSettingsStore.getState().collapsedCategories).toEqual([]);
-  });
-
-  it('does not fold a section the user filed Health under themselves', () => {
-    useSettingsStore.setState({ healthReadEnabled: true, healthCategory: 'Body' });
-    ensureHealthCategory({ force: true });
-    expect(useSettingsStore.getState().collapsedCategories).toEqual([]);
-  });
-
-  it('leaves a category the user already picked alone', () => {
-    useSettingsStore.setState({ healthReadEnabled: true, healthCategory: 'Body' });
-    ensureHealthCategory({ force: true });
-    expect(useSettingsStore.getState().healthCategory).toBe('Body');
-    expect(dbInsertCategory).not.toHaveBeenCalled();
-  });
-
-  it('does not undo a cleared answer at startup', () => {
-    // The category doubles as the row's off switch, so a startup pass that
-    // refilled it would hand back a row somebody had just turned off.
-    storedRows.set('healthCategory', '');
-    useSettingsStore.setState({ healthReadEnabled: true });
-    ensureHealthCategory();
-    expect(useSettingsStore.getState().healthCategory).toBeNull();
     expect(dbInsertCategory).not.toHaveBeenCalled();
   });
 });
