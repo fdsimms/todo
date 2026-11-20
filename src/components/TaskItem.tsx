@@ -126,7 +126,8 @@ import { confirmDeleteTask } from '../utils/confirmDeleteTask';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
-import { useNowTick } from '../hooks/useNowTick';
+import { useRowClock } from '../hooks/useRowClock';
+import { rowFollowsClock } from '../utils/rowClock';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -1899,9 +1900,15 @@ const TaskItemRow = React.memo(function TaskItem({
   // expanded panel, the relative due-date label — is computed during render
   // and so is only as fresh as the last render. This row is memoized, which
   // means a passing minute is not by itself a reason for it to re-render;
-  // subscribing to the shared heartbeat makes it one. Nothing reads the
-  // returned timestamp: the re-render *is* the effect (see nowTick.ts).
-  useNowTick();
+  // subscribing to the shared heartbeat makes it one: the re-render *is* the
+  // effect (see nowTick.ts). Only a row whose task carries something timed
+  // follows every tick (`rowFollowsClock`); the rest render again when the day
+  // changes, which is all a bare date's wording depends on.
+  const categoryHasHours = useCategoryStore(s => {
+    const category = task.category ? s.getCategoryByName(task.category) : null;
+    return !!(category?.scheduleDays && category.scheduleStart && category.scheduleEnd);
+  });
+  useRowClock(rowFollowsClock(task, alarmDayReset, categoryHasHours), alarmDayReset);
 
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);

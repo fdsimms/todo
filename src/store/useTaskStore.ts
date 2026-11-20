@@ -1757,13 +1757,23 @@ function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
 // component, so without this each row expanding or sheet opening on Today
 // re-ran every gate over every open task. The inputs are the task state the
 // lenses read, every store the gates consult (settings and categories
-// directly, projects and people through their registries), and the clock to
-// the second, since a gate can open on the clock alone: a cached answer is at
-// most a second behind a deferral or window passing, and nothing redraws the
-// list that fast anyway (the heartbeat is 30 seconds). A gate that starts
-// reading another store adds it here, or its change shows a second late at
-// best and not until the next write at worst.
-const LENS_CLOCK_MS = 1000;
+// directly, projects and people through their registries), and the clock,
+// since a gate can open on the clock alone.
+//
+// The clock is read in half-minute steps, the heartbeat's own period
+// (NOW_TICK_MS). Read to the second, the cache missed on nearly every render
+// a person could cause, since those are more than a second apart, and Today
+// refiltered all nine of its lists for each. The steps fall on :00 and :30,
+// so a gate set on a whole minute (a window, a time of day, a reminder) still
+// opens at the first read after its minute; one set at an odd second (a
+// snooze of "an hour from now") can show up to half a minute late, which is
+// how stale a row's own clock text is already allowed to be. Kept on the
+// wall clock rather than on the heartbeat's own ticks, because the lenses are
+// read with no screen up too (the widget, a background pass) and the
+// heartbeat only runs while a row is mounted. A gate that starts reading
+// another store adds it here, or its change shows a step late at best and not
+// until the next write at worst.
+const LENS_CLOCK_MS = 30_000;
 const lensCache = new Map<string, { inputs: readonly unknown[]; result: Task[] }>();
 
 function lensInputs(state: Pick<TaskStore, 'tasks' | 'completionHoldIds' | 'quotaHoldIds'>): unknown[] {

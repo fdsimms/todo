@@ -24,7 +24,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -102,7 +102,7 @@ import { activeGoalPlan, savingsBalance } from '../utils/rewardSavings';
 import { useRewardStore } from '../store/useRewardStore';
 import { CoinIcon } from '../components/CoinIcon';
 import { navigateToTab } from '../navigation/navigationRef';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { KeyboardInsetFlatList } from '../components/KeyboardInsetFlatList';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
 import { InlineNameField } from '../components/InlineNameField';
 import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
@@ -129,7 +129,7 @@ import { isNegativeTask } from '../utils/negativeHabits';
 import { isRotationTask } from '../utils/rotation';
 import { settleCursor, stepCursor } from '../utils/rowCursor';
 import { NO_ROWS, flatRowOrder, laterRowOrder, todayRowOrder, unscheduledRowOrder, type OrderableRow, type RowOrder } from '../utils/rowOrder';
-import { registerScreenKeys } from '../utils/keyActions';
+import { registerEscapeHandler, registerScreenKeys } from '../utils/keyActions';
 import { useEscapeHandler } from '../hooks/useEscapeHandler';
 import { useViewableRange } from '../hooks/useViewableRange';
 import { useRowCursorStore } from '../store/useRowCursorStore';
@@ -1198,19 +1198,14 @@ export function TodayScreen() {
       },
     });
   };
-  // One per view mode: only ever one of these lists is mounted at a time, but
-  // each needs its own ref and its own record of where it last settled.
-  // Both carry the pull-to-search RefreshControl; see the hook's `refreshing`.
-  // `listMounted` keeps the one whose list isn't showing from re-rendering
-  // this whole screen each time a sheet opens or closes.
-  const unscheduledScroll = useKeyboardInsetScroll<FlatList>({
-    refreshing: pullingToSearch,
-    listMounted: viewMode === 'unscheduled',
-  });
-  const inboxScroll = useKeyboardInsetScroll<FlatList>({
-    refreshing: pullingToSearch,
-    listMounted: viewMode === 'inbox',
-  });
+  // The two plain lists, one per view mode and only ever one mounted at a
+  // time. Each owns its keyboard handling and its record of where it last
+  // settled (`KeyboardInsetFlatList`, whose note says why the screen doesn't),
+  // and both carry the pull-to-search RefreshControl (its `keyboardRefreshing`).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const unscheduledListRef = useRef<FlatList<any> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inboxListRef = useRef<FlatList<any> | null>(null);
   const unscheduledScrollTop = useScrollToTopVisibility();
   const inboxScrollTop = useScrollToTopVisibility();
   // Which rows these two plain lists have on screen, so the keyboard's cursor scrolls one into view
@@ -3215,14 +3210,14 @@ export function TodayScreen() {
   useEffect(() => {
     if (!pendingUnscheduledJump) return;
     setPendingUnscheduledJump(null);
-    unscheduledScroll.ref.current?.scrollToIndex({ index: pendingUnscheduledJump.index, animated: true, viewPosition: 0.3 });
+    unscheduledListRef.current?.scrollToIndex({ index: pendingUnscheduledJump.index, animated: true, viewPosition: 0.3 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingUnscheduledJump]);
 
   useEffect(() => {
     if (!pendingInboxJump) return;
     setPendingInboxJump(null);
-    inboxScroll.ref.current?.scrollToIndex({ index: pendingInboxJump.index, animated: true, viewPosition: 0.3 });
+    inboxListRef.current?.scrollToIndex({ index: pendingInboxJump.index, animated: true, viewPosition: 0.3 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingInboxJump]);
 
@@ -5043,7 +5038,6 @@ export function TodayScreen() {
   // acts on the row it is on. The cursor is a place and nothing more: it opens, completes or selects
   // nothing by moving, and it is not the task the editor pane has open. What a key means lives in
   // `keyShortcuts.ts`; the list of rows it walks is `rowOrder.ts`.
-  const isFocused = useIsFocused();
   const rowOrder = useMemo((): RowOrder => {
     // A stack shows its members unless it is folded. Read off the store, not off the
     // group in the list, whose `collapsed` can be stale (see `liveGroup`).
@@ -5087,7 +5081,7 @@ export function TodayScreen() {
     if (typeof slot !== 'number') return;
     const viewable = viewMode === 'unscheduled' ? unscheduledViewable : inboxViewable;
     if (viewable.isInView(slot)) return;
-    const list = viewMode === 'unscheduled' ? unscheduledScroll.ref : inboxScroll.ref;
+    const list = viewMode === 'unscheduled' ? unscheduledListRef : inboxListRef;
     list.current?.scrollToIndex({ index: slot, animated: true, viewPosition: 0.3 });
   };
 
@@ -5134,9 +5128,12 @@ export function TodayScreen() {
     handleRowEdit, toggleSelection, handleBulkDelete, selectAll, enterSelectionMode,
     selectionMode, selectedIds, rowOrder,
   };
-  useEffect(() => {
-    if (!isFocused) return;
-    return registerScreenKeys({
+  // On focus and off on blur, through a focus effect rather than
+  // `useIsFocused`: that hook is a context read, so the screen rendered in
+  // full each time a card was pushed over it and again when it was popped,
+  // only to run these two registrations.
+  useFocusEffect(useCallback(() => (
+    registerScreenKeys({
       cursorDown: () => rowKeys.current.moveCursor(1),
       cursorUp: () => rowKeys.current.moveCursor(-1),
       // Return edits the task, in the pane when there is room and in a sheet otherwise. While
@@ -5171,16 +5168,18 @@ export function TodayScreen() {
         if (rowKeys.current.selectionMode) rowKeys.current.selectAll(ids);
         else rowKeys.current.enterSelectionMode(ids);
       },
-    });
-  }, [isFocused]);
+    })
+  ), []));
 
   // Escape steps back out of what the screen is holding open, innermost first. Registered
   // while each is up, so the most recent is the one Escape reaches; a sheet always goes first.
-  useEscapeHandler(isFocused, () => {
-    const cursor = useRowCursorStore.getState();
-    if (cursor.cursorId === null) return false;
-    cursor.setCursor(null);
-  });
+  useFocusEffect(useCallback(() => (
+    registerEscapeHandler(() => {
+      const cursor = useRowCursorStore.getState();
+      if (cursor.cursorId === null) return false;
+      cursor.setCursor(null);
+    })
+  ), []));
   useEscapeHandler(expandedTaskId !== null, () => { setExpandedTaskId(null); });
   useEscapeHandler(selectionMode, () => { exitSelection(); });
   const handleLaterStackToggle = useCallback((key: string) => {
@@ -5894,8 +5893,9 @@ export function TodayScreen() {
         )}
 
         {viewMode === 'unscheduled' && (
-          <FlatList
-            ref={unscheduledScroll.ref}
+          <KeyboardInsetFlatList
+            listRef={unscheduledListRef}
+            keyboardRefreshing={pullingToSearch}
             {...unscheduledViewable.props}
             scrollEnabled={!painting && !draggingSubtask}
             data={unscheduledTasks}
@@ -5906,17 +5906,11 @@ export function TodayScreen() {
             // own estimate has caught up.
             onScrollToIndexFailed={info => {
               setTimeout(() => {
-                unscheduledScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
+                unscheduledListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
             scrollEventThrottle={16}
-            {...unscheduledScroll.props}
-            // After the spread, which carries its own onScroll; both still hear
-            // every event (see useKeyboardInsetScroll's noteScroll).
-            onScroll={e => {
-              unscheduledScrollTop.onScroll(e);
-              unscheduledScroll.noteScroll(e);
-            }}
+            onScroll={unscheduledScrollTop.onScroll}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
               return (
@@ -5995,8 +5989,9 @@ export function TodayScreen() {
             and they render under the stack's header here just as they do on
             Today (see inboxData). */}
         {viewMode === 'inbox' && (
-          <FlatList
-            ref={inboxScroll.ref}
+          <KeyboardInsetFlatList
+            listRef={inboxListRef}
+            keyboardRefreshing={pullingToSearch}
             {...inboxViewable.props}
             scrollEnabled={!painting && !draggingSubtask}
             data={inboxData}
@@ -6004,17 +5999,11 @@ export function TodayScreen() {
             CellRendererComponent={elevatedInboxCell}
             onScrollToIndexFailed={info => {
               setTimeout(() => {
-                inboxScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
+                inboxListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
             scrollEventThrottle={16}
-            {...inboxScroll.props}
-            // After the spread, which carries its own onScroll; both still hear
-            // every event (see useKeyboardInsetScroll's noteScroll).
-            onScroll={e => {
-              inboxScrollTop.onScroll(e);
-              inboxScroll.noteScroll(e);
-            }}
+            onScroll={inboxScrollTop.onScroll}
             renderItem={({ item }) => {
               const content =
                 item.type === 'group'
@@ -6075,14 +6064,14 @@ export function TodayScreen() {
           <ScrollToTopButton
             visible={unscheduledScrollTop.visible}
             bottom={fabBottom}
-            onPress={() => unscheduledScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+            onPress={() => unscheduledListRef.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
         {viewMode === 'inbox' && (
           <ScrollToTopButton
             visible={inboxScrollTop.visible}
             bottom={fabBottom}
-            onPress={() => inboxScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+            onPress={() => inboxListRef.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
 

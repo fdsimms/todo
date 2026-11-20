@@ -554,6 +554,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/routineUpdate.ts` — RoutineChange, rivalOf, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, sessionPlan, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, +35 more
 - `src/utils/rowAmount.ts` — ROW_AMOUNT_PRESETS, MAX_ROW_FACTOR, adjustedQuantity, canAdjustAmount, parseRowFactor, describeRowFactor
+- `src/utils/rowClock.ts` — rowFollowsClock
 - `src/utils/rowCursor.ts` — stepCursor, settleCursor
 - `src/utils/rowOrder.ts` — RowOrder, NO_ROWS, OrderableRow, todayRowOrder, flatRowOrder, unscheduledRowOrder, laterRowOrder
 - `src/utils/rsvp.ts` — parseGuestNames
@@ -940,6 +941,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
 - `src/hooks/useRetrySecrets.ts` — useRetrySecrets
 - `src/hooks/useRouteArrival.ts` — useRouteArrival
+- `src/hooks/useRowClock.ts` — useRowClock
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useSavedLinks.ts` — useSavedLinks, SavedLinks
 - `src/hooks/useScreenSettingControls.ts` — ScreenSettingControl, useScreenSettingControls
