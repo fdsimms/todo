@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -107,6 +107,7 @@ import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { foodLogExportCsv, foodLogExportFileName, foodLogExportSummary } from '../utils/foodLogExport';
 import { WhenPicker } from '../components/WhenPicker';
+import { CalendarPicker } from '../components/CalendarPicker';
 import { ReorderableList } from '../components/ReorderableList';
 import type { DragScroller, DropZone, FabDropIntent } from '../utils/fabDrop';
 import {
@@ -368,6 +369,7 @@ export function FoodLogScreen() {
   const [editingEntry, setEditingEntry] = useState<FoodLogEntry | null>(null);
   /** The entry whose day is being corrected, opening the "Re-date" picker on it. */
   const [redatingEntry, setRedatingEntry] = useState<FoodLogEntry | null>(null);
+  const [retimingEntry, setRetimingEntry] = useState<FoodLogEntry | null>(null);
   /** The entry being copied onto another day, opening the "Duplicate to" picker on it. */
   // One entry from its row's menu, or the bulk bar's whole selection.
   const [duplicating, setDuplicating] = useState<FoodLogEntry[] | null>(null);
@@ -725,14 +727,35 @@ export function FoodLogScreen() {
   }, [moveEntry, exitSelection]);
 
   /**
+   * Changes the time an entry was eaten, on its own day or another one. Goes
+   * through `moveEntry` like a re-date, so Health is rewritten and undo works.
+   * A time that hasn't happened yet is refused with the reason, since the log
+   * only holds what was eaten.
+   */
+  const handleRetime = useCallback((entry: FoodLogEntry, at: Date) => {
+    if (at.getTime() > Date.now()) {
+      haptics.warning();
+      Alert.alert('That time hasn\u2019t happened yet', 'Pick a time that has already passed.');
+      return;
+    }
+    haptics.tap();
+    exitSelection();
+    moveEntry(entry.id, at);
+  }, [moveEntry, exitSelection]);
+
+  /**
    * Copies entries onto another day, leaving the originals where they are.
    * Several at once is "the same breakfast as yesterday": select it on
-   * yesterday and duplicate it to today, rather than one row at a time.
+   * yesterday and duplicate it to today, rather than one row at a time, and
+   * each keeps its own time. One entry copied onto today is a second helping
+   * eaten now, so it is logged at the current time instead of repeating the
+   * original's (two rows at 2:08 PM); Change time covers any other case.
    */
   const handleDuplicate = useCallback((list: readonly FoodLogEntry[], date: Date) => {
     haptics.success();
     exitSelection();
-    for (const entry of list) duplicateEntry(entry.id, atTimeOf(entry, date));
+    const eatenNow = list.length === 1 && dayKeyOf(date) === getLogicalDayKey(new Date());
+    for (const entry of list) duplicateEntry(entry.id, eatenNow ? new Date() : atTimeOf(entry, date));
   }, [duplicateEntry, exitSelection]);
 
   const handleBulkDuplicate = () => {
@@ -862,6 +885,9 @@ export function FoodLogScreen() {
         },
       },
       { key: 'redate', label: 'Re-date…', icon: 'calendar-outline', onPress: () => setRedatingEntry(entry) },
+      ...(isWaterEntry(entry)
+        ? []
+        : [{ key: 'retime', label: 'Change time…', icon: 'time-outline', onPress: () => setRetimingEntry(entry) } as const]),
       { key: 'duplicate', label: 'Duplicate to…', icon: 'copy-outline', onPress: () => setDuplicating([entry]) },
       { key: 'forget', label: 'Forget', icon: 'trash-outline', destructive: true, onPress: () => handleDelete(entry.id, entry.label) },
     ];
@@ -2012,6 +2038,20 @@ export function FoodLogScreen() {
             handleRedate(entry, date);
           }}
           onCancel={() => setRedatingEntry(null)}
+        />
+      </LazySheet>
+      <LazySheet open={retimingEntry !== null}>
+        <CalendarPicker
+          visible={retimingEntry !== null}
+          value={retimingEntry ? new Date(retimingEntry.atISO) : null}
+          mode="datetime"
+          title="Change time"
+          onConfirm={at => {
+            const entry = retimingEntry;
+            setRetimingEntry(null);
+            if (entry) handleRetime(entry, at);
+          }}
+          onCancel={() => setRetimingEntry(null)}
         />
       </LazySheet>
       <LazySheet open={duplicating !== null}>
