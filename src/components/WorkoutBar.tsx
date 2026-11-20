@@ -16,14 +16,15 @@ import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { useRestTimer } from '../hooks/useRestTimer';
 import { FAB_SIZE, useFabBottom } from './Fab';
 import { isCookTimerRunning } from '../utils/recipeTimer';
-import { isStepTimerRunning, stepTimerRemaining } from '../utils/stepTimers';
+import { isStepTimerReady, isStepTimerRunning, stepTimerOverSeconds, stepTimerRemaining } from '../utils/stepTimers';
 import { formatStopwatch } from '../utils/effort';
 import { confirmDiscardWorkout } from '../utils/confirmDiscardWorkout';
 import { haptics } from '../utils/haptics';
 import { GlassLayer, glassSupported } from './GlassLayer';
 
 /**
- * "Workout Full Body · Rest 0:58 · 36:20", floating just above the tab bar on
+ * "Workout Full Body · Rest 0:58 · 36:20" (the whole bar turns amber and reads
+ * "Rest over +0:07" once the rest runs out, like the sheet's rest strip), floating just above the tab bar on
  * every screen while a workout is running and workout mode is closed: the way
  * back in once its sheet has been minimized, the way `CookingBar` is for Cook
  * Mode. Tapping it reopens workout mode; the trash can discards the workout
@@ -88,7 +89,9 @@ export function WorkoutBar() {
   if (!shown || !live) return null;
 
   const elapsed = formatStopwatch((nowTick - new Date(live.startedAt).getTime()) / 1000);
-  const restLeft = resting && rest ? Math.max(0, Math.ceil(stepTimerRemaining(rest, restNow))) : 0;
+  const restOver = resting && rest ? isStepTimerReady(rest, restNow) : false;
+  const restLeft = resting && rest && !restOver ? Math.max(0, Math.ceil(stepTimerRemaining(rest, restNow))) : 0;
+  const overFor = restOver && rest ? stepTimerOverSeconds(rest, restNow) : 0;
 
   return (
     <View
@@ -96,21 +99,22 @@ export function WorkoutBar() {
       pointerEvents="box-none"
     >
       <View
-        style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}
+        style={[styles.bar, restOver ? styles.barOver : glassSupported() ? styles.barGlass : shadows.fab]}
         onLayout={e => setOwnHeight(e.nativeEvent.layout.height)}
       >
-        <GlassLayer interactive style={styles.glassRadius} />
+        {!restOver && <GlassLayer interactive style={styles.glassRadius} />}
         <TouchableOpacity
           style={styles.open}
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); useWorkoutModeStore.getState().show(); }}
           accessibilityRole="button"
-          accessibilityLabel={`${live.title} in progress, ${elapsed} elapsed${restLeft > 0 ? `, rest ${formatStopwatch(restLeft)} left` : ''}. Return to workout`}
+          accessibilityLabel={`${live.title} in progress, ${elapsed} elapsed${restLeft > 0 ? `, rest ${formatStopwatch(restLeft)} left` : ''}${restOver ? `, rest over ${overFor} seconds ago` : ''}. Return to workout`}
         >
-          <Ionicons name="barbell" size={iconSize.sm} color={colors.accentText} />
-          <Text style={styles.name} numberOfLines={1}>{live.title}</Text>
+          <Ionicons name="barbell" size={iconSize.sm} color={restOver ? colors.onDone : colors.accentText} />
+          <Text style={[styles.name, restOver && styles.onDone]} numberOfLines={1}>{live.title}</Text>
           {restLeft > 0 && <Text style={styles.rest}>{`Rest ${formatStopwatch(restLeft)}`}</Text>}
-          <Text style={styles.elapsed}>{elapsed}</Text>
+          {restOver && <Text style={[styles.rest, styles.onDone]}>{`Rest over +${formatStopwatch(overFor)}`}</Text>}
+          <Text style={[styles.elapsed, restOver && styles.onDone]}>{elapsed}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.trash}
@@ -119,7 +123,7 @@ export function WorkoutBar() {
           accessibilityRole="button"
           accessibilityLabel="Discard workout"
         >
-          <Ionicons name="trash-outline" size={iconSize.md} color={colors.redText} />
+          <Ionicons name="trash-outline" size={iconSize.md} color={restOver ? colors.onDone : colors.redText} />
         </TouchableOpacity>
       </View>
     </View>
@@ -147,6 +151,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: 0,
   },
+  // The rest has run out: the same fill the sheet's rest strip turns to, so it
+  // reads from across the screen. Solid, so the glass stands down.
+  barOver: {
+    backgroundColor: colors.done,
+    borderWidth: 0,
+  },
+  onDone: { color: colors.onDone },
   glassRadius: { borderRadius: radius.lg },
   open: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.smd },
   trash: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
