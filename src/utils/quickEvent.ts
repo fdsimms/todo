@@ -393,6 +393,9 @@ export function parseNotesClause(input: string): { start: number; text: string }
   return m ? { start: m.index, text: m[1].trim() } : null;
 }
 
+/** A schedule phrase that is only a clock time: "9am", "at 9:30pm". */
+const BARE_CLOCK_PHRASE = /^(?:(?:at|@)\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.?|p\.m\.?)?$/i;
+
 /** A representative hour for a day-part word with no clock time. */
 const DAY_PART_HOUR: Record<TimeOfDay, number> = {
   morning: 9,
@@ -635,6 +638,12 @@ export function parseQuickEvent(
     // day read (or today).
     start = defaultNewEventSpan(day ?? opts.today, opts.today, opts.wallClock).start;
   }
+  // A clock time said with no day ("Frankie italki 9am") that has already gone
+  // by today means the next time that clock comes round. A task keeps today
+  // (it is simply overdue); an event in the past is never what was meant. A
+  // phrase that names a day ("today 9am", "fri 9am") is taken as written.
+  const bareClock = range ? !day : !!schedule?.explicitClockTime && BARE_CLOCK_PHRASE.test(parsed?.matchedText ?? '');
+  if (bareClock && start.getTime() <= opts.wallClock.getTime()) start = addDays(start, 1);
   // "for 90m" sets the length unless a range already did.
   if (durationMinutes === null && forMinutes !== null) durationMinutes = forMinutes;
   const timed = range !== null || !!schedule?.explicitClockTime || (schedule?.timeSegments.length ?? 0) > 0;
