@@ -568,7 +568,7 @@ Where each component can appear.
 - `src/components/WorkoutRecordsCard.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutStatTiles.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutStatsCards.tsx` — on StatsScreen, WorkoutsScreen
-- `src/components/WorkoutTimesSheet.tsx` — on WorkoutsScreen
+- `src/components/WorkoutTimesSheet.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutVolumePill.tsx` — on app shell
 - `src/components/YearOfBirthSheet.tsx` — on SettingsGroupScreen
 - `src/screens/settings/AboutSettings.tsx` — on SettingsGroupScreen
