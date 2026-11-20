@@ -2,7 +2,7 @@ import { isDemoModeActive } from '../utils/demoState';
 import { pruneHandledEventTasks, type HandledEventTasks } from '../utils/eventTasks';
 import { generatedBy } from '../utils/generatedTasks';
 import { getCurrentDayStart } from '../utils/dateUtils';
-import { matchedOnCallSwaps, onCallSwapTitle } from '../utils/onCallSwapTasks';
+import { ON_CALL_SWAP_AHEAD_DAYS, matchedOnCallSwaps, onCallSwapTitle } from '../utils/onCallSwapTasks';
 import { reconcileGeneratedTask } from './generatedTaskSync';
 import { useOnCallStore } from './useOnCallStore';
 import { useSettingsStore } from './useSettingsStore';
@@ -32,7 +32,7 @@ export function checkOnCallSwapTasks(): void {
 
   const now = new Date();
   const handled = pruneHandledEventTasks(settings.eventTaskHandled, now);
-  const matches = matchedOnCallSwaps(onCall.conflicts, now, handled);
+  const matches = matchedOnCallSwaps(onCall.conflicts, now, handled, ON_CALL_SWAP_AHEAD_DAYS);
   const day = getCurrentDayStart();
   day.setHours(12, 0, 0, 0);
   const dueDate = day.toISOString();

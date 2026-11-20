@@ -218,7 +218,8 @@ function appDayOfDate(date: Date, dayResetTime: string): { start: Date; end: Dat
 
 /**
  * The events that run into an on-call stretch: live, not themselves on call, and
- * not marked Free (a free event is one the user says does not take them away). An
+ * not marked Free (a free event is one the user says does not take them away), and
+ * not on a calendar the user has set aside for this. An
  * all-day event counts, by the days it names; a timed one by its hours. These are
  * what the "find someone to swap" tasks (`onCallSwapTasks.ts`) are written for.
  */
@@ -226,9 +227,13 @@ export function onCallConflicts(
   events: readonly BusyEvent[],
   config: OnCallConfig,
   spans: readonly OnCallSpan[],
+  ignoredCalendarIds: readonly string[],
 ): BusyEvent[] {
   if (spans.length === 0) return [];
   return events.filter(event => {
+    // A calendar the user said not to count: a work calendar is full of meetings
+    // that were never going to be swapped for.
+    if (ignoredCalendarIds.includes(event.calendarId)) return false;
     if (!isLiveEvent(event) || isOnCallEvent(event, config) || event.availability === 'free') return false;
     let start: Date;
     let end: Date;

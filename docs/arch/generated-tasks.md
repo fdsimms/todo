@@ -1410,9 +1410,15 @@ stretch (`docs/arch/on-call.md`). `src/utils/onCallSwapTasks.ts` is the rules mo
 - **A conflict is any live event that is not itself on call and not marked Free**, by its hours or, for
   an all-day event, the days it names (`onCallConflicts`). Finding them needs every calendar read, so
   `useOnCallStore` reads them only while the switch is on.
-- **Due on the logical today, written as soon as the clash is seen.** The event may be weeks out and
-  the point is time to arrange a swap. The date does not chase the event (`drift` returns null,
-  #1953).
+- **Due on the logical today, written once the event is within `ON_CALL_SWAP_AHEAD_DAYS` (7).** The
+  first version wrote one the moment a clash was seen, 90 days out, and filled Today with work
+  meetings that may well change. The conflict list still covers the whole window, so a task written
+  now does not read as stale when its event is further out than the look-ahead. The date does not
+  chase the event (`drift` returns null, #1953).
+- **A calendar can be set aside** (`onCallSwapIgnoredCalendarIds`, "Skip for swap tasks"): a work
+  calendar is full of meetings nobody swaps on call for. Its events are not conflicts, so a task
+  already written for one reads "No longer conflicts" and is left for the person to delete, as
+  for any other clash that goes away.
 - **Nothing deletes the task when the conflict goes away**, because the person may already have
   messaged someone. The row says so instead: `onCallSwapContext` derives "No longer conflicts" at
   render (never stored) once the occurrence is not among the conflicts and has not started, in the
