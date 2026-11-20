@@ -48,6 +48,10 @@ import { FieldError } from './FieldError';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryGroupBy, type Shop } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -134,18 +138,18 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const aisleOrder = useGroceryWhileOpen(visible, s => s.aisleOrder, NO_ROWS);
   const setAisleOrder = useGroceryStore(s => s.setAisleOrder);
   const addAisle = useGroceryStore(s => s.addAisle);
   const renameAisle = useGroceryStore(s => s.renameAisle);
   const deleteAisle = useGroceryStore(s => s.deleteAisle);
   const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
   const setAisleNonFood = useGroceryStore(s => s.setAisleNonFood);
-  const items = useGroceryStore(useShallow(s => s.items));
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NO_ROWS);
   const activeListId = useGroceryStore(s => s.activeListId);
-  const shops = useGroceryStore(useShallow(s => s.shops));
-  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const shops = useGroceryWhileOpen(visible, s => s.shops, NO_ROWS);
+  const itemShops = useGroceryWhileOpen(visible, s => s.itemShops, NO_ROWS);
   const addShop = useGroceryStore(s => s.addShop);
   const renameShop = useGroceryStore(s => s.renameShop);
   const reorderShops = useGroceryStore(s => s.reorderShops);

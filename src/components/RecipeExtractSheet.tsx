@@ -62,6 +62,10 @@ import { haptics } from '../utils/haptics';
 import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -107,8 +111,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // ==== theme and store bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const aisleOrder = useGroceryWhileOpen(visible, s => s.aisleOrder, NO_ROWS);
+  const groceryItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);

@@ -39,6 +39,10 @@ import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayCard } from '../utils/frameWidth';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 const CHECKBOX_SIZE = 22;
 
@@ -259,7 +263,7 @@ export function CookRecapSheet({
   // same as it does for a close this component didn't ask for.
   const dismiss = () => onClose();
 
-  const items = useGroceryStore(useShallow(s => s.items));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const addFromPlan = useGroceryStore(s => s.addFromPlan);

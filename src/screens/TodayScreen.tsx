@@ -24,7 +24,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -41,6 +41,7 @@ import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
 import { editedTaskMove } from '../utils/editedTaskMove';
 import { completedOnDay, describeAllClear } from '../utils/allClear';
+import { idsPresent, taskById } from '../utils/taskRows';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -101,7 +102,7 @@ import { activeGoalPlan, savingsBalance } from '../utils/rewardSavings';
 import { useRewardStore } from '../store/useRewardStore';
 import { CoinIcon } from '../components/CoinIcon';
 import { navigateToTab } from '../navigation/navigationRef';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { KeyboardInsetFlatList } from '../components/KeyboardInsetFlatList';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
 import { InlineNameField } from '../components/InlineNameField';
 import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
@@ -128,7 +129,7 @@ import { isNegativeTask } from '../utils/negativeHabits';
 import { isRotationTask } from '../utils/rotation';
 import { settleCursor, stepCursor } from '../utils/rowCursor';
 import { NO_ROWS, flatRowOrder, laterRowOrder, todayRowOrder, unscheduledRowOrder, type OrderableRow, type RowOrder } from '../utils/rowOrder';
-import { registerScreenKeys } from '../utils/keyActions';
+import { registerEscapeHandler, registerScreenKeys } from '../utils/keyActions';
 import { useEscapeHandler } from '../hooks/useEscapeHandler';
 import { useViewableRange } from '../hooks/useViewableRange';
 import { useRowCursorStore } from '../store/useRowCursorStore';
@@ -242,7 +243,7 @@ import {
   SpotlightOverlay,
   SpotlightProvider,
   SpotlightScrim,
-  useSpotlightElevation,
+  SpotlightElevatedView,
   useSpotlightProgress,
 } from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
@@ -1197,19 +1198,14 @@ export function TodayScreen() {
       },
     });
   };
-  // One per view mode: only ever one of these lists is mounted at a time, but
-  // each needs its own ref and its own record of where it last settled.
-  // Both carry the pull-to-search RefreshControl; see the hook's `refreshing`.
-  // `listMounted` keeps the one whose list isn't showing from re-rendering
-  // this whole screen each time a sheet opens or closes.
-  const unscheduledScroll = useKeyboardInsetScroll<FlatList>({
-    refreshing: pullingToSearch,
-    listMounted: viewMode === 'unscheduled',
-  });
-  const inboxScroll = useKeyboardInsetScroll<FlatList>({
-    refreshing: pullingToSearch,
-    listMounted: viewMode === 'inbox',
-  });
+  // The two plain lists, one per view mode and only ever one mounted at a
+  // time. Each owns its keyboard handling and its record of where it last
+  // settled (`KeyboardInsetFlatList`, whose note says why the screen doesn't),
+  // and both carry the pull-to-search RefreshControl (its `keyboardRefreshing`).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const unscheduledListRef = useRef<FlatList<any> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inboxListRef = useRef<FlatList<any> | null>(null);
   const unscheduledScrollTop = useScrollToTopVisibility();
   const inboxScrollTop = useScrollToTopVisibility();
   // Which rows these two plain lists have on screen, so the keyboard's cursor scrolls one into view
@@ -1465,7 +1461,7 @@ export function TodayScreen() {
     if (widgetCompletionIds.length === 0) return;
     widgetCompletionIds.forEach(id => {
       dequeueWidgetCompletion(id);
-      const task = allTasks.find(t => t.id === id);
+      const task = taskById(allTasks, id);
       if (!task || task.completed) return;
       completeThroughRow(task);
     });
@@ -1847,7 +1843,6 @@ export function TodayScreen() {
   );
 
   const spotlightActive = expandedTaskId !== null && !selectionMode;
-  const listElevated = useSpotlightElevation(spotlightActive);
   // One animation for the whole mask: the backdrop, every row's scrim, every
   // header's scrim and the FAB below all read this value, so they can't drift
   // apart no matter how much work the expanding row's own render costs.
@@ -2640,14 +2635,24 @@ export function TodayScreen() {
   // rather than currently visible — so a stack whose children are all still
   // waiting on a time segment/defer still renders as a collapsible group
   // header inside "Later Today" instead of each child appearing loose.
+  //
+  // Each stack's list is last time's array while its members are the same
+  // (`reuseUnchangedLists`): the header these go to is memoized, and a fresh
+  // array per rebuild re-rendered every Later Today header whenever any of
+  // this was recomputed.
+  const laterChildrenPrev = useRef<Map<string, Task[]> | null>(null);
   const laterGroupItems = useMemo(() => {
-    return taskGroups
-      .map(group => ({
-        group,
-        // Rostered first, same reason visibleGroupItems is — see its comment.
-        children: (rosterByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => upcomingTaskIds.has(t.id)),
-      }))
-      .filter(g => g.children.length > 0);
+    const lists = new Map<string, Task[]>();
+    for (const group of taskGroups) {
+      // Rostered first, same reason visibleGroupItems is — see its comment.
+      const children = (rosterByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => upcomingTaskIds.has(t.id));
+      if (children.length > 0) lists.set(group.id, children);
+    }
+    const stable = (laterChildrenPrev.current = reuseUnchangedLists(laterChildrenPrev.current, lists));
+    return taskGroups.flatMap(group => {
+      const children = stable.get(group.id);
+      return children ? [{ group, children }] : [];
+    });
   }, [taskGroups, rosterByGroupId, upcomingTaskIds]);
 
   // Which stacks are on Today at all — a visible child or a Later Today one,
@@ -2940,12 +2945,19 @@ export function TodayScreen() {
   const eventTaskLinks = useEventTaskLinkStore(s => s.links);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
-  const liveTaskIds = useMemo(() => new Set(allTasks.map(t => t.id)), [allTasks]);
   const movedEvents = useMemo(
     () => (calendarWindowStart && calendarWindowEnd
       ? movedLinkedEvents(eventTaskLinks, calendarEvents, new Date(calendarWindowStart), new Date(calendarWindowEnd))
       : []),
     [eventTaskLinks, calendarEvents, calendarWindowStart, calendarWindowEnd]
+  );
+  // Which of the tasks those events were planned around are still here. Asked
+  // about the linked ids alone, which is none at all on most days: a set of
+  // every task id, rebuilt on each task write, was a pass over all of history
+  // to answer a question about a handful of rows.
+  const liveTaskIds = useMemo(
+    () => idsPresent(allTasks, movedEvents.flatMap(moved => moved.link.taskIds)),
+    [allTasks, movedEvents],
   );
   const movedEventNotes = useMemo(() => {
     const notes = new Map<string, string>();
@@ -2967,6 +2979,18 @@ export function TodayScreen() {
   const contextRowsPainted = useRef(false);
   useEffect(() => { contextRowsPainted.current = true; }, []);
   const eventTravelNote = useEventTravelNote();
+  // Today's food totals, for the limit and goal rows below. Read here, keyed
+  // on the food log and the day, rather than inside the rows' own memo: that
+  // one also follows the task list and the clock, so the day's entries were
+  // read from the database (twice, with both kinds of row on) on every task
+  // ticked, deferred or edited and every half minute.
+  const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+  const todayFoodTotal = useMemo(
+    () => (limitsTodayCategory || goalsTodayCategory
+      ? foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total
+      : null),
+    [limitsTodayCategory, goalsTodayCategory, recentFoodEntries, todayFoodKey, foodLogCount, foodLogWindow],
+  );
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
@@ -3001,20 +3025,18 @@ export function TodayScreen() {
     // A nutrient whose Stay under / Aim for task is on the list draws its bar
     // on the task, so its row here would say the same thing twice.
     const coveredByTasks = nutrientsCoveredByTasks(allTasks, getLogicalDayKey(new Date(), dayResetTime));
-    if (limitsTodayCategory && activeLimits(nutritionTargets, todayLimits).length > 0) {
-      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+    if (limitsTodayCategory && todayFoodTotal && activeLimits(nutritionTargets, todayLimits).length > 0) {
       rows.push(...limitContextRows(
-        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        todayFoodTotal,
         nutritionTargets,
         todayLimits,
         { category: limitsTodayCategory, warnPercent: limitWarnPercent, covered: coveredByTasks },
       ));
     }
     // Targets that are figures to reach, under their own switch.
-    if (goalsTodayCategory) {
-      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+    if (goalsTodayCategory && todayFoodTotal) {
       rows.push(...goalContextRows(
-        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        todayFoodTotal,
         nutritionTargets,
         nutritionLimits,
         { category: goalsTodayCategory, hidden: goalsTodayHidden, covered: coveredByTasks },
@@ -3071,7 +3093,7 @@ export function TodayScreen() {
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
     limitsTodayCategory, limitsTodayHidden, goalsTodayCategory, goalsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
-    recentFoodEntries, foodLogCount, foodLogWindow,
+    todayFoodTotal,
     minuteTick, showEventPlaceholders, rememberedEventRows,
   ]);
 
@@ -3198,14 +3220,14 @@ export function TodayScreen() {
   useEffect(() => {
     if (!pendingUnscheduledJump) return;
     setPendingUnscheduledJump(null);
-    unscheduledScroll.ref.current?.scrollToIndex({ index: pendingUnscheduledJump.index, animated: true, viewPosition: 0.3 });
+    unscheduledListRef.current?.scrollToIndex({ index: pendingUnscheduledJump.index, animated: true, viewPosition: 0.3 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingUnscheduledJump]);
 
   useEffect(() => {
     if (!pendingInboxJump) return;
     setPendingInboxJump(null);
-    inboxScroll.ref.current?.scrollToIndex({ index: pendingInboxJump.index, animated: true, viewPosition: 0.3 });
+    inboxListRef.current?.scrollToIndex({ index: pendingInboxJump.index, animated: true, viewPosition: 0.3 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingInboxJump]);
 
@@ -5026,7 +5048,6 @@ export function TodayScreen() {
   // acts on the row it is on. The cursor is a place and nothing more: it opens, completes or selects
   // nothing by moving, and it is not the task the editor pane has open. What a key means lives in
   // `keyShortcuts.ts`; the list of rows it walks is `rowOrder.ts`.
-  const isFocused = useIsFocused();
   const rowOrder = useMemo((): RowOrder => {
     // A stack shows its members unless it is folded. Read off the store, not off the
     // group in the list, whose `collapsed` can be stale (see `liveGroup`).
@@ -5070,7 +5091,7 @@ export function TodayScreen() {
     if (typeof slot !== 'number') return;
     const viewable = viewMode === 'unscheduled' ? unscheduledViewable : inboxViewable;
     if (viewable.isInView(slot)) return;
-    const list = viewMode === 'unscheduled' ? unscheduledScroll.ref : inboxScroll.ref;
+    const list = viewMode === 'unscheduled' ? unscheduledListRef : inboxListRef;
     list.current?.scrollToIndex({ index: slot, animated: true, viewPosition: 0.3 });
   };
 
@@ -5117,9 +5138,12 @@ export function TodayScreen() {
     handleRowEdit, toggleSelection, handleBulkDelete, selectAll, enterSelectionMode,
     selectionMode, selectedIds, rowOrder,
   };
-  useEffect(() => {
-    if (!isFocused) return;
-    return registerScreenKeys({
+  // On focus and off on blur, through a focus effect rather than
+  // `useIsFocused`: that hook is a context read, so the screen rendered in
+  // full each time a card was pushed over it and again when it was popped,
+  // only to run these two registrations.
+  useFocusEffect(useCallback(() => (
+    registerScreenKeys({
       cursorDown: () => rowKeys.current.moveCursor(1),
       cursorUp: () => rowKeys.current.moveCursor(-1),
       // Return edits the task, in the pane when there is room and in a sheet otherwise. While
@@ -5154,16 +5178,18 @@ export function TodayScreen() {
         if (rowKeys.current.selectionMode) rowKeys.current.selectAll(ids);
         else rowKeys.current.enterSelectionMode(ids);
       },
-    });
-  }, [isFocused]);
+    })
+  ), []));
 
   // Escape steps back out of what the screen is holding open, innermost first. Registered
   // while each is up, so the most recent is the one Escape reaches; a sheet always goes first.
-  useEscapeHandler(isFocused, () => {
-    const cursor = useRowCursorStore.getState();
-    if (cursor.cursorId === null) return false;
-    cursor.setCursor(null);
-  });
+  useFocusEffect(useCallback(() => (
+    registerEscapeHandler(() => {
+      const cursor = useRowCursorStore.getState();
+      if (cursor.cursorId === null) return false;
+      cursor.setCursor(null);
+    })
+  ), []));
   useEscapeHandler(expandedTaskId !== null, () => { setExpandedTaskId(null); });
   useEscapeHandler(selectionMode, () => { exitSelection(); });
   const handleLaterStackToggle = useCallback((key: string) => {
@@ -5294,8 +5320,7 @@ export function TodayScreen() {
   const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
   const savingGoal = useMemo(() => {
     if (!showCoinPill) return null;
-    const byId = new Map(allTasks.map(t => [t.id, t]));
-    return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? byId.get(r.taskId) ?? null : null));
+    return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? taskById(allTasks, r.taskId) ?? null : null));
   }, [showCoinPill, allTasks, allRewards, coinEntries, rewardGoalId]);
   // While saving for the goal with a plan (rewardSavings.ts), the bar is the
   // savings toward it rather than the whole balance, which is partly spending money.
@@ -5498,8 +5523,10 @@ export function TodayScreen() {
           onPress={() => setExpandedTaskId(null)}
         />
 
-        <View
-          style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
+        <SpotlightElevatedView
+          active={spotlightActive}
+          style={styles.listWrapper}
+          elevatedStyle={styles.listWrapperElevated}
           // The list sits above the spotlight overlay, so the overlay can't see
           // taps here — catch any touch in the list area instead. The expanded
           // card stops propagation so its own controls keep working.
@@ -5827,14 +5854,14 @@ export function TodayScreen() {
               // changes by reference, so leaving draggableData untouched left
               // the task sitting in the new category with nothing saved.
               const recategorizedRecurring = categoryUpdates.some(u => {
-                const task = allTasks.find(t => t.id === u.id);
+                const task = taskById(allTasks, u.id);
                 return task && task.recurrenceType !== 'none';
               });
               // A follow-up task repeats nothing itself, but the ones its rule
               // adds later are filed where the rule's draft says, so a drag
               // gets the same question with the wording for that.
               const recategorizedFollowUp = !recategorizedRecurring && categoryUpdates.some(u => {
-                const task = allTasks.find(t => t.id === u.id);
+                const task = taskById(allTasks, u.id);
                 return task && hasFollowUpSource(task, allTasks);
               });
               if (recategorizedFollowUp) {
@@ -5876,8 +5903,9 @@ export function TodayScreen() {
         )}
 
         {viewMode === 'unscheduled' && (
-          <FlatList
-            ref={unscheduledScroll.ref}
+          <KeyboardInsetFlatList
+            listRef={unscheduledListRef}
+            keyboardRefreshing={pullingToSearch}
             {...unscheduledViewable.props}
             scrollEnabled={!painting && !draggingSubtask}
             data={unscheduledTasks}
@@ -5888,17 +5916,11 @@ export function TodayScreen() {
             // own estimate has caught up.
             onScrollToIndexFailed={info => {
               setTimeout(() => {
-                unscheduledScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
+                unscheduledListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
             scrollEventThrottle={16}
-            {...unscheduledScroll.props}
-            // After the spread, which carries its own onScroll; both still hear
-            // every event (see useKeyboardInsetScroll's noteScroll).
-            onScroll={e => {
-              unscheduledScrollTop.onScroll(e);
-              unscheduledScroll.noteScroll(e);
-            }}
+            onScroll={unscheduledScrollTop.onScroll}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
               return (
@@ -5977,8 +5999,9 @@ export function TodayScreen() {
             and they render under the stack's header here just as they do on
             Today (see inboxData). */}
         {viewMode === 'inbox' && (
-          <FlatList
-            ref={inboxScroll.ref}
+          <KeyboardInsetFlatList
+            listRef={inboxListRef}
+            keyboardRefreshing={pullingToSearch}
             {...inboxViewable.props}
             scrollEnabled={!painting && !draggingSubtask}
             data={inboxData}
@@ -5986,17 +6009,11 @@ export function TodayScreen() {
             CellRendererComponent={elevatedInboxCell}
             onScrollToIndexFailed={info => {
               setTimeout(() => {
-                inboxScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
+                inboxListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
             scrollEventThrottle={16}
-            {...inboxScroll.props}
-            // After the spread, which carries its own onScroll; both still hear
-            // every event (see useKeyboardInsetScroll's noteScroll).
-            onScroll={e => {
-              inboxScrollTop.onScroll(e);
-              inboxScroll.noteScroll(e);
-            }}
+            onScroll={inboxScrollTop.onScroll}
             renderItem={({ item }) => {
               const content =
                 item.type === 'group'
@@ -6048,7 +6065,7 @@ export function TodayScreen() {
         </FabDropZoneProvider>
         </PaintSelectionProvider>
         </ViewSwitchVeil>
-        </View>
+        </SpotlightElevatedView>
 
         {/* Today and Later get their own scroll-to-top button from
             ReorderableList's scrollToTop prop; Unscheduled and Inbox are
@@ -6057,14 +6074,14 @@ export function TodayScreen() {
           <ScrollToTopButton
             visible={unscheduledScrollTop.visible}
             bottom={fabBottom}
-            onPress={() => unscheduledScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+            onPress={() => unscheduledListRef.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
         {viewMode === 'inbox' && (
           <ScrollToTopButton
             visible={inboxScrollTop.visible}
             bottom={fabBottom}
-            onPress={() => inboxScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+            onPress={() => inboxListRef.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
 
@@ -6439,7 +6456,7 @@ export function TodayScreen() {
               const ids = Array.from(selectedIds);
               const tally = new Map<string | null, number>();
               for (const id of ids) {
-                const c = allTasks.find(t => t.id === id)?.category ?? null;
+                const c = taskById(allTasks, id)?.category ?? null;
                 tally.set(c, (tally.get(c) ?? 0) + 1);
               }
               let category: string | null = null;
@@ -6462,7 +6479,7 @@ export function TodayScreen() {
             }}
             onTogglePin={() => { animateLayout(); bulkTogglePin(Array.from(selectedIds)); exitSelection(); }}
             allPinned={selectedIds.size > 0 && Array.from(selectedIds).every(
-              id => allTasks.find(t => t.id === id)?.pinned,
+              id => taskById(allTasks, id)?.pinned,
             )}
             onSelectAll={() => selectAll(visibleForMode.map(t => t.id))}
             onDeselectAll={deselectAll}

@@ -107,6 +107,7 @@ import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
+const ROOT_STACK_OPTIONS = { headerShown: false };
 const EDGE_WIDTH = 20;
 // How long after a navigation its bookkeeping waits (see handleStateChange):
 // long enough to land after the destination's first frames rather than among
@@ -402,6 +403,110 @@ const MainTabs = React.memo(function MainTabs({
   );
 });
 
+// ==== The app-wide hosts and overlays, as elements made once ====
+//
+// AppNavigator renders at exactly the moments a transition is trying to draw:
+// the menu opening and closing, and just after every tab switch (its
+// `activeTab`). None of what is below takes anything from it, but written
+// inline each was a new element on every one of those renders, so each ran
+// again in full: the food log sheet, the workout sheet, the leftover sheet and
+// the undo bar among them, none of them on screen. An element that is the same
+// object as last time is skipped, so these are made once here and AppNavigator
+// only places them. One that comes to need something from the navigator reads
+// it from a store or a context (as `FocusFloatingBar` reads the focused
+// route), rather than moving back inline as a prop.
+const NAVIGATION_HOSTS = (
+  <>
+    {/* Inside NavigationContainer, unlike its siblings below, because it
+        renders FoodLogEntrySheet and (via ScanToLogFlow) ScanPortionSheet
+        and BarcodeScanSheet, all of which use useKeyboardInsetScroll —
+        which calls useIsFocused and so needs a navigation object. It's
+        still a sibling of the Navigator rather than a screen, so it stays
+        mounted across every screen exactly as before. */}
+    <LogMealEntrySheet />
+    {/* Workout mode, for the same reason: its sheets scroll with
+        useKeyboardInsetScroll, which needs a navigation object. Mounted
+        once so a task row on any screen opens the one sheet. */}
+    <WorkoutModeHost />
+    {/* The mission an alarm is owed (missions.ts), over whatever screen is
+        up. Mounted once for the reason workout mode is. */}
+    <AlarmMissionHost />
+    {/* The cook recap and the use-up leftover sheet, for the same reason:
+        both render CookwareWeighIn, whose CookwareSheet is an EditorSheet
+        and so reads a navigation object. Mounted once, here, rather than
+        on the screens a meal is ticked off from, so a blurred tab's copy
+        can't present a second Modal for the same cooking. */}
+    <UseUpResolveSheet />
+    <CookRecap />
+  </>
+);
+
+const BLANK_TAB_DIAGNOSTIC = (
+  <>
+    {/* TEMPORARY: the blank-tab diagnostic, drawn outside every tab. */}
+    <BlankTabDiagnostic currentTab={currentTabName} />
+  </>
+);
+
+const FLOATING_OVERLAYS = (
+  <>
+    {/* Everything that floats over the app from outside a screen: the demo
+        banner, the undo bar, the toasts, the cook timer, the focus strip.
+        They share one layer (see FloatingLayer) so that on a two-pane window
+        they sit over the list, beside its add button, and not across both
+        panes. */}
+    <FloatingLayer>
+    {/* Outside the NavigationContainer so it stays put across every screen
+        and modal — demo mode isn't a place you navigate to, it's a state
+        the whole app is in. */}
+    <DemoBanner />
+    {/* Same placement again: a destructive action's undo window is a state
+        the app is in for a few seconds, not a screen — see UndoBar's own
+        doc comment for why it belongs beside DemoBanner. */}
+    <UndoBar />
+    {/* Beside it: the coins a tick just earned are a moment, not a screen.
+        See CoinToast. */}
+    <CoinToast />
+    {/* And the event a person just added: a moment with one tap to see it
+        in the system calendar. See EventCreatedToast. */}
+    <EventCreatedToast />
+    {/* Beside it, for the same reason: "X is ready" is a moment after a
+        tap, not a screen. See ReadyOfferBar. */}
+    <ReadyOfferBar />
+    {/* Same "not a screen" placement, and floating rather than a sibling of
+        a list the way ActiveTripBanner is — see CookingBar's own doc
+        comment for why a cook timer needs the app-wide bar that shopping
+        trip deliberately doesn't get. */}
+    <CookingBar />
+    {/* A workout running with its sheet minimized: the way back in, or to
+        discard it. See WorkoutBar. */}
+    <WorkoutBar />
+    {/* A minimized focus session's way back from every screen but Today,
+        which has its own inline strip. See FocusFloatingBar. */}
+    <FocusFloatingBar />
+    </FloatingLayer>
+    {/* "Pick dates" asking for Coming back, or offering to move Leaving:
+        raised by an answer given anywhere. See TripDatePrompt. */}
+    <TripDatePrompt />
+    {/* Same placement again, and for the same "not tied to a screen" reason:
+        each renders nothing (FinishLeftoverPrompt) or a plain Modal, touching
+        no navigation hooks, so none needs NavigationContainer. See their own
+        doc comments. (LogMealEntrySheet, UseUpResolveSheet and CookRecap are
+        inside NavigationContainer above, for the reasons noted there.) */}
+    <FinishLeftoverPrompt />
+    <LogMealPrompt />
+    <HealthWriteRefusedNotice />
+  </>
+);
+
+const TAB_HUB_MENU = (
+  <>
+    {/* The long-press card for a hub's tab. Outside the navigator so it can
+        cover the whole screen, and drawn above the bar it points at. */}
+    <TabHubMenuOverlay />
+  </>
+);
+
 // Read once, directly off the store rather than a reactive selector — this
 // only has to answer "where did we leave off" for Tab.Navigator's
 // initialRouteName, which React Navigation itself only honors on first
@@ -455,9 +560,6 @@ export default function AppNavigator() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [initialRouteName] = useState(initialScreenFromSettings);
   const [activeTab, setActiveTab] = useState(initialRouteName);
-  // Today draws its own inline strip for a focus session; everywhere else,
-  // pushed cards included, gets the floating one.
-  const [onToday, setOnToday] = useState(initialRouteName === 'Today');
   // Stable function reference (Zustand actions never change identity), so
   // selecting only this doesn't subscribe AppNavigator to lastVisitedScreen
   // itself — see initialScreenFromSettings above.
@@ -558,7 +660,6 @@ export default function AppNavigator() {
     // Before anything is deferred: the app's column widens for a two-pane screen
     // in the same commit the screen arrives in, not a beat after it.
     useFocusedRouteStore.getState().setRoute(currentName ?? null);
-    if (currentName) setOnToday(currentName === 'Today');
     if (!currentName || currentName === 'More' || PUSHED_ROUTES.has(currentName)) return;
     // Not deferred with the rest: the launch guard has to hear about a screen
     // before anything slow it does can crash, and it only matters at all
@@ -640,6 +741,97 @@ export default function AppNavigator() {
     tabBarItemStyle: { paddingVertical: 3, justifyContent: 'center' as const },
   }), [colors, isDark]);
 
+  // The stack and its screens, made again only when something they are given
+  // changes (the theme, the sidebar). Inline it was a new element on every
+  // render of this component, so the stack navigator went back over all of
+  // its routes each time the menu opened or closed.
+  const rootStack = useMemo(() => (
+    <RootStack.Navigator screenOptions={ROOT_STACK_OPTIONS}>
+      <RootStack.Screen name="MainTabs">
+        {() => (
+          <MainTabs
+            initialRouteName={initialRouteName}
+            screenOptions={screenOptions}
+            tabPressHaptic={tabPressHaptic}
+            accentColor={colors.accent}
+            onOpenMenu={openMenu}
+            hideTabBar={sidebarShown}
+          />
+        )}
+      </RootStack.Screen>
+      <RootStack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="SettingsGroup"
+        component={SettingsGroupScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="RecipeDetail"
+        component={RecipeDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="CookbookDetail"
+        component={CookbookDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="TemplateDetail"
+        component={TemplateDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="ProjectDetail"
+        component={ProjectDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="CategoryDetail"
+        component={CategoryDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="StackDetail"
+        component={StackDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="MoodHistory"
+        component={MoodHistoryScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="MoodDay"
+        component={MoodDayScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="SymptomDetail"
+        component={SymptomDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="ExperimentDetail"
+        component={ExperimentDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="MedicationDetail"
+        component={MedicationDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name="PersonDetail"
+        component={PersonDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+    </RootStack.Navigator>
+  ), [initialRouteName, screenOptions, tabPressHaptic, colors.accent, openMenu, sidebarShown]);
+
   return (
     <>
       {/* Everything but the long-press hub menu is drawn in the app's column
@@ -670,115 +862,11 @@ export default function AppNavigator() {
           flushPendingNavigation();
         }}
       >
-        <RootStack.Navigator screenOptions={{ headerShown: false }}>
-          <RootStack.Screen name="MainTabs">
-            {() => (
-              <MainTabs
-                initialRouteName={initialRouteName}
-                screenOptions={screenOptions}
-                tabPressHaptic={tabPressHaptic}
-                accentColor={colors.accent}
-                onOpenMenu={openMenu}
-                hideTabBar={sidebarShown}
-              />
-            )}
-          </RootStack.Screen>
-          <RootStack.Screen
-            name="Settings"
-            component={SettingsScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="SettingsGroup"
-            component={SettingsGroupScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="RecipeDetail"
-            component={RecipeDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="CookbookDetail"
-            component={CookbookDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="TemplateDetail"
-            component={TemplateDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="ProjectDetail"
-            component={ProjectDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="CategoryDetail"
-            component={CategoryDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="StackDetail"
-            component={StackDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="MoodHistory"
-            component={MoodHistoryScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="MoodDay"
-            component={MoodDayScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="SymptomDetail"
-            component={SymptomDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="ExperimentDetail"
-            component={ExperimentDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="MedicationDetail"
-            component={MedicationDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="PersonDetail"
-            component={PersonDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-        </RootStack.Navigator>
-        {/* Inside NavigationContainer, unlike its siblings below, because it
-            renders FoodLogEntrySheet and (via ScanToLogFlow) ScanPortionSheet
-            and BarcodeScanSheet, all of which use useKeyboardInsetScroll —
-            which calls useIsFocused and so needs a navigation object. It's
-            still a sibling of the Navigator rather than a screen, so it stays
-            mounted across every screen exactly as before. */}
-        <LogMealEntrySheet />
-        {/* Workout mode, for the same reason: its sheets scroll with
-            useKeyboardInsetScroll, which needs a navigation object. Mounted
-            once so a task row on any screen opens the one sheet. */}
-        <WorkoutModeHost />
-        {/* The mission an alarm is owed (missions.ts), over whatever screen is
-            up. Mounted once for the reason workout mode is. */}
-        <AlarmMissionHost />
-        {/* The cook recap and the use-up leftover sheet, for the same reason:
-            both render CookwareWeighIn, whose CookwareSheet is an EditorSheet
-            and so reads a navigation object. Mounted once, here, rather than
-            on the screens a meal is ticked off from, so a blurred tab's copy
-            can't present a second Modal for the same cooking. */}
-        <UseUpResolveSheet />
-        <CookRecap />
+        {rootStack}
+        {NAVIGATION_HOSTS}
       </NavigationContainer>
       </MenuOpenContext.Provider>
-      {/* TEMPORARY: the blank-tab diagnostic, drawn outside every tab. */}
-      <BlankTabDiagnostic currentTab={currentTabName} />
+      {BLANK_TAB_DIAGNOSTIC}
 
       <SideMenuDrawer
         visible={menuOpen && !sidebarShown}
@@ -795,57 +883,10 @@ export default function AppNavigator() {
           {...edgePanResponder.panHandlers}
         />
       )}
-      {/* Everything that floats over the app from outside a screen: the demo
-          banner, the undo bar, the toasts, the cook timer, the focus strip.
-          They share one layer (see FloatingLayer) so that on a two-pane window
-          they sit over the list, beside its add button, and not across both
-          panes. */}
-      <FloatingLayer>
-      {/* Outside the NavigationContainer so it stays put across every screen
-          and modal — demo mode isn't a place you navigate to, it's a state
-          the whole app is in. */}
-      <DemoBanner />
-      {/* Same placement again: a destructive action's undo window is a state
-          the app is in for a few seconds, not a screen — see UndoBar's own
-          doc comment for why it belongs beside DemoBanner. */}
-      <UndoBar />
-      {/* Beside it: the coins a tick just earned are a moment, not a screen.
-          See CoinToast. */}
-      <CoinToast />
-      {/* And the event a person just added: a moment with one tap to see it
-          in the system calendar. See EventCreatedToast. */}
-      <EventCreatedToast />
-      {/* Beside it, for the same reason: "X is ready" is a moment after a
-          tap, not a screen. See ReadyOfferBar. */}
-      <ReadyOfferBar />
-      {/* Same "not a screen" placement, and floating rather than a sibling of
-          a list the way ActiveTripBanner is — see CookingBar's own doc
-          comment for why a cook timer needs the app-wide bar that shopping
-          trip deliberately doesn't get. */}
-      <CookingBar />
-      {/* A workout running with its sheet minimized: the way back in, or to
-          discard it. See WorkoutBar. */}
-      <WorkoutBar />
-      {/* A minimized focus session's way back from every screen but Today,
-          which has its own inline strip. See FocusFloatingBar. */}
-      <FocusFloatingBar hidden={onToday} />
-      </FloatingLayer>
-      {/* "Pick dates" asking for Coming back, or offering to move Leaving:
-          raised by an answer given anywhere. See TripDatePrompt. */}
-      <TripDatePrompt />
-      {/* Same placement again, and for the same "not tied to a screen" reason:
-          each renders nothing (FinishLeftoverPrompt) or a plain Modal, touching
-          no navigation hooks, so none needs NavigationContainer. See their own
-          doc comments. (LogMealEntrySheet, UseUpResolveSheet and CookRecap are
-          inside NavigationContainer above, for the reasons noted there.) */}
-      <FinishLeftoverPrompt />
-      <LogMealPrompt />
-      <HealthWriteRefusedNotice />
+      {FLOATING_OVERLAYS}
       </AppFrame>
       </View>
-      {/* The long-press card for a hub's tab. Outside the navigator so it can
-          cover the whole screen, and drawn above the bar it points at. */}
-      <TabHubMenuOverlay />
+      {TAB_HUB_MENU}
     </>
   );
 }

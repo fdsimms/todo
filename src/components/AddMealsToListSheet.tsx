@@ -44,6 +44,10 @@ import { useLingering } from '../hooks/useLingering';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 // Same value UndoBar uses for the same reason: long enough to read the label
 // and reach for the button, short enough not to overstay a moment already
@@ -133,17 +137,17 @@ export function AddMealsToListSheet({
 
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
-  const items = useGroceryStore(useShallow(s => s.items));
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NO_ROWS);
   const activeListId = useGroceryStore(s => s.activeListId);
   const inTrolley = useMemo(
     () => trolleyStateFor(listEntries, activeListId),
     [listEntries, activeListId]
   );
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
   // The boxes, so a packet frozen or marked "Got it" counts as having it here
   // the way it does in the Pantry (see classifyPlanned's `products`).
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const stampAddedToList = useMealPlanStore(s => s.stampAddedToList);

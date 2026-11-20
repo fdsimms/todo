@@ -66,7 +66,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSearchable } from '../utils/editorSearch';
-import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
+import { describeShops, shopsForItem, unavailableShopsFor, linksForItem } from '../utils/groceryShops';
 import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../utils/itemSubs';
 import { describeForgetLoss } from '../utils/groceryFacts';
 import { genericNameSuggestions } from '../utils/itemVarieties';
@@ -432,8 +432,12 @@ function GroceryItemSheetBody({
     );
   }
 
+  // This item's own store links. Every read of them below asks about this item
+  // alone, and each was handed every link in the catalog to find them in: about
+  // ten passes over all of them on each keystroke in one of this sheet's fields.
+  const ownLinks = linksForItem(itemShops, item.id);
   const linkFor = (shopId: string) =>
-    itemShops.find(l => l.itemId === item.id && l.shopId === shopId) ?? null;
+    ownLinks.find(l => l.itemId === item.id && l.shopId === shopId) ?? null;
 
   // Every field below commits on its own, the moment it stops being edited —
   // matching the CollapsibleField pills further down, which have always
@@ -537,12 +541,12 @@ function GroceryItemSheetBody({
     // No closeField: stores are multi-select, so you're probably not done.
   };
 
-  const linkedShops = shopsForItem(item, itemShops, shops);
+  const linkedShops = shopsForItem(item, ownLinks, shops);
   const linkedCounts = new Map(linkedShops.map(s => [s.shop.id, s.purchaseCount]));
   // Stores the user has said don't stock this — the third pill state, and the
   // only place in the app those claims can be seen and taken back.
-  const notStocked = new Set(unavailableShopsFor(item.id, itemShops, shops).map(s => s.id));
-  const summary = describeShops(item, itemShops, shops);
+  const notStocked = new Set(unavailableShopsFor(item.id, ownLinks, shops).map(s => s.id));
+  const summary = describeShops(item, ownLinks, shops);
   const substitutes = substitutesFor(item.id, itemSubs, items);
   const substitutesSummary = describeSubstitutes(substitutes);
 
@@ -553,8 +557,8 @@ function GroceryItemSheetBody({
   // untagged, which is the honest answer and shows the reader why.
   const now = new Date();
   const priceContext = describePriceContext(item, now);
-  const shopPrices = shopPricesFor(item.id, itemShops, shops);
-  const cheapest = cheapestShopFor(item.id, itemShops, shops);
+  const shopPrices = shopPricesFor(item.id, ownLinks, shops);
+  const cheapest = cheapestShopFor(item.id, ownLinks, shops);
   const shopPriceLine = describeShopPrices(shopPrices, currencySymbol, cheapest?.shop.id ?? null);
 
   /**
@@ -579,11 +583,11 @@ function GroceryItemSheetBody({
   // nothing until it's typed over, exactly as FinishShoppingSheet seeds its rows.
   const storedPrice = activeTarget ? linkFor(activeTarget)?.lastPriceMinor ?? null : item.lastPriceMinor;
   const price = priceEdits[priceKey] ?? (storedPrice === null ? '' : priceToInput(storedPrice));
-  const priceHint = lastPriceFor(item, activeTarget, itemShops);
+  const priceHint = lastPriceFor(item, activeTarget, ownLinks);
   // The verdict on what's stored, judged against the run kept for whichever
   // target (item or store) the field is currently pointed at — never against
   // what's mid-edit in the field, which isn't a price yet.
-  const priceStandingText = describePriceStanding(priceStandingFor(item, activeTarget, itemShops));
+  const priceStandingText = describePriceStanding(priceStandingFor(item, activeTarget, ownLinks));
 
   // Every field above commits on blur, but tapping Done (or the sheet being
   // dismissed some other way) doesn't guarantee a focused field has blurred

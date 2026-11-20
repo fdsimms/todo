@@ -6,6 +6,7 @@ import { ProgressBar } from './ProgressBar';
 import { RepeatTimerSheet } from './RepeatTimerSheet';
 import { BUTTON_LABEL } from '../copy/shared';
 import { useColors } from '../theme/ThemeContext';
+import { useSecondTick } from '../hooks/useSecondTick';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import {
   describeRepeatCount,
@@ -23,8 +24,6 @@ import {
 
 interface Props {
   timer: RecipeStepTimer;
-  /** The clock the row is drawn against, from `useStepTimers`. */
-  now: number;
   /** True on the screen that owns the recipe, where the dish's name is already in the header. */
   hideRecipeName?: boolean;
   onToggle: () => void;
@@ -77,10 +76,14 @@ interface Props {
  * Pause and Resume are glyphs rather than words to make that room, with the
  * state spelled out after the clock ("12:30 paused").
  */
-export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, onRestart, onNextRound, onRemove, onSetRepeatTarget }: Props) {
+export function StepTimerRow({ timer, hideRecipeName, onToggle, onAddTime, onRestart, onNextRound, onRemove, onSetRepeatTarget }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [editingTarget, setEditingTarget] = useState(false);
+  // This row's own clock, moving while its timer runs (which it still does
+  // once rung, counting the time over). See `useSecondTick`.
+  useSecondTick(isStepTimerRunning(timer));
+  const now = Date.now();
 
   // A repeating timer waits at zero like any other, and its button then starts
   // the next round instead of running the same one again: the cook has to do

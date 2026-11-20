@@ -51,6 +51,10 @@ import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { AmountUnitField } from './AmountUnitField';
 import { ingredientAmountGroups } from '../utils/amountUnit';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 /** The ratio's unit menu, the same one an ingredient's amount uses. */
 const RATIO_GROUPS = ingredientAmountGroups();
@@ -133,9 +137,9 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // ==== store reads ====
-  const items = useGroceryStore(useShallow(s => s.items));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const unlinkItemSub = useGroceryStore(s => s.unlinkItemSub);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);

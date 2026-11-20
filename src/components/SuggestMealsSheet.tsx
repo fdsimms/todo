@@ -46,6 +46,10 @@ import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 /**
  * A row Save can commit, in the order the days are handed out. The two the
@@ -217,14 +221,14 @@ export function SuggestMealsSheet({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const navigation = useNavigation<any>();
 
-  const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const aisleOrder = useGroceryWhileOpen(visible, s => s.aisleOrder, NO_ROWS);
   // The preview reads like the recipe screen does, standing swaps included —
   // it sits beside a pantry-coverage line that already counts them, and a
   // preview listing milk under "5/7 likely on hand" would be the app
   // disagreeing with itself on one row.
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const groceryItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const standingSwaps = useMemo(
     () => standingSwapMap(itemSubs, groceryItems),
     [itemSubs, groceryItems]

@@ -23,6 +23,19 @@ import { runAfterTransition } from '../utils/afterPaint';
  * </LazySheet>
  * ```
  *
+ * **A closed sheet is not rendered again until it opens.** Once mounted, a
+ * sheet was re-rendered by every render of its screen, with most of them
+ * handed new closures as props so no memo of their own could help: on Today
+ * that was every sheet opened so far in the session, on each render of the
+ * screen. While `open` was false last render and is false now, this hands
+ * back what it rendered then. The render that closes a sheet still reaches it
+ * (it carries `visible={false}`), and so does the one that opens it, with the
+ * props as they then stand, so a prop that changed while it sat closed is
+ * picked up on opening. The sheet's own state, stores and effects are not
+ * affected. This is why `open` must be true whenever the sheet's own
+ * `visible` is: a sheet showing while `open` is false would stop following
+ * its screen.
+ *
  * **`warm` is for a sheet that is opened often and costs a lot to build**
  * (the task editor). Mounted only on first open, its whole first render lands
  * on the tap that asked for it. `warm` builds it once the screen's own
@@ -48,5 +61,13 @@ export function LazySheet({
     const handle = runAfterTransition(() => setWarmed(true));
     return () => handle.cancel();
   }, [warm, warmed]);
-  return opened || warmed ? <>{children}</> : null;
+  return opened || warmed ? <HeldWhileClosed open={open}>{children}</HeldWhileClosed> : null;
 }
+
+/** Renders its children, except from closed to closed, when it keeps the last render. */
+const HeldWhileClosed = React.memo(
+  function HeldWhileClosed({ children }: { open: boolean; children: React.ReactNode }) {
+    return <>{children}</>;
+  },
+  (prev, next) => !prev.open && !next.open,
+);

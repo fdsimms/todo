@@ -94,6 +94,10 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
 const CHECK_SIZE = 22;
@@ -499,8 +503,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   );
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const items = useGroceryStore(useShallow(s => s.items));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const rememberAliases = useGroceryStore(s => s.rememberAliases);
   const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const gtinItemFor = useGroceryStore(s => s.gtinItemFor);

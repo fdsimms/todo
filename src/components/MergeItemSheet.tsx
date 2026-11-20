@@ -21,6 +21,10 @@ import { FieldClearButton } from './FieldClearButton';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { BUTTON_LABEL } from '../copy/shared';
 import { TextField } from './TextField';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -58,7 +62,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const items = useGroceryStore(useShallow(s => s.items));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
   const mergeItems = useGroceryStore(s => s.mergeItems);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
 

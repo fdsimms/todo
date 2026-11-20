@@ -32,4 +32,14 @@ describe('reuseUnchangedLists', () => {
     const out = reuseUnchangedLists(prev, new Map([['g', [a]]]));
     expect([...out.keys()]).toEqual(['g']);
   });
+  it('hands back last time\'s map itself when every key holds the same list, and a new one otherwise', () => {
+    const one = { id: 1 };
+    const two = { id: 2 };
+    const prev = new Map([['a', [one]], ['b', [two]]]);
+    expect(reuseUnchangedLists(prev, new Map([['a', [one]], ['b', [two]]]))).toBe(prev);
+    // A key gone, a key added and a list changed are each a different map.
+    expect(reuseUnchangedLists(prev, new Map([['a', [one]]]))).not.toBe(prev);
+    expect(reuseUnchangedLists(prev, new Map([['a', [one]], ['b', [two]], ['c', [one]]]))).not.toBe(prev);
+    expect(reuseUnchangedLists(prev, new Map([['a', [one]], ['b', [one]]]))).not.toBe(prev);
+  });
 });

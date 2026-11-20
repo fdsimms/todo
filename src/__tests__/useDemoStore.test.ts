@@ -19,7 +19,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday, isFailedToday } from '../utils/negativeHabits';
 import { MIN_ROTATION_ITEMS, plannedRotationItem, rotationTargetTotal } from '../utils/rotation';
-import { useTaskStore } from '../store/useTaskStore';
+import { LENS_SETTING_KEYS, useTaskStore } from '../store/useTaskStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useFastStore } from '../store/useFastStore';
@@ -6102,5 +6102,54 @@ describe('demo seed — with the groceries area turned off', () => {
 
   it('spawns no cook tasks, so Today has nothing pointing at a hidden screen', () => {
     expect(useTaskStore.getState().tasks.some(t => t.generatedKind === 'mealCook')).toBe(false);
+  });
+});
+
+describe('lens cache settings', () => {
+  // The list lenses keep their answers per the settings in LENS_SETTING_KEYS
+  // and nothing else from the settings store, so a gate that reads a setting
+  // not listed there would go on showing its old answer after that setting
+  // changed. This runs every lens over the demo data, which uses most of what
+  // a task can carry, and names any setting they read that the cache ignores.
+  it('reads no setting the lens cache is not keyed on', () => {
+    freshDemo();
+    const real = useSettingsStore.getState();
+    const read = new Set<string>();
+    const spy = jest.spyOn(useSettingsStore, 'getState').mockImplementation(() => new Proxy(real, {
+      get(target, key) {
+        if (typeof key === 'string') read.add(key);
+        return target[key as keyof typeof target];
+      },
+    }));
+    try {
+      // A new array, so every lens computes rather than answering from its cache.
+      useTaskStore.setState(s => ({ tasks: [...s.tasks] }));
+      const lenses = useTaskStore.getState();
+      lenses.visibleTasks();
+      lenses.upcomingTodayTasks();
+      lenses.inboxTasks();
+      lenses.unscheduledTasks();
+      lenses.waitingTasks();
+      lenses.deferredTasks();
+      lenses.expiredTasks();
+      lenses.slotWaitingTasks();
+      lenses.vacationHiddenTasks();
+      lenses.pinnedTasks();
+    } finally {
+      spy.mockRestore();
+    }
+    // Guards the trace: with nothing read, the check below would pass against nothing.
+    expect(read.has('dayResetTime')).toBe(true);
+    const keyed: readonly string[] = LENS_SETTING_KEYS;
+    expect([...read].filter(key => !keyed.includes(key))).toEqual([]);
+  });
+
+  it('keeps a lens through a settings write the gates do not read, and drops it for one they do', () => {
+    freshDemo();
+    const before = useTaskStore.getState().visibleTasks();
+    useSettingsStore.setState({ collapsedCategories: [...useSettingsStore.getState().collapsedCategories, 'Somewhere'] });
+    expect(useTaskStore.getState().visibleTasks()).toBe(before);
+    useSettingsStore.setState({ vacationMode: !useSettingsStore.getState().vacationMode });
+    expect(useTaskStore.getState().visibleTasks()).not.toBe(before);
   });
 });

@@ -60,6 +60,7 @@ import {
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { useDragToDay, type DayDragHandlers } from '../hooks/useDragToDay';
+import { runAfterPaint } from '../utils/afterPaint';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -359,6 +360,32 @@ const DRAG_LIFT_SCALE = 1.03;
 
 const NO_FOOD_LOG: FoodLogEntry[] = [];
 const NO_RECIPES: Recipe[] = [];
+
+/**
+ * A planned meal's row on the week, memoized. `MealSlotRow` takes closures
+ * over its entry, which are new on every render of the week, so one meal
+ * ticked cooked, one row selected or one day folded rendered every row there
+ * was. This takes the entry and handlers that take an entry, all of them
+ * stable, and builds the closures here, behind the memo.
+ */
+const PlannedMealRow = React.memo(function PlannedMealRow({
+  entry, onPressEntry, onToggleCookedEntry, onDragStartEntry, ...row
+}: Omit<React.ComponentProps<typeof MealSlotRow>, 'onPress' | 'onToggleCooked' | 'onDragStart'> & {
+  onPressEntry: (entry: MealPlanEntry) => void;
+  /** Left out while selecting, as `MealSlotRow.onToggleCooked` is. */
+  onToggleCookedEntry?: (entry: MealPlanEntry) => void;
+  onDragStartEntry: (entry: MealPlanEntry) => void;
+}) {
+  return (
+    <MealSlotRow
+      {...row}
+      entry={entry}
+      onPress={() => onPressEntry(entry)}
+      onToggleCooked={onToggleCookedEntry ? () => onToggleCookedEntry(entry) : undefined}
+      onDragStart={() => onDragStartEntry(entry)}
+    />
+  );
+});
 
 export function MealPlanScreen() {
   const pullSearch = usePullToSearch();
@@ -1057,8 +1084,26 @@ export function MealPlanScreen() {
   // holds nothing until a screen asks for a window, so read after paint, the
   // first visit drew an empty week and filled it a frame later (the food log's
   // `loadRange` had the same flash).
+  //
+  // A return to the tab runs this again with the same week (a tab coming back
+  // from frozen runs its effects again). When the store is still holding that
+  // week, what is drawn is already right, and the read is only a check for
+  // writes that went round the store, so it waits for the frame instead of
+  // holding it: two table reads before paint on every return.
+  const loadedRangeRef = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (range) loadRange(range.startKey, range.endKey);
+    if (!range) return;
+    const { startKey, endKey } = range;
+    const key = `${startKey}:${endKey}`;
+    const held = useMealPlanStore.getState();
+    const returning = loadedRangeRef.current === key && held.rangeStart === startKey && held.rangeEnd === endKey;
+    loadedRangeRef.current = key;
+    if (!returning) {
+      loadRange(startKey, endKey);
+      return;
+    }
+    const later = runAfterPaint(() => loadRange(startKey, endKey));
+    return () => later.cancel();
   }, [range?.startKey, range?.endKey, loadRange]);
 
   // A `dundundun://mealplan?date=…` link asking for one particular day — what
@@ -1315,6 +1360,23 @@ export function MealPlanScreen() {
     // for a leftover-backed entry (askFinishLeftover), task or no task, so it
     // reaches FinishLeftoverPrompt without being asked twice.
   };
+
+  // The two a meal row calls, with an identity that never changes, so the
+  // memoized row below isn't handed a new function by every render of the
+  // week. They run whatever the latest render defined, through the ref.
+  const mealRowActions = useRef({
+    press: (_entry: MealPlanEntry) => {},
+    toggleCooked: (_entry: MealPlanEntry) => {},
+  });
+  mealRowActions.current = {
+    press: entry => {
+      if (selectionMode) toggleSelection(entry.id);
+      else { haptics.tap(); setSelectedId(entry.id); }
+    },
+    toggleCooked: entry => setCooked(entry, !entry.cookedAt),
+  };
+  const pressMealRow = useCallback((entry: MealPlanEntry) => mealRowActions.current.press(entry), []);
+  const toggleMealCooked = useCallback((entry: MealPlanEntry) => mealRowActions.current.toggleCooked(entry), []);
 
   /**
    * "Take its ingredients off the list?" after meals are removed or given a
@@ -1766,7 +1828,7 @@ export function MealPlanScreen() {
                             collapsable={false}
                             style={mealDrag.draggingId === entry.id && styles.rowLifted}
                           >
-                            <MealSlotRow
+                            <PlannedMealRow
                               entry={entry}
                               title={titleForEntry(entry, recipesById)}
                               hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
@@ -1774,17 +1836,12 @@ export function MealPlanScreen() {
                               loggedText={describeSlotLog(dayCoverage?.get(entry.slot))}
                               busyText={entry.slot === 'dinner' && !entry.cookedAt ? busyEveningByDay.get(key) : null}
                               skipped={skips.inRows.has(entry.slot)}
-                              onPress={() => {
-                                if (selectionMode) toggleSelection(entry.id);
-                                else { haptics.tap(); setSelectedId(entry.id); }
-                              }}
-                              onToggleCooked={
-                                selectionMode ? undefined : () => setCooked(entry, !entry.cookedAt)
-                              }
+                              onPressEntry={pressMealRow}
+                              onToggleCookedEntry={selectionMode ? undefined : toggleMealCooked}
                               selectionMode={selectionMode}
                               selected={selectedIds.has(entry.id)}
-                              onSwipeSelect={id => enterSelectionMode(id)}
-                              onDragStart={() => mealDrag.startDrag(entry)}
+                              onSwipeSelect={enterSelectionMode}
+                              onDragStartEntry={mealDrag.startDrag}
                               dragging={mealDrag.draggingId === entry.id}
                               // Matches styles.card, so the swipe panel is uncovered
                               // by the row rather than showing through it.
@@ -2246,8 +2303,8 @@ export function MealPlanScreen() {
   // coverage floor) — the common case for a library that's only lightly
   // priced, same as a fresh install answering nothing at all.
   const weekCost = useMemo(
-    () => (range ? estimateWeekCost(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
-    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps]
+    () => (range ? estimateWeekCost(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, onHand) : null),
+    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, onHand]
   );
   // Null while too little of the week resolves to a panel to say anything, the
   // per-nutrient coverage floor in recipeNutrition.ts — the common case for a
@@ -2261,9 +2318,9 @@ export function MealPlanScreen() {
   const showsWeekNutrition = hasNutritionTargets || foodLogCount > 0;
   const weekNutritionEstimate = useMemo(
     () => (range && showsWeekNutrition
-      ? weekNutrition(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps)
+      ? weekNutrition(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, onHand)
       : null),
-    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, showsWeekNutrition]
+    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, onHand, showsWeekNutrition]
   );
   // The plan summary keeps the subtitle line; cost, nutrition and the added
   // stamp share the overline. Joined into one subtitle they wrapped beside the

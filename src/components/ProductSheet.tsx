@@ -37,6 +37,10 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDelete } from '../utils/confirmDelete';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -69,8 +73,8 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
-  const items = useGroceryStore(useShallow(s => s.items));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const addProduct = useGroceryStore(s => s.addProduct);
   const updateProduct = useGroceryStore(s => s.updateProduct);
   const deleteProduct = useGroceryStore(s => s.deleteProduct);

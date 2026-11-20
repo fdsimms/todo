@@ -3,6 +3,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { getCurrentDayStart, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { isResolvedAsDone } from '../utils/missed';
+import { projectTasksOf } from '../utils/projectTasks';
 import { useSettingsStore } from './useSettingsStore';
 import { nudgeFieldsFor } from '../utils/nudgeCadence';
 import {
@@ -81,7 +82,7 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
   let resolve: TaskResolver | null = null;
   const notNeeded = (t: Task): boolean =>
     (!!t.answerGate || blockerIdsOf(t).length > 0) && isNotNeeded(t, (resolve ??= resolverFor(tasks)));
-  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived && !notNeeded(t));
+  const members = projectTasksOf(tasks, projectId).filter(t => t.parentId === null && !t.archived && !notNeeded(t));
   const byId = new Map(members.map(t => [t.id, t]));
 
   const groups = new Map<string, Task[]>();
@@ -142,7 +143,7 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
  * the answer is no less recorded for the task being live again.
  */
 export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
-  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const members = projectTasksOf(tasks, projectId).filter(t => t.parentId === null && !t.archived);
   const byId = new Map(members.map(t => [t.id, t]));
 
   const latest = new Map<string, Task>();
@@ -211,7 +212,7 @@ function talliedMemberKeys(groups: Map<string, Task[]>): string[] {
  * is still open.
  */
 export function projectAnswerTallies(projectId: string, tasks: Task[]): AnswerTally[] {
-  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const members = projectTasksOf(tasks, projectId).filter(t => t.parentId === null && !t.archived);
   const byId = new Map(members.map(t => [t.id, t]));
   // Per member identity: its options, its latest answer, and whether it's open.
   const identities = new Map<string, { options: string[]; answer: Task | null; open: boolean; name: string }>();
@@ -284,7 +285,7 @@ export function describeAnswerTally(tally: AnswerTally): string {
  * Logbook, where history lives.
  */
 export function projectCompletedRows(projectId: string, tasks: Task[]): Task[] {
-  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const members = projectTasksOf(tasks, projectId).filter(t => t.parentId === null && !t.archived);
   const byId = new Map(members.map(t => [t.id, t]));
   const latest = new Map<string, Task>();
   // A member with a row still open isn't finished: a repeating task's past

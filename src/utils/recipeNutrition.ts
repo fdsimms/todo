@@ -255,13 +255,25 @@ interface Accumulator {
  * the catalog sheet called such a line linked while this one listed it as not
  * in the catalog and offered to add a duplicate generic row.
  */
-function nutritionKeyIndex(items: readonly GroceryItem[]): Map<string, GroceryItem> {
-  const byKey = itemKeyIndex(items);
-  for (const [generic, varieties] of varietyIndex(items)) {
-    if (!byKey.has(generic) && varieties[0]) byKey.set(generic, varieties[0]);
+function nutritionKeyIndex(items: readonly GroceryItem[]): ReadonlyMap<string, GroceryItem> {
+  let byKey = nutritionKeyIndexes.get(items);
+  if (!byKey) {
+    byKey = itemKeyIndex(items);
+    for (const [generic, varieties] of varietyIndex(items)) {
+      if (!byKey.has(generic) && varieties[0]) byKey.set(generic, varieties[0]);
+    }
+    nutritionKeyIndexes.set(items, byKey);
   }
   return byKey;
 }
+
+// One index per catalog array, and one box lookup per products array (below).
+// Both are whole-catalog passes, and both were rebuilt for every recipe asked
+// about: Meal plan asks once per planned meal each time one is marked cooked,
+// so a week of dinners was a week of passes over the catalog on that tap.
+// Keyed on the array, which the store replaces rather than mutates.
+const nutritionKeyIndexes = new WeakMap<readonly GroceryItem[], Map<string, GroceryItem>>();
+const preferredProductLookups = new WeakMap<readonly ItemProduct[], (item: GroceryItem) => ItemProduct | null>();
 
 /**
  * Water as a recipe writes it ("water", "cold water", "boiling water"). It
@@ -345,8 +357,13 @@ function hasUnresolvedChoice(
 function preferredProductLookup(
   products: readonly ItemProduct[],
 ): (item: GroceryItem) => ItemProduct | null {
-  const byId = new Map(products.map(p => [p.id, p]));
-  return item => (item.preferredProductId ? byId.get(item.preferredProductId) ?? null : null);
+  let lookup = preferredProductLookups.get(products);
+  if (!lookup) {
+    const byId = new Map(products.map(p => [p.id, p]));
+    lookup = item => (item.preferredProductId ? byId.get(item.preferredProductId) ?? null : null);
+    preferredProductLookups.set(products, lookup);
+  }
+  return lookup;
 }
 
 /**
@@ -619,9 +636,11 @@ export function weekNutrition(
   range: { startKey: string; endKey: string },
   products: readonly ItemProduct[] = [],
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
+  /** The catalog's on-hand keys, for a caller that holds them already; worked out here otherwise. */
+  onHand: ReadonlySet<string> = onHandNameKeys(items, new Date(), products),
 ): RecipeNutrition | null {
   const planned = collectPlannedIngredients(
-    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products), { includeNotShopped: true },
+    entries, recipesById, range, swaps, onHand, { includeNotShopped: true },
   );
   if (planned.length === 0) return null;
 

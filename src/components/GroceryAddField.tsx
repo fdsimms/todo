@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useMemo, useState, useCallback, useDeferredValue, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -221,11 +221,19 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   // A brand typed as the name, or a name that is an existing row in other words
   // (see nameHintFor). Offered, never applied: it only shows while the name
   // would make a new row, and "Keep this name" is always one tap.
+  //
+  // Both this and the suggestions below go over the whole catalog, and both
+  // follow the name a beat behind the typing (`useDeferredValue`) rather than
+  // holding each keystroke's render for a pass over it. A fast run of letters
+  // works out the last of them, not every one on the way.
+  const typedName = useDeferredValue(tokens?.name?.trim() ?? '');
   const nameHint = useMemo(() => {
-    const name = tokens?.name?.trim();
+    const name = typedName;
     if (!focused || !name || name.length < 3 || dismissedHint === name) return null;
     return nameHintFor(name, items, itemProducts);
-  }, [focused, tokens, dismissedHint, items, itemProducts]);
+  }, [focused, typedName, dismissedHint, items, itemProducts]);
+
+  const suggestFor = useDeferredValue(tokens?.name || text);
 
   const suggestions = useMemo(
     // The "On list" pill each suggestion may carry is about the list being
@@ -234,8 +242,8 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     // Ranked on the name the add would save, quantity split off, rather than
     // on the raw text: "2 milk" or "12 eggs" matched nothing and autocomplete
     // went quiet for anybody who types the amount first.
-    () => (focused ? rankGrocerySuggestions(tokens?.name || text, items, new Date(), 5, inTrolley) : []),
-    [focused, text, tokens, items, inTrolley]
+    () => (focused ? rankGrocerySuggestions(suggestFor, items, new Date(), 5, inTrolley) : []),
+    [focused, suggestFor, items, inTrolley]
   );
 
   // With nothing typed, what you usually buy and haven't put on yet, so the

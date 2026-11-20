@@ -9,6 +9,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { animation } from '../theme';
 import { haptics } from '../utils/haptics';
+import { runAfterPaint, type DeferredHandle } from '../utils/afterPaint';
 import { drawerWidthFor } from '../utils/frameWidth';
 
 // 85% of a phone rather than the 72% this used to be. The drawer is the only
@@ -156,11 +157,23 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, o
     }
   }, [visible]);
 
-  const handleNavigate = (tabName: string) => {
+  // The screen a pick is headed for is drawn after the drawer has started to
+  // leave, never in the same commit. In one commit the close animation (started
+  // from the effect above, which runs once that commit is done) could not begin
+  // until the destination had rendered in full, so the menu sat open and still
+  // for as long as the screen took to mount: longest on the first visit to a
+  // big one, which is what the menu is mostly for. The slide runs on the UI
+  // thread, so it carries on while that render holds the JS thread.
+  const leaveTimerRef = useRef<DeferredHandle | null>(null);
+  useEffect(() => () => leaveTimerRef.current?.cancel(), []);
+  const closeThen = (go: () => void) => {
     haptics.tap();
     onClose();
-    onNavigate(tabName);
+    leaveTimerRef.current?.cancel();
+    leaveTimerRef.current = runAfterPaint(go);
   };
+
+  const handleNavigate = (tabName: string) => closeThen(() => onNavigate(tabName));
 
   const handleSettings = () => {
     haptics.tap();
@@ -184,11 +197,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, o
     pendingActionRef.current = () => onOpenSettingsEntry?.(entryId);
     onClose();
   };
-  const handleSearchEverything = (query: string) => {
-    haptics.tap();
-    onClose();
-    onSearchEverything?.(query);
-  };
+  const handleSearchEverything = (query: string) => closeThen(() => onSearchEverything?.(query));
 
   if (!isRendered) return null;
 

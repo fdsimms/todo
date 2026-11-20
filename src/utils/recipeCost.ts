@@ -218,10 +218,12 @@ export function estimateWeekCost(
   // week's shopping read and weekNutrition resolve it, and the two figures
   // price the same arm of a choice.
   products: readonly ItemProduct[],
-  swaps: StandingSwapMap = NO_STANDING_SWAPS
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
+  /** The catalog's on-hand keys, for a caller that holds them already; worked out here otherwise. */
+  onHand: ReadonlySet<string> = onHandNameKeys(items, new Date(), products),
 ): CostEstimate | null {
   const planned = collectPlannedIngredients(
-    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products)
+    entries, recipesById, range, swaps, onHand
   );
   if (planned.length === 0) return null;
 

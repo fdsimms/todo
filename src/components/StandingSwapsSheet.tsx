@@ -13,6 +13,10 @@ import { EmptyState } from './EmptyState';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -37,8 +41,8 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const items = useGroceryStore(useShallow(s => s.items));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
   const setItemSubStanding = useGroceryStore(s => s.setItemSubStanding);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
 

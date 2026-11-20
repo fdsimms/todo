@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, TouchableOpacity, View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 import { animation } from '../theme';
 import { useColors } from '../theme/ThemeContext';
 
@@ -128,12 +128,27 @@ export function useSpotlightLinger(active: boolean): boolean {
 }
 
 /**
- * Keeps the screen's list wrapper elevated above the overlay until the
+ * The screen's list wrapper, kept elevated above the overlay until the
  * overlay's fade-out completes. Dropping the elevation the instant the
  * spotlight ends would put the still-visible overlay on top of every row,
  * flashing the whole list dark for the duration of the fade.
+ *
+ * A component that owns the wrapper rather than a hook the screen calls: the
+ * linger is state, and held by the screen it rendered the whole screen a
+ * second time on every row opened (to record a linger that changed nothing on
+ * screen) and again partway through every row closing (to drop one style).
+ * Held here, those renders are this one view's, and the list inside it is
+ * the same elements the screen last made, so it is skipped.
  */
-export const useSpotlightElevation = useSpotlightLinger;
+export function SpotlightElevatedView({
+  active,
+  style,
+  elevatedStyle,
+  ...viewProps
+}: Omit<ViewProps, 'style'> & { active: boolean; style: StyleProp<ViewStyle>; elevatedStyle: StyleProp<ViewStyle> }) {
+  const elevated = useSpotlightLinger(active);
+  return <View {...viewProps} style={[style, elevated && elevatedStyle]} />;
+}
 
 const styles = StyleSheet.create({
   scrim: StyleSheet.absoluteFill,

@@ -24,6 +24,7 @@ import {
   type Colors,
 } from '../theme';
 import { trolleyStateFor, itemsOnList, listedAnywhere } from '../utils/groceryLists';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -32,7 +33,7 @@ import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } fr
 import { describeForgetLoss, linkCounts } from '../utils/groceryFacts';
 import { suppliesStockedFrom } from '../utils/supply';
 import { useTaskStore } from '../store/useTaskStore';
-import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
+import { itemIdsForShop, itemCountsByShop, linksForItem, primaryShopFor } from '../utils/groceryShops';
 import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -58,6 +59,10 @@ interface Props {
   onClose: () => void;
 }
 
+
+/** What a list reads as before the sheet has ever been opened. */
+const NONE: never[] = [];
+
 /**
  * The grocery catalog: every known item that isn't on the list right now, not
  * only what's been bought — search and the store filter also reach items
@@ -74,20 +79,21 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const navigation = useNavigation<any>();
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const items = useGroceryStore(useShallow(s => s.items));
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  // Read only while the sheet is up: see `useGroceryWhileOpen`.
+  const items = useGroceryWhileOpen(visible, s => s.items, NONE);
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NONE);
   const activeListId = useGroceryStore(s => s.activeListId);
   const inTrolley = useMemo(
     () => trolleyStateFor(listEntries, activeListId),
     [listEntries, activeListId]
   );
-  const shops = useGroceryStore(useShallow(s => s.shops));
-  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const shops = useGroceryWhileOpen(visible, s => s.shops, NONE);
+  const itemShops = useGroceryWhileOpen(visible, s => s.itemShops, NONE);
   // For the prune offer's hasUserFacts test — an unrecoverable delete must be
   // able to see a brand or a substitute, not just a purchase count.
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
-  const storeAliases = useGroceryStore(useShallow(s => s.storeAliases));
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NONE);
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NONE);
+  const storeAliases = useGroceryWhileOpen(visible, s => s.storeAliases, NONE);
   const addExistingMany = useGroceryStore(s => s.addExistingMany);
   const addByName = useGroceryStore(s => s.addByName);
   const deleteItems = useGroceryStore(s => s.deleteItems);
@@ -306,12 +312,16 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     const isSelected = selected.has(item.id);
     // Suppressed while a store filter is on: every row would name the store
     // you just filtered to, which is a column of the same word.
-    const usual = shopFilter ? null : primaryShopFor(item, itemShops, shops);
+    // Asked of the item's own links (`linksForItem`): both reads below look
+    // only at those, and handed every link they were a pass over all of them
+    // for each row drawn, on every tap and keystroke in the sheet.
+    const ownLinks = linksForItem(itemShops, item.id);
+    const usual = shopFilter ? null : primaryShopFor(item, ownLinks, shops);
     // Which price: the active store's own, if it has one, otherwise the
     // item's — same precedence the finish sheet already uses. Not shown at
     // all where nothing's ever been paid, rather than a "$0.00" that reads
     // as a real number.
-    const priceMinor = lastPriceFor(item, shopFilter, itemShops);
+    const priceMinor = lastPriceFor(item, shopFilter, ownLinks);
     const priceContext = priceMinor !== null ? describePriceContext(item, now) : null;
     const otherNames = describeOtherNames(item);
     return (

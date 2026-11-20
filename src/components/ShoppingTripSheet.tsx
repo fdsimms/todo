@@ -32,6 +32,10 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import type { Shop } from '../types';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -125,11 +129,11 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const items = useGroceryStore(useShallow(s => s.items));
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NO_ROWS);
   const activeListId = useGroceryStore(s => s.activeListId);
-  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
-  const shops = useGroceryStore(useShallow(s => s.shops));
+  const itemShops = useGroceryWhileOpen(visible, s => s.itemShops, NO_ROWS);
+  const shops = useGroceryWhileOpen(visible, s => s.shops, NO_ROWS);
 
   // The trolley being shopped, not every trolley you have going: a plan built
   // over both lists would send you to a store for things on a list you aren't

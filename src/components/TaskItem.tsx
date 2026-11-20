@@ -126,7 +126,10 @@ import { confirmDeleteTask } from '../utils/confirmDeleteTask';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
-import { useNowTick } from '../hooks/useNowTick';
+import { useShallow } from 'zustand/react/shallow';
+import { useRowClock } from '../hooks/useRowClock';
+import { rowFollowsClock } from '../utils/rowClock';
+import { projectTasksOf, seriesTasksOf } from '../utils/projectTasks';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -292,6 +295,14 @@ const EMPTY_BUSY_EVENTS: BusyEvent[] = [];
 // subscribing to the live grocery/recipe arrays for nothing.
 const EMPTY_GROCERY_ITEMS: GroceryItem[] = [];
 const EMPTY_ITEM_SUBS: ItemSubLink[] = [];
+// What a row that isn't a "Leave for" row selects in place of the three
+// settings only those rows read, so a travel mode picked on one of them, a
+// transit line added or an event rule edited re-renders the travel rows and
+// not every row on the list. Same reason as the ones above.
+type RowSettings = ReturnType<typeof useSettingsStore.getState>;
+const NO_TRAVEL_PREFS: RowSettings['travelEventPrefs'] = {};
+const NO_TRANSIT_LINES: RowSettings['transitLines'] = [];
+const NO_EVENT_RULES: RowSettings['eventRules'] = [];
 const NO_ALARMS: Alarm[] = [];
 const NO_EXPERIMENTS: Experiment[] = [];
 const EMPTY_RECIPES: Recipe[] = [];
@@ -614,8 +625,8 @@ const TaskItemRow = React.memo(function TaskItem({
   // finishing or adding a date updates the line.
   const otherSeriesDates = useTaskStore(s =>
     task.seriesId
-      ? openTasksOf(s.tasks)
-          .filter(t => t.seriesId === task.seriesId && t.id !== task.id && !t.completed && !t.archived && t.dueDate)
+      ? seriesTasksOf(openTasksOf(s.tasks), task.seriesId)
+          .filter(t => t.id !== task.id && !t.completed && !t.archived && t.dueDate)
           .map(t => t.dueDate!)
           .sort()
           .map(iso => formatScheduledDate(iso))
@@ -833,22 +844,57 @@ const TaskItemRow = React.memo(function TaskItem({
   }, [task.id, task.completed]);
   const alarmLink = task.alarmLink ?? null;
   const linkedAlarms = useAlarmStore(s => (alarmLink ? s.alarms : NO_ALARMS));
-  const alarmDayReset = useSettingsStore(s => s.dayResetTime);
+  // The row's plain settings, read in one subscription. Each was its own:
+  // fifteen selectors run per row on every settings write and again on every
+  // render of the row, with every row on Today and Later mounted. One
+  // selector compared shallowly re-renders the row on exactly the same
+  // changes. A setting only some rows read is selected on its own, gated on
+  // the row's kind (see `travelEventPrefs` below), not added here.
+  const {
+    alarmDayReset,
+    anthropicApiKey,
+    penaltyShieldEnabled,
+    travelDefaultMode,
+    travelWalkUnder,
+    travelCompareModes,
+    travelOriginPlaceId,
+    use24HourTime,
+    transitAlertsOn,
+    mirroringMode,
+    weekStartsOn,
+    mealLogPromptEnabled,
+    postponeCheckThreshold,
+    rewardsEnabled,
+    workoutsEnabled,
+  } = useSettingsStore(useShallow(s => ({
+    alarmDayReset: s.dayResetTime,
+    // The postpone prompt's "Break it up" opens the breakdown sheet: it drafts
+    // the steps with a key and only takes typed ones without.
+    anthropicApiKey: s.anthropicApiKey,
+    penaltyShieldEnabled: s.penaltyShieldEnabled,
+    travelDefaultMode: s.travelMode,
+    travelWalkUnder: s.travelWalkUnderMinutes,
+    travelCompareModes: s.travelCompareModes,
+    travelOriginPlaceId: s.travelOriginPlaceId,
+    use24HourTime: s.use24HourTime,
+    transitAlertsOn: s.transitAlerts,
+    // iPhone Mirroring: Return on the inline rename takes the title offer.
+    mirroringMode: s.mirroringMode,
+    weekStartsOn: s.weekStartsOn,
+    mealLogPromptEnabled: s.mealLogPrompt,
+    postponeCheckThreshold: s.postponeCheckThreshold,
+    rewardsEnabled: s.rewardsEnabled,
+    workoutsEnabled: s.workoutsEnabled,
+  })));
   const morning = useMemo(
     () => (alarmLink && !task.completed ? morningAlarmFor(alarmLink, linkedAlarms, new Date(), alarmDayReset) : null),
     [alarmLink, linkedAlarms, alarmDayReset, task.completed],
   );
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
-  // The postpone prompt's "Break it up" opens the breakdown sheet: it drafts
-  // the steps with a key and only takes typed ones without.
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
-  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   // A "Leave for X" row's trip estimate ("25 min by transit"). Every other row
   // selects null, so a travel estimate refresh re-renders only travel rows.
-  const travelDefaultMode = useSettingsStore(s => s.travelMode);
-  const travelWalkUnder = useSettingsStore(s => s.travelWalkUnderMinutes);
-  const travelEventPrefs = useSettingsStore(s => s.travelEventPrefs);
+  const travelEventPrefs = useSettingsStore(s => (task.generatedKind === 'travel' ? s.travelEventPrefs : NO_TRAVEL_PREFS));
   const travelHeld = useTravelTimeStore(s => {
     if (task.generatedKind !== 'travel' || !task.generatedSourceId) return null;
     const eventId = localTravelEventId(task.generatedSourceId);
@@ -870,11 +916,9 @@ const TaskItemRow = React.memo(function TaskItem({
   )) && travelHeld === null;
   const travelNote = travelHeld ? describeTravelEstimate(travelHeld.minutes, travelHeld.mode) : null;
   // The other ways of getting there, when Compare ways to get there is on.
-  const travelCompareModes = useSettingsStore(s => s.travelCompareModes);
   const travelOptions = travelCompareModes ? travelChoices(travelHeld) : [];
   // Where the compared trips start from, named above the strip. Resolved the
   // way the estimate's own origin is, so the line matches the numbers.
-  const travelOriginPlaceId = useSettingsStore(s => s.travelOriginPlaceId);
   const travelOriginText = useMemo(() => {
     if (travelOptions.length === 0 || !task.generatedSourceId) return null;
     const eventId = localTravelEventId(task.generatedSourceId);
@@ -896,13 +940,11 @@ const TaskItemRow = React.memo(function TaskItem({
     if (choice.selected) { setShowTravelPicker(true); return; }
     setTravelModeForEvent(eventId, sourceId, choice.mode);
   };
-  const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const travelArrival = travelArrivalNote(task, travelHeld?.minutes ?? null, ms => formatTimeOfDay(new Date(ms), use24HourTime));
   // The same row's disruption note ("G skipping stops; F delayed"), which is no
   // longer in its title. Worked out from the held MTA snapshot, so a refresh
   // re-renders only travel rows (every other row selects null).
-  const transitAlertsOn = useSettingsStore(s => s.transitAlerts);
-  const transitLines = useSettingsStore(s => s.transitLines);
+  const transitLines = useSettingsStore(s => (task.generatedKind === 'travel' ? s.transitLines : NO_TRANSIT_LINES));
   const travelDisruption = useTransitStore(s => {
     if (task.generatedKind !== 'travel' || !transitAlertsOn) return null;
     return travelDisruptionNote(task, s.snapshot, transitLines, Date.now(), +addDays(getCurrentDayStart(), 1));
@@ -910,7 +952,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // What is still open before leaving, on a "Leave for" row only (the rule is
   // tied to leaving in Event rules). A string, so only a change to the line
   // re-renders the row.
-  const eventRules = useSettingsStore(s => s.eventRules);
+  const eventRules = useSettingsStore(s => (task.generatedKind === 'travel' ? s.eventRules : NO_EVENT_RULES));
   const leavePrep = useTaskStore(s => (
     task.generatedKind === 'travel' ? leavePrepLine(openLeavePrep(task, s.tasks, eventRules)) : null
   ));
@@ -1033,11 +1075,14 @@ const TaskItemRow = React.memo(function TaskItem({
   // overshoot only reads as a bounce if the raw spring value reaches the
   // transform.
   const chainStepAnim = useRef(new Animated.Value(1)).current;
-  const chainStepOpacity = chainStepAnim.interpolate({
+  // Made once, like the three interpolations below. A new one on each render
+  // is a new animated node, and a view styled with one has its animated props
+  // rebuilt and reattached every time its row renders.
+  const chainStepOpacity = useMemo(() => chainStepAnim.interpolate({
     inputRange: [0, 0.3, 1],
     outputRange: [0, 1, 1],
     extrapolate: 'clamp',
-  });
+  }), [chainStepAnim]);
   const circleScale = useRef(new Animated.Value(1)).current;
   // The sideways shake a missed completion plays on the circle (see runCompletion).
   const circleShake = useRef(new Animated.Value(0)).current;
@@ -1050,27 +1095,27 @@ const TaskItemRow = React.memo(function TaskItem({
   // The spring below overshoots past 1 for the pop feel; both of these clamp it,
   // because the glyph is a rasterized bitmap and anything past 1 is that bitmap
   // being blown up rather than redrawn. See the glyph layer in the render.
-  const checkGlyphOpacity = checkScale.interpolate({
+  const checkGlyphOpacity = useMemo(() => checkScale.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 1],
     extrapolate: 'clamp',
-  });
-  const checkGlyphScale = checkScale.interpolate({
+  }), [checkScale]);
+  const checkGlyphScale = useMemo(() => checkScale.interpolate({
     inputRange: [0, 1],
     outputRange: [CHECK_GLYPH_START_SCALE, 1],
     extrapolate: 'clamp',
-  });
+  }), [checkScale]);
   // The gold inside the circle, grown out from its centre during the pop rather
   // than arriving in one frame. A child of the circle, so the pop scales it
   // with everything else; clamped so the snappy spring's overshoot can't bulge
   // it past the ring. Starts full on a row that mounts already completed, for
   // the same reason checkScale does.
   const fillScale = useRef(new Animated.Value(task.completed ? 1 : 0)).current;
-  const fillScaleClamped = fillScale.interpolate({
+  const fillScaleClamped = useMemo(() => fillScale.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 1],
     extrapolate: 'clamp',
-  });
+  }), [fillScale]);
   // Set while an untick plays the completion backwards (restoreFromCompletion),
   // so the checkmark and the struck title stay mounted long enough to leave
   // instead of vanishing the frame `completing` goes false.
@@ -1493,7 +1538,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Gated on the row's own deload link (only a sleep-shortfall health rule
   // carries one) and its day key rather than on healthRuleIdOf's rule id, so
   // this reads no settings.healthRules the row wasn't already reading.
-  const lastDeloadAppliedDayKey = useSettingsStore(s => s.lastDeloadAppliedDayKey);
+  const lastDeloadAppliedDayKey = useSettingsStore(s => (isDeloadUrl(task.linkUrl ?? '') ? s.lastDeloadAppliedDayKey : null));
   const deloadReady =
     isDeloadUrl(task.linkUrl ?? '') &&
     !task.completed &&
@@ -1543,8 +1588,6 @@ const TaskItemRow = React.memo(function TaskItem({
     !task.generatedReadyAt && activeMealSlotStepId(task)?.endsWith('-choose')
       ? parseMealSlotSource(task.generatedSourceId)
       : null;
-  const planMeal = useMealPlanStore(s => s.planMeal);
-  const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
 
   // Each of this row's four sheets is mounted on first use and kept, rather
   // than mounted only while open — a row nobody opens one on still pays
@@ -1590,9 +1633,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // of navigating to the item's sheet (see handleOpenLink).
   const [showPantryCheck, setShowPantryCheck] = useState(false);
   const mountPantryCheck = useSheetMount(showPantryCheck);
-  // iPhone Mirroring: Return on the inline rename takes the title offer.
-  const mirroringMode = useSettingsStore(s => s.mirroringMode);
-  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   // One reading per render rather than one per helper, so the chip, the
   // over-commitment test and the sheet can't land on different sides of a
   // dayResetTime boundary within the same frame.
@@ -1625,7 +1665,7 @@ const TaskItemRow = React.memo(function TaskItem({
   );
   const quietDays = useTaskStore(s =>
     reviewProjectId
-      ? projectQuietDays(reviewProject, s.tasks.filter(t => t.projectId === reviewProjectId))
+      ? projectQuietDays(reviewProject, projectTasksOf(s.tasks, reviewProjectId))
       : null
   );
 
@@ -1691,7 +1731,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // edit mode, so the pill can't depend on `isEditingTitle`: `renameOffer`
   // holds the saved title the offer was found in until the row collapses, the
   // title changes again, or the offer is applied or dismissed.
-  const applyTaskDates = useTaskStore(s => s.applyTaskDates);
   const [renameOffer, setRenameOffer] = useState<string | null>(null);
   const [dismissedOffer, setDismissedOffer] = useState<string | null>(null);
   // Set when the pill is applied, so the blur that follows doesn't save the raw
@@ -1891,9 +1930,15 @@ const TaskItemRow = React.memo(function TaskItem({
   // expanded panel, the relative due-date label — is computed during render
   // and so is only as fresh as the last render. This row is memoized, which
   // means a passing minute is not by itself a reason for it to re-render;
-  // subscribing to the shared heartbeat makes it one. Nothing reads the
-  // returned timestamp: the re-render *is* the effect (see nowTick.ts).
-  useNowTick();
+  // subscribing to the shared heartbeat makes it one: the re-render *is* the
+  // effect (see nowTick.ts). Only a row whose task carries something timed
+  // follows every tick (`rowFollowsClock`); the rest render again when the day
+  // changes, which is all a bare date's wording depends on.
+  const categoryHasHours = useCategoryStore(s => {
+    const category = task.category ? s.getCategoryByName(task.category) : null;
+    return !!(category?.scheduleDays && category.scheduleStart && category.scheduleEnd);
+  });
+  useRowClock(rowFollowsClock(task, alarmDayReset, categoryHasHours), alarmDayReset);
 
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);
@@ -1980,7 +2025,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // offersMealLogOnCompletion's own doc comment for why this gets its own
   // glyph rather than joining asksOnComplete's "?": that one means the tap
   // doesn't complete anything until it's answered, and this one always does.
-  const mealLogPromptEnabled = useSettingsStore(s => s.mealLogPrompt);
   const offersMealLog = offersMealLogOnCompletion(task, mealLogPromptEnabled);
   const logChips = completionLogChips(task, mealLogPromptEnabled);
 
@@ -2206,14 +2250,12 @@ const TaskItemRow = React.memo(function TaskItem({
   // the row itself: a task pushed six times reads as an ordinary row on Today
   // with nothing marking that history, and StuckScreen is a place you have to
   // go looking for it.
-  const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   // A target with a unit already logged this period is being worked on, so the
   // chip would contradict the meter beside it. Display only: the count itself
   // is untouched, so the bounty, banner and Stuck screen still see the history.
   const isDrifting = isDriftingTask(task, postponeCheckThreshold) && !hasQuotaProgress(task);
   // What a live bounty would pay right now (utils/rewards.ts), shown so the
   // reason to do it today sits on the row you'd otherwise push.
-  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bountyCoins = rewardsEnabled && isBountyLive(task) ? bountyCoinsFor(task) : 0;
   // The reward an avoid habit's slip claims (Reward.guardsTaskId), named on the
   // row so the shield's tap isn't a surprise. A string, so the row only
@@ -2230,7 +2272,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // the area is on and the link still leads somewhere: a deleted routine, or a
   // program deleted or with nothing in its rotation, offers nothing. A boolean,
   // so the row re-renders only when it flips.
-  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
   const hasWorkout = useWorkoutStore(s => workoutsEnabled && (
     task.workoutProgramId
       ? s.programs.some(p => p.id === task.workoutProgramId && p.rotation.some(id => s.routines.some(r => r.id === id)))
@@ -2358,9 +2399,19 @@ const TaskItemRow = React.memo(function TaskItem({
   ) : null;
   const handleMarkerLayout = (e: NativeSyntheticEvent<TextLayoutEventData>) => {
     const fits = e.nativeEvent.lines.length <= 2;
+    const cached = markerFitCache.get(markerKey);
     if (markerFitCache.size > 500) markerFitCache.clear();
     markerFitCache.set(markerKey, fits);
-    setMarkerMeasure((m) => (m && m.key === markerKey && m.fits === fits ? m : { key: markerKey, fits }));
+    setMarkerMeasure((m) => {
+      const recorded = m && m.key === markerKey ? m.fits : null;
+      if (recorded === fits) return m;
+      // "They fit" is also what a row with nothing recorded shows, so the
+      // first measure saying so has nothing to change. Recording it anyway
+      // rendered every row with a note, an attachment or a deadline a second
+      // time on each mount of the list.
+      if (recorded === null && fits && cached !== false) return m;
+      return { key: markerKey, fits };
+    });
   };
   // The content touchable's label replaces its children's, so the markers
   // have to be said here or a screen reader never hears them.
@@ -2971,7 +3022,7 @@ const TaskItemRow = React.memo(function TaskItem({
     }
     // A "Leave for" row with its prep still open asks first; Go back leaves it
     // exactly as it was.
-    if (!(await confirmLeaveWithOpenPrep(task, useTaskStore.getState().tasks, eventRules))) return;
+    if (!(await confirmLeaveWithOpenPrep(task, useTaskStore.getState().tasks, useSettingsStore.getState().eventRules))) return;
     await runCompletion();
   };
 
@@ -3387,7 +3438,7 @@ const TaskItemRow = React.memo(function TaskItem({
       );
       const { draft, seriesDates } = linePendingFields(pending);
       updateTask(task.id, { ...draft, title: text.trim() });
-      if (seriesDates) applyTaskDates(task.id, seriesDates);
+      if (seriesDates) useTaskStore.getState().applyTaskDates(task.id, seriesDates);
     } else {
       const { category, tags, cleanTitle } = activeTitleOffer.parsed;
       updateTask(task.id, {
@@ -6268,12 +6319,12 @@ const TaskItemRow = React.memo(function TaskItem({
           dayLabel={format(dayKeyToDate(mealPickerSource.dayKey), 'EEEE')}
           defaultSlot={mealPickerSource.slot}
           forceSlot={mealPickerSource.slot}
-          onPlan={planMeal}
+          onPlan={useMealPlanStore.getState().planMeal}
           // Same deferred offer the Meal Plan screen's own picker makes —
           // this sheet is the same component, just mounted from a task row
           // instead of that screen, so it gets the same prep-task ask for free.
           onPlanned={offerPrepTasksForEach}
-          onUnplan={removeMealPlanEntry}
+          onUnplan={useMealPlanStore.getState().removeEntry}
           onClose={() => setShowMealPicker(false)}
         />
       )}

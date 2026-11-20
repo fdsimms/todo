@@ -63,6 +63,10 @@ import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -136,13 +140,13 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.emptySections ?? [])
   );
   // ==== grocery store and existing sections ====
-  const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const aisleOrder = useGroceryWhileOpen(visible, s => s.aisleOrder, NO_ROWS);
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const groceryItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
 
   // Every heading this recipe already has, in list order — including one
   // declared with nothing under it yet (Recipe.emptySections). A section is a

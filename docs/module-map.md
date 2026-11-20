@@ -259,7 +259,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
 - `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
-- `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, shopWalkOrder, shopAisleOrderToSave, describeOwnAisleOrders, +14 more
+- `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, linksForItem, isOutOfRange, describeShopAisles, shopWalkOrder, shopAisleOrderToSave, +15 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, buyAgainItems, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, +18 more
 - `src/utils/groceryTripTasks.ts` — TripLinkReaders, tripTasksToComplete
 - `src/utils/groupFold.ts` — sameGroupsApartFromFold
@@ -471,6 +471,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
 - `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, orderWithInserted, filterProjectListItems, filterTasksByTitle, projectPageOrder, projectCopyText
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats
+- `src/utils/projectTasks.ts` — projectTasksOf, seriesTasksOf
 - `src/utils/projectTemplate.ts` — BlueprintEntry, ProjectBlueprint, projectBlueprint, ProjectTemplateDraft, freshCopyDraft, templateFromProject
 - `src/utils/proteinPerWeight.ts` — ProteinPerWeight, PROTEIN_PER_WEIGHT_RANGE, parseProteinPerWeight, serializeProteinPerWeight, switchProteinUnit, proteinTargetFromWeight
 - `src/utils/pulseLog.ts` — PulseKind, PulseEntry, isPlausiblePulse, parsePulseInput, parsePulseSeries, standalonePulses, pulsesSince
@@ -553,6 +554,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/routineUpdate.ts` — RoutineChange, rivalOf, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, sessionPlan, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, +35 more
 - `src/utils/rowAmount.ts` — ROW_AMOUNT_PRESETS, MAX_ROW_FACTOR, adjustedQuantity, canAdjustAmount, parseRowFactor, describeRowFactor
+- `src/utils/rowClock.ts` — rowFollowsClock
 - `src/utils/rowCursor.ts` — stepCursor, settleCursor
 - `src/utils/rowOrder.ts` — RowOrder, NO_ROWS, OrderableRow, todayRowOrder, flatRowOrder, unscheduledRowOrder, laterRowOrder
 - `src/utils/rsvp.ts` — parseGuestNames
@@ -635,6 +637,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stepper.ts` — StepRange, clampCount, typedStepperValue, parseStepperInput, stepCount, canStep, holdRepeatDelay
 - `src/utils/storageReport.ts` — StorageTable, StorageStats, formatBytes, MIN_RECLAIMABLE_BYTES, worthOptimizing, optimizeBlockedReason, topAreas, describeAreas
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
+- `src/utils/storeBatch.ts` — installNotificationBatch
 - `src/utils/storedFileBackup.ts` — storedFileNamesIn, collectStoredFiles, restoreStoredFiles
 - `src/utils/streakLeaderboard.ts` — LEADERBOARD_SIZE, streakScore, rankStreaks
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
@@ -677,6 +680,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, COUNTDOWN_LADDER, +12 more
 - `src/utils/taskMoves.ts` — dropsTimeOfDayOnMove, DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, dailyRepeatBlocker, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, +1 more
 - `src/utils/taskReopen.ts` — reopenedTask, reopenBlockedByLater
+- `src/utils/taskRows.ts` — taskIndexById, taskById, withTaskReplaced, idsPresent, withRowsUpserted
 - `src/utils/taskSkip.ts` — reminderOnto, deadlineOnto, skipPatch
 - `src/utils/taskSummary.ts` — SummaryPart, TaskSummaryInput, inSentence, buildTaskSummary
 - `src/utils/taskTypeFilter.ts` — TaskTypeFilter, TASK_TYPE_FILTERS, taskTypeFilterLabel, taskTypesOf, matchesTaskTypes, filterByTaskTypes, parseTaskTypeFilters
@@ -848,7 +852,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, reportServerSharing, markHealthLogsWithheld, settleHealthLogResend, +18 more
 - `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
-- `src/store/useTaskStore.ts` — InitializeOptions, offerMealLog, TimeBlockPlan, writeEditToFollowUpSource, hasEstimateSource, redoRestoringRows, captureFollowUpDrafts, useTaskStore
+- `src/store/useTaskStore.ts` — InitializeOptions, offerMealLog, TimeBlockPlan, LENS_SETTING_KEYS, writeEditToFollowUpSource, hasEstimateSource, redoRestoringRows, captureFollowUpDrafts, useTaskStore
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore
 - `src/store/useTemplateStore.ts` — ApplyTemplateOptions, useTemplateStore
 - `src/store/useTransitStore.ts` — TRANSIT_SNAPSHOT_STALE_MS, transitReadWanted, useTransitStore
@@ -896,6 +900,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useForegroundCatchUp.ts` — useForegroundCatchUp
 - `src/hooks/useFrameWidth.ts` — useFrameWidth
 - `src/hooks/useFrankiSync.ts` — useFrankiSync
+- `src/hooks/useGroceryWhileOpen.ts` — useGroceryWhileOpen
 - `src/hooks/useGroupSelectionCounts.ts` — useGroupSelectionCounts
 - `src/hooks/useHealthWorkoutHistory.ts` — useHealthWorkoutHistory
 - `src/hooks/useJournalAccess.ts` — useJournalAccess
@@ -937,6 +942,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
 - `src/hooks/useRetrySecrets.ts` — useRetrySecrets
 - `src/hooks/useRouteArrival.ts` — useRouteArrival
+- `src/hooks/useRowClock.ts` — useRowClock
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useSavedLinks.ts` — useSavedLinks, SavedLinks
 - `src/hooks/useScreenSettingControls.ts` — ScreenSettingControl, useScreenSettingControls
@@ -945,6 +951,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useScrollToTopOnTabPress.ts` — useScrollToTopOnTabPress
 - `src/hooks/useScrollToTopVisibility.ts` — useScrollToTopVisibility
 - `src/hooks/useSearchActions.ts` — SearchActionsView, useSearchActions, useSearchActionReceipts
+- `src/hooks/useSecondTick.ts` — useSecondTick
 - `src/hooks/useSharedRecipeLinks.ts` — useSharedRecipeLinks
 - `src/hooks/useSharedTaskImages.ts` — useSharedTaskImages
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset

@@ -49,7 +49,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import {
   SpotlightOverlay,
   SpotlightProvider,
-  useSpotlightElevation,
+  SpotlightElevatedView,
   useSpotlightProgress,
 } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
@@ -172,7 +172,6 @@ export function TagsScreen() {
   );
 
   const spotlightActive = expandedTaskId !== null && !selectionMode;
-  const listElevated = useSpotlightElevation(spotlightActive);
   // Every scrim on the screen shares this one animation — see SpotlightOverlay.
   const spotlightProgress = useSpotlightProgress(spotlightActive);
 
@@ -449,8 +448,10 @@ export function TagsScreen() {
               visible={spotlightActive}
               onPress={() => setExpandedTaskId(null)}
             />
-            <View
-              style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
+            <SpotlightElevatedView
+              active={spotlightActive}
+              style={styles.listWrapper}
+              elevatedStyle={styles.listWrapperElevated}
               // The list sits above the spotlight overlay, so the overlay can't
               // see taps here — catch any touch in the list area instead. The
               // expanded card stops propagation so its own controls keep working.
@@ -512,7 +513,7 @@ export function TagsScreen() {
               />
             </PaintSelectionProvider>
             <ScrollToTopButton {...sheetScrollTop.buttonProps} />
-            </View>
+            </SpotlightElevatedView>
 
             {selectionMode && (
               <BulkActionBar

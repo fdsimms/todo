@@ -107,6 +107,34 @@ export function sellsAisle(shop: Shop, aisle: string): boolean {
   return shop.aisles === null || shop.aisles.includes(aisle);
 }
 
+
+const linksByItemCache = new WeakMap<readonly ItemShopLink[], Map<string, ItemShopLink[]>>();
+const NO_LINKS: readonly ItemShopLink[] = [];
+
+/**
+ * One item's own store links, in the order `links` holds them, with the whole
+ * array bucketed once per array.
+ *
+ * Every reader below asks only about one item (`l.itemId === item.id`) and is
+ * handed every link there is to find them in. That is right for one item and
+ * rows-times-links for a list: a screen marking up each of its rows hands each
+ * call this slice in place of the full array, and gets the same answer.
+ * Keyed on the array, which the store replaces rather than mutates.
+ */
+export function linksForItem(links: readonly ItemShopLink[], itemId: string): readonly ItemShopLink[] {
+  let byItem = linksByItemCache.get(links);
+  if (!byItem) {
+    byItem = new Map();
+    for (const link of links) {
+      const own = byItem.get(link.itemId);
+      if (own) own.push(link);
+      else byItem.set(link.itemId, [link]);
+    }
+    linksByItemCache.set(links, byItem);
+  }
+  return byItem.get(itemId) ?? NO_LINKS;
+}
+
 /**
  * The standing negative: the user has said this store sells certain aisles and
  * this item isn't in one of them.
