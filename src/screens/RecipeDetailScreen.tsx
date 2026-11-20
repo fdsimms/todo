@@ -2528,7 +2528,6 @@ export function RecipeDetailScreen() {
               <View style={styles.timerDivider} />
               <StepTimerRow
                 timer={timer}
-                now={stepTimers.now}
                 hideRecipeName
                 onToggle={() => stepTimers.toggle(timer)}
                 onAddTime={() => stepTimers.addTime(timer.id)}

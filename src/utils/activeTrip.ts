@@ -227,15 +227,22 @@ export function tripMarkerFor(
   trip: Shop,
   subLinks: readonly ItemSubLink[] = [],
   items: readonly GroceryItem[] = [],
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[] = [],
+  /**
+   * This item's own links, in the order `links` holds them, for a caller that
+   * has them bucketed already (a list marking up every row). Everything below
+   * but the substitute lookup asks only about this item, and each of those
+   * questions used to be its own pass over every link there is.
+   */
+  own: readonly ItemShopLink[] = links.filter(l => l.itemId === item.id),
 ): TripMarker | null {
-  const here = links.find(l => l.itemId === item.id && l.shopId === trip.id);
+  const here = own.find(l => l.shopId === trip.id);
   if (here) {
     // Not stocking it at all outranks not having your product — it's the
     // stronger claim, and both are the user's own.
     if (isUnavailable(here)) {
       const substitute = substituteAt(item, links, trip, subLinks, items);
-      return { kind: 'unavailable', shop: trip, substitute, elsewhere: elsewhereFor(item, links, shops, trip) };
+      return { kind: 'unavailable', shop: trip, substitute, elsewhere: elsewhereFor(item, own, shops, trip) };
     }
     if (lacksWantedProduct(here, item)) {
       const wantedProduct = describePreferredProduct(item, products);
@@ -266,9 +273,9 @@ export function tripMarkerFor(
   // rest of the module applies to everything it doesn't cover — an unscoped
   // store says nothing here, which is every store until somebody says
   // otherwise.
-  if (isOutOfRange(trip, item, links)) {
+  if (isOutOfRange(trip, item, own)) {
     const substitute = substituteAt(item, links, trip, subLinks, items);
-    return { kind: 'outOfRange', shop: trip, substitute, elsewhere: elsewhereFor(item, links, shops, trip) };
+    return { kind: 'outOfRange', shop: trip, substitute, elsewhere: elsewhereFor(item, own, shops, trip) };
   }
 
   // Anything left to say has to come from a link naming
@@ -276,10 +283,10 @@ export function tripMarkerFor(
   // because "only" is the stronger claim when both would answer. Both already
   // drop the stores said to lack your product, so on a strict item "Only at
   // Costco" means Costco is the one place left you can get yours.
-  const only = exclusiveShopFor(item, links, shops);
+  const only = exclusiveShopFor(item, own, shops);
   if (only && only.id !== trip.id) return { kind: 'only', shop: only };
 
-  const usually = primaryShopFor(item, links, shops);
+  const usually = primaryShopFor(item, own, shops);
   if (usually && usually.id !== trip.id) return { kind: 'usually', shop: usually };
 
   return null;

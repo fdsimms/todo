@@ -102,7 +102,7 @@ import { generateId } from '../utils/id';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { groceriesLinkUrl, groceriesUrlShop, isGroceriesUrl } from '../utils/deepLinks';
-import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
+import type { GroceryItem, ItemProduct, ItemShopLink, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 import { shareContent } from '../utils/shareContent';
@@ -118,6 +118,8 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
 
 /** The one "Not at <store>" group, after the last section; its fold is remembered under this key. */
+/** What a row with no store link on record reads. */
+const NO_SHOP_LINKS: readonly ItemShopLink[] = [];
 const NOT_HERE_KEY = 'unavailable';
 /** The "Skipped" group under it; session-only, like the trip it belongs to. */
 const SKIPPED_KEY = 'skipped';
@@ -549,13 +551,27 @@ export function GroceryScreen() {
     return out;
   }, [grouped]);
 
+  // Every store link, bucketed by the item it is about, for the two per-row
+  // reads below. Each of them asks several things of one item's own links, and
+  // asked of the whole array that was rows times links, several times over, on
+  // every item checked off in the middle of a trip.
+  const linksByItem = useMemo(() => {
+    const out = new Map<string, ItemShopLink[]>();
+    for (const link of itemShops) {
+      const own = out.get(link.itemId);
+      if (own) own.push(link);
+      else out.set(link.itemId, [link]);
+    }
+    return out;
+  }, [itemShops]);
+
   const storeMarkers = useMemo(() => {
     const out = new Map<string, { text: string; substituteId?: string; unavailable: boolean }>();
     if (!activeTripShop) return out;
     for (const item of listRows) {
       // The whole catalog is still what a substitute is looked up in — only the
       // rows being marked up are the list's.
-      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items, itemProducts);
+      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items, itemProducts, linksByItem.get(item.id) ?? NO_SHOP_LINKS);
       if (!marker) continue;
       // The store lens's heading already says it. `only` stays, since "Only at
       // CVS" says something a "CVS" heading doesn't: that no other store on
@@ -577,7 +593,7 @@ export function GroceryScreen() {
       });
     }
     return out;
-  }, [activeTripShop, listRows, items, itemShops, shops, itemSubs, itemProducts, sectionShopByItem]);
+  }, [activeTripShop, listRows, items, itemShops, linksByItem, shops, itemSubs, itemProducts, sectionShopByItem]);
 
   // What each checked row costs at the trip's own store, and whether that
   // number was actually typed during *this* trip — see GroceryRow's
@@ -591,10 +607,10 @@ export function GroceryScreen() {
     for (const item of listRows) {
       // The trip store's own price, or one typed this trip, and never another
       // store's: see tripPriceFor (#2936).
-      out.set(item.id, tripPriceFor(item, activeTripShop.id, itemShops, tripStartedAt));
+      out.set(item.id, tripPriceFor(item, activeTripShop.id, linksByItem.get(item.id) ?? NO_SHOP_LINKS, tripStartedAt));
     }
     return out;
-  }, [activeTripShop, tripStartedAt, listRows, itemShops]);
+  }, [activeTripShop, tripStartedAt, listRows, linksByItem]);
 
   // Resolves to setItemPrice/clearItemShopPrice against the trip's own store
   // — the row itself only knows the item id and a number, not which of the

@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -43,7 +42,8 @@ export interface RecipeTimerBinding {
   running: boolean;
   paused: boolean;
   inProgress: boolean;
-  elapsedSeconds: number;
+  /** Seconds on the clock as of `nowMs`. The row that shows it asks each second; nothing here ticks. */
+  elapsedAt: (nowMs: number) => number;
   summary: string;
   onToggle: () => void;
   onLog: () => void;
@@ -52,8 +52,8 @@ export interface RecipeTimerBinding {
 }
 
 /**
- * One recipe timer, wired up: the once-a-second clock, the elapsed time derived
- * against it, and the four store calls with their haptics. It is a stopwatch:
+ * One recipe timer, wired up: the elapsed time derived from its stored fields,
+ * and the four store calls with their haptics. It is a stopwatch:
  * the recipe's estimate is never a target here (see `recipeTimer.ts`).
  *
  * **There is one cook timer and one prep timer per recipe, and this is how any
@@ -66,10 +66,11 @@ export interface RecipeTimerBinding {
  * derivation and write through the same actions.
  *
  * Nothing is counted in state — the elapsed number is recomputed from the two
- * stored fields against `nowTick` on every tick, which is what makes a phone
- * backgrounded or killed mid-cook come back with the right answer (see
- * src/utils/recipeTimer.ts). The tick itself only runs while this timer is
- * actually running.
+ * stored fields against the time it is asked about, which is what makes a
+ * phone backgrounded or killed mid-cook come back with the right answer (see
+ * src/utils/recipeTimer.ts). The once-a-second tick is `RecipeTimerRow`'s own
+ * (`useSecondTick`), so a running timer re-renders its row and not the screen
+ * that called this.
  *
  * `recipe` is allowed to be undefined so a screen can call this above its own
  * "the row is gone" guard; the binding then reads as a stopped timer and its
@@ -91,22 +92,13 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
   const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
 
   const running = recipe ? (isCook ? isCookTimerRunning(recipe) : isPrepTimerRunning(recipe)) : false;
-  const startedAt = isCook ? recipe?.timerStartedAt : recipe?.prepTimerStartedAt;
-
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  useEffect(() => {
-    if (!running) return;
-    setNowTick(Date.now());
-    const interval = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [running, startedAt]);
 
   if (!recipe) {
     return {
       running: false,
       paused: false,
       inProgress: false,
-      elapsedSeconds: 0,
+      elapsedAt: () => 0,
       summary: '',
       onToggle: () => {},
       onLog: () => {},
@@ -120,7 +112,7 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
     running,
     paused: !running && banked > 0,
     inProgress: running || banked > 0,
-    elapsedSeconds: isCook ? cookTimerElapsed(recipe, nowTick) : prepTimerElapsed(recipe, nowTick),
+    elapsedAt: nowMs => (isCook ? cookTimerElapsed(recipe, nowMs) : prepTimerElapsed(recipe, nowMs)),
     summary: isCook ? describeCookTime(recipe) : describePrepTime(recipe),
     onToggle: () => {
       // Pausing is a tap, not success: nothing has finished. Not awaited, so

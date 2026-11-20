@@ -8,6 +8,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TextField } from './TextField';
+import { useSecondTick } from '../hooks/useSecondTick';
 import { RotatingChevron } from './RotatingChevron';
 
 interface Props {
@@ -16,7 +17,8 @@ interface Props {
   running: boolean;
   paused: boolean;
   inProgress: boolean;
-  elapsedSeconds: number;
+  /** Seconds on the clock as of a moment; this row asks once a second while it runs. */
+  elapsedAt: (nowMs: number) => number;
   /** describePrepTime/describeCookTime's output — "Est. 15m · took 18m last time". Empty renders nothing. */
   summary: string;
   onToggle: () => void;
@@ -64,8 +66,11 @@ interface Props {
  */
 export function RecipeTimerRow({
   verb, running, paused, inProgress,
-  elapsedSeconds, summary, onToggle, onLog, onReset, onLogManual,
+  elapsedAt, summary, onToggle, onLog, onReset, onLogManual,
 }: Props) {
+  // This row's own clock: see `useSecondTick` for why the screen doesn't keep it.
+  useSecondTick(running);
+  const elapsedSeconds = elapsedAt(Date.now());
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const idleText = verb === 'Cook' ? 'Time this cook' : 'Time prep';

@@ -613,7 +613,7 @@ export function CookModeSheet({
   const cookUnderway = cookTimer.inProgress || stepTimers.timers.length > 0;
   const cancelCook = () => {
     haptics.tap();
-    const prompt = recipeTimerResetPrompt('Cook', cookTimer);
+    const prompt = recipeTimerResetPrompt('Cook', { running: cookTimer.running, elapsedSeconds: cookTimer.elapsedAt(Date.now()) });
     const stepTimerIds = stepTimers.timers.map(t => t.id);
     const discard = () => {
       cookTimer.onReset();
@@ -1304,7 +1304,6 @@ export function CookModeSheet({
                   <StepTimerRow
                     key={timer.id}
                     timer={timer}
-                    now={stepTimers.now}
                     hideRecipeName
                     onToggle={() => stepTimers.toggle(timer)}
                     onAddTime={() => stepTimers.addTime(timer.id)}
