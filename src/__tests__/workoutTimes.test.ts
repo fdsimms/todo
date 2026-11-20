@@ -1,4 +1,4 @@
-import { sameMinute, shiftDays, spanMinutes, withClock, workoutTimesProblem } from '../utils/workoutTimes';
+import { liveStartProblem, sameMinute, shiftDays, spanMinutes, withClock, workoutTimesProblem } from '../utils/workoutTimes';
 
 const now = new Date(2026, 9, 21, 13, 0);
 const opts = { now, healthLimited: false };
@@ -44,5 +44,22 @@ describe('helpers', () => {
   it('compares to the minute', () => {
     expect(sameMinute(new Date(2026, 9, 21, 0, 12, 5), new Date(2026, 9, 21, 0, 12, 50))).toBe(true);
     expect(sameMinute(new Date(2026, 9, 21, 0, 12), new Date(2026, 9, 21, 0, 13))).toBe(false);
+  });
+});
+
+describe('liveStartProblem', () => {
+  it('accepts a start in the past, and one at this minute', () => {
+    expect(liveStartProblem(new Date(2026, 9, 21, 12, 15), opts)).toBeNull();
+    expect(liveStartProblem(now, opts)).toBeNull();
+  });
+
+  it('refuses a start in the future', () => {
+    expect(liveStartProblem(new Date(2026, 9, 21, 13, 1), opts)).toMatch(/start in the future/);
+  });
+
+  it('refuses a start over a day back only when it reaches Health', () => {
+    const start = new Date(2026, 9, 20, 12, 0);
+    expect(liveStartProblem(start, opts)).toBeNull();
+    expect(liveStartProblem(start, { now, healthLimited: true })).toMatch(/up to a day/);
   });
 });
