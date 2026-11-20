@@ -7,7 +7,7 @@
 //
 // The result rows (SearchResultItem, StackResultItem, ElsewhereResultItem,
 // ProjectResultItem) are above it.
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
@@ -513,9 +513,18 @@ export function SearchScreen() {
 
   // Retyping a query you just typed would make the handoff a net loss, so the
   // field arrives focused and ready to be refined.
+  //
+  // Once per hand-off, which the ref holds: a tab coming back from frozen runs
+  // its effects again with nothing changed (see FreezeWhenBlurred), and without
+  // it every later return to Search raised the keyboard for a hand-off made
+  // long before.
+  const focusedForQueryAt = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (handledQueryAt === undefined) return;
-    const timer = setTimeout(() => searchFilter.inputRef.current?.focus(), 0);
+    if (handledQueryAt === undefined || focusedForQueryAt.current === handledQueryAt) return;
+    const timer = setTimeout(() => {
+      focusedForQueryAt.current = handledQueryAt;
+      searchFilter.inputRef.current?.focus();
+    }, 0);
     return () => clearTimeout(timer);
   }, [handledQueryAt]);
 

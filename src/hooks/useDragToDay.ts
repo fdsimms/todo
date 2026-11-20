@@ -103,6 +103,7 @@ export function useDragToDay<T extends { id: string }>(
   dragRef.current = drag;
 
   const api = useMemo<DayDragSource<T>>(() => {
+    const registerById = new Map<string, (view: any) => void>();
     const endDrag = (pageX: number, pageY: number) => {
       if (draggingIdRef.current === null) return;
       draggingIdRef.current = null;
@@ -189,9 +190,18 @@ export function useDragToDay<T extends { id: string }>(
         },
         onTouchCancel: () => { touchDownRef.current = false; cancelDrag(); },
       },
-      registerRow: (id: string) => (view: any) => {
-        if (view) rowViewsRef.current.set(id, view as MeasurableRow);
-        else rowViewsRef.current.delete(id);
+      // One callback per row id, kept: a new one on each render makes React
+      // detach and attach the ref again, for every row, on every render.
+      registerRow: (id: string) => {
+        let register = registerById.get(id);
+        if (!register) {
+          register = (view: any) => {
+            if (view) rowViewsRef.current.set(id, view as MeasurableRow);
+            else rowViewsRef.current.delete(id);
+          };
+          registerById.set(id, register);
+        }
+        return register;
       },
       startDrag,
     };
