@@ -21,6 +21,10 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -76,7 +80,7 @@ export function IngredientCatalogMatchSheet({
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
   );
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const groceryItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
 
   const scoped = useMemo(() => {
     if (!scopeIds) return recipeIngredients;

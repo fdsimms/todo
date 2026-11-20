@@ -30,6 +30,10 @@ import {
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 const CHECKBOX_SIZE = 22;
 
@@ -76,7 +80,7 @@ export function ImportedComponentEditSheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const groceryItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const edits = usePendingEdits();

@@ -45,6 +45,10 @@ import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 const CHECKBOX_SIZE = 22;
 
@@ -82,10 +86,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const items = useGroceryStore(useShallow(s => s.items));
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NO_ROWS);
   const activeListId = useGroceryStore(s => s.activeListId);
-  const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const aisleOrder = useGroceryWhileOpen(visible, s => s.aisleOrder, NO_ROWS);
   const setAisleMany = useGroceryStore(s => s.setAisleMany);
   const addByName = useGroceryStore(s => s.addByName);
   const setAisle = useGroceryStore(s => s.setAisle);

@@ -63,6 +63,10 @@ import { TextField } from './TextField';
 import { ActionRow } from './ActionRow';
 import { BUTTON_LABEL } from '../copy/shared';
 import { SHOP_NAME_TAKEN } from '../utils/groceryItemWrite';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 /**
  * One "Left alone" line the user opted to add as bought instead — either
@@ -275,8 +279,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // ==== state ====
-  const catalog = useGroceryStore(useShallow(s => s.items));
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const catalog = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NO_ROWS);
   const activeListId = useGroceryStore(s => s.activeListId);
   // The catalog as the list being shopped sees it. A row's own `onList` and
   // `checked` answer for the home list alone, so on an away list the home
@@ -293,9 +297,9 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         .map(i => (i.onList || i.checked ? { ...i, onList: false, checked: false } : i)),
     ];
   }, [catalog, listEntries, activeListId]);
-  const shops = useGroceryStore(useShallow(s => s.shops));
-  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const shops = useGroceryWhileOpen(visible, s => s.shops, NO_ROWS);
+  const itemShops = useGroceryWhileOpen(visible, s => s.itemShops, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const addShop = useGroceryStore(s => s.addShop);
   const setShopReceiptStyle = useGroceryStore(s => s.setShopReceiptStyle);
   const rememberAliases = useGroceryStore(s => s.rememberAliases);

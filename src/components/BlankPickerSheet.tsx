@@ -42,6 +42,10 @@ import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, type MealPlanEntr
 import { BUTTON_LABEL } from '../copy/shared';
 import { AmountUnitField } from './AmountUnitField';
 import { ingredientAmountGroups } from '../utils/amountUnit';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 /** A pick's unit menu, the one an ingredient's own amount uses: each pick becomes an ingredient line. */
 const AMOUNT_GROUPS = ingredientAmountGroups();
@@ -95,8 +99,8 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
-  const items = useGroceryStore(s => s.items);
-  const itemProducts = useGroceryStore(s => s.itemProducts);
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const nonFoodAisles = useGroceryStore(s => s.nonFoodAisles);
   const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
   const updateBlank = useRecipeStore(s => s.updateBlank);

@@ -44,6 +44,10 @@ import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { SHOP_NAME_TAKEN } from '../utils/groceryItemWrite';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
@@ -313,15 +317,15 @@ export function FinishShoppingSheet({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
-  const shops = useGroceryStore(useShallow(s => s.shops));
+  const shops = useGroceryWhileOpen(visible, s => s.shops, NO_ROWS);
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const addShop = useGroceryStore(s => s.addShop);
-  const items = useGroceryStore(useShallow(s => s.items));
-  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemShops = useGroceryWhileOpen(visible, s => s.itemShops, NO_ROWS);
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NO_ROWS);
   const activeListId = useGroceryStore(s => s.activeListId);
   const addToCartMany = useGroceryStore(s => s.addToCartMany);
   const removeFromListMany = useGroceryStore(s => s.removeFromListMany);

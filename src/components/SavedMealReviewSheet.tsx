@@ -59,6 +59,10 @@ import { useWeighIn } from '../hooks/useWeighIn';
 import { CookwareWeighIn } from './CookwareWeighIn';
 import { type FoodNutrition, type MealSlot, type SavedMeal, type SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -139,9 +143,9 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const amountOperators = useAmountOperators();
-  const groceryItems = useGroceryStore(s => s.items);
-  const itemProducts = useGroceryStore(s => s.itemProducts);
-  const listEntries = useGroceryStore(s => s.listEntries);
+  const groceryItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NO_ROWS);
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const dismissDisposalOffer = useGroceryStore(s => s.dismissDisposalOffer);
   const addExistingMany = useGroceryStore(s => s.addExistingMany);

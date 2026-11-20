@@ -52,6 +52,10 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { useTextScale } from '../hooks/useTextScale';
 import { ProgressBar } from './ProgressBar';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -119,7 +123,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   // Read live, so a rename made in the editor shows on the card; the deck
   // itself stays as it was seeded.
-  const liveItems = useGroceryStore(s => s.items);
+  const liveItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
 
   const [deck, setDeck] = useState<PantryReviewDeck>(EMPTY_DECK);
   const [index, setIndex] = useState(0);

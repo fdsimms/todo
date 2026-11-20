@@ -84,6 +84,10 @@ import { ingredientWeightText, weightLookups as buildWeightLookups } from '../ut
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -208,15 +212,15 @@ export function CookModeSheet({
   // here, for the reasons the hook's own doc comment gives.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const unitSystem = useSettingsStore(s => s.unitSystem);
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const groceryItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   // What each line weighs, where its food's portion table can say
   // (lineWeight.ts) — the same caption the recipe page puts beside a pill.
   const weightLookups = useMemo(
     () => buildWeightLookups(groceryItems, itemProducts),
     [groceryItems, itemProducts],
   );
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
 
   // Only while this is actually up: the sheet stays mounted behind the recipe
   // screen with `visible` false, and a timer bound there would keep a

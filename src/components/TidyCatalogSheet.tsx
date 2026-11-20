@@ -24,6 +24,10 @@ import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 interface Props {
   visible: boolean;
@@ -84,8 +88,8 @@ export function TidyCatalogSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const scroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
-  const items = useGroceryStore(useShallow(s => s.items));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const renameItem = useGroceryStore(s => s.renameItem);
   const mergeItems = useGroceryStore(s => s.mergeItems);
 

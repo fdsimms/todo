@@ -50,6 +50,10 @@ import { useLingering } from '../hooks/useLingering';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+
+/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
+const NO_ROWS: never[] = [];
 
 // How long the in-sheet "marked in pantry" undo stays up. Same value UndoBar
 // uses for the same reason: long enough to read the label and reach for the
@@ -169,15 +173,15 @@ export function RecipeToListSheet({
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const simpleMode = useSettingsStore(s => s.simpleMode);
 
-  const items = useGroceryStore(useShallow(s => s.items));
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const items = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
+  const listEntries = useGroceryWhileOpen(visible, s => s.listEntries, NO_ROWS);
   const activeListId = useGroceryStore(s => s.activeListId);
   const inTrolley = useMemo(
     () => trolleyStateFor(listEntries, activeListId),
     [listEntries, activeListId]
   );
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
+  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addToPantry = useGroceryStore(s => s.addToPantry);
 
