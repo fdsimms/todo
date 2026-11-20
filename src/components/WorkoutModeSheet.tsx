@@ -342,9 +342,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [photosOpenIds, setPhotosOpenIds] = useState<ReadonlySet<string>>(new Set());
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
-  // Exercises folded down to their title and a one-line summary. Session-only
-  // and per exercise. Only the chevron folds a card; finishing its last set
-  // leaves it open.
+  // Exercises folded down to their title and a one-line summary. Per exercise
+  // and kept for the whole session, through closing and reopening the sheet
+  // (the host keeps it mounted); it starts over for a different session.
+  // Only the chevron folds a card; finishing its last set leaves it open.
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(new Set());
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
@@ -364,10 +365,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setKeptIds(new Set());
     setAccepted(new Set());
     setDetailOpen(false);
-    setCollapsedIds(new Set());
     // On open only: a tick re-derives the view through its own handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, session?.id]);
+
+  // Not in the open effect above: closing and reopening the sheet mid-workout
+  // re-expanded every card the person had folded.
+  useEffect(() => {
+    setCollapsedIds(new Set());
+  }, [session?.id]);
 
   // A tick made outside the sheet (the Lock Screen's "Done set") turns the card
   // the way a tick here does. After the open effect above, so on a cold open it
