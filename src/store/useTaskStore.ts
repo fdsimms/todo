@@ -570,6 +570,7 @@ import { payProjectBonus, takeBackProjectBonus } from '../utils/projectBonus';
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { timedPart } from '../utils/perfLog';
 import { mergeTaskDelta } from '../utils/taskDeltaReload';
+import { idsPresent, taskById, withRowsUpserted, withTaskReplaced } from '../utils/taskRows';
 import { keepUnchanged } from '../utils/structuralSharing';
 import { reloadReaches, syncReloadScope, type ReloadPart, type SyncReloadScope } from '../utils/syncReloadScope';
 
@@ -699,15 +700,7 @@ function applyQuotaPlan({ closed, spawned, scaled = [] }: QuotaRolloverPlan & { 
 
 /** `tasks` with each spawned row in place of one sharing its id, the rest appended. */
 function withSpawnedTasks(tasks: Task[], spawned: readonly Task[]): Task[] {
-  if (spawned.length === 0) return tasks;
-  const byId = new Map(spawned.map(t => [t.id, t]));
-  const replaced = tasks.map(t => {
-    const next = byId.get(t.id);
-    if (!next) return t;
-    byId.delete(t.id);
-    return next;
-  });
-  return [...replaced, ...byId.values()];
+  return withRowsUpserted(tasks, spawned);
 }
 
 function chargePenaltyShield(until: Date, reason: string): void {
@@ -893,7 +886,7 @@ function reconcileDeadlineEvent(task: Task, write?: ReconcileWrite): void {
       } else {
         dbUpdateTask(updated);
       }
-      useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+      useTaskStore.setState(s => ({ tasks: withTaskReplaced(s.tasks, task.id, updated) }));
     })
     .catch(() => {});
 }
@@ -932,7 +925,7 @@ function logCompletionEvent(task: Task, completedAt: Date): void {
       }
       const updated = { ...current, completionCalendarEventId, completionCalendarEventExternalId };
       dbUpdateTask(updated);
-      useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+      useTaskStore.setState(s => ({ tasks: withTaskReplaced(s.tasks, task.id, updated) }));
     })
     .catch(() => {});
 }
@@ -1250,7 +1243,7 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       const patched = { ...source, supplyDeclinedAtCount: stamp };
       dbUpdateTask(patched);
       useTaskStore.setState(s => ({
-        tasks: s.tasks.map(t => (t.id === sourceId ? patched : t)),
+        tasks: withTaskReplaced(s.tasks, sourceId, patched),
       }));
       return;
     }
@@ -1273,7 +1266,7 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       const patched = { ...source, waitingFollowUpDeclinedAt: stamp };
       dbUpdateTask(patched);
       useTaskStore.setState(s => ({
-        tasks: s.tasks.map(t => (t.id === sourceId ? patched : t)),
+        tasks: withTaskReplaced(s.tasks, sourceId, patched),
       }));
       return;
     }
@@ -1472,7 +1465,7 @@ function setTimeBlockLink(
   } else {
     dbUpdateTask(updated);
   }
-  useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === taskId ? updated : t)) }));
+  useTaskStore.setState(s => ({ tasks: withTaskReplaced(s.tasks, taskId, updated) }));
   return true;
 }
 
@@ -1741,10 +1734,20 @@ function withHeldCompletions(tasks: Task[], heldIds: string[]): Task[] {
 // for a completed row anyway and completed history is most of the array (see
 // openTasksOf). The held rows are kept in their original positions, so a tie
 // in sortOrder still breaks the way it did over the full array.
+//
+// Kept per (task array, held ids) while anything is held, which is the few
+// seconds after every tick: seven lenses start from this, and uncached each of
+// them made its own pass over the whole array, history included, on the store
+// write the tap itself made and on every write until the hold let go.
+let heldListRows: { tasks: Task[]; heldIds: string[]; rows: Task[] } | null = null;
+
 function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
   if (heldIds.length === 0) return openTasksOf(tasks);
+  if (heldListRows && heldListRows.tasks === tasks && heldListRows.heldIds === heldIds) return heldListRows.rows;
   const held = new Set(heldIds);
-  return withHeldCompletions(tasks.filter(t => !t.completed || held.has(t.id)), heldIds);
+  const rows = withHeldCompletions(tasks.filter(t => !t.completed || held.has(t.id)), heldIds);
+  heldListRows = { tasks, heldIds, rows };
+  return rows;
 }
 
 // The list lenses (visibleTasks and the siblings beside it at the end of the
@@ -3404,7 +3407,7 @@ function syncLimitAutoSlip(reading: LimitReading, todayKey: string, dayStart: Da
   if (!patch) return;
   const updated = { ...task, ...patch };
   dbUpdateTask(updated);
-  useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+  useTaskStore.setState(s => ({ tasks: withTaskReplaced(s.tasks, task.id, updated) }));
   const days = { ...settings.limitWarningAutoSlips };
   if (nextAuto) days[reading.key] = nextAuto;
   else delete days[reading.key];
@@ -4046,7 +4049,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           void deleteCompletionEvent(completionEventLink(current));
           const updated = { ...current, completionCalendarEventId: null, completionCalendarEventExternalId: null };
           dbUpdateTaskCalendarLinks(current.id, { completionCalendarEventId: null, completionCalendarEventExternalId: null });
-          set(s => ({ tasks: s.tasks.map(t => (t.id === updated.id ? updated : t)) }));
+          set(s => ({ tasks: withTaskReplaced(s.tasks, updated.id, updated) }));
         }
         for (const link of plan.remove) void deleteDeadlineEvent(link);
       })
@@ -4351,7 +4354,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // the target can't leave two live rows for the same series), then
     // restore the count actually logged — nothing was undone, only the
     // completion.
-    const current = get().tasks.find(t => t.id === id);
+    const current = taskById(get().tasks, id);
     if (
       current?.completed &&
       isQuotaTask(current) &&
@@ -4370,9 +4373,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // already a full pass. Only consumed on the 0→1 transition below.
     const freshPinnedOrder = updates.pinned === true ? nextPinnedOrder(get().tasks) : 0;
     const dayResetTime = useSettingsStore.getState().dayResetTime;
-    const tasks = get().tasks.map(t => {
-      if (t.id !== id) return t;
-
+    const tasks = withTaskReplaced(get().tasks, id, t => {
       const updated = mergeTaskUpdate(t, updates, {
         scope,
         freshPinnedOrder,
@@ -4464,7 +4465,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // content fields are pushed onto the set's later still-incomplete dates.
     // Only CONTENT_FIELDS: dueDate and the series' own fields are per-row or
     // per-set and would flatten the whole schedule onto one day.
-    const edited = get().tasks.find(t => t.id === id);
+    const edited = taskById(get().tasks, id);
     // A restock that satisfies a linked supply takes back the "running low" the
     // supply put on its grocery item, so the next time it runs down it asks
     // again rather than reading as already handled (#2935). See
@@ -4529,7 +4530,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task) return;
     const now = new Date().toISOString();
     dbMarkTaskSeen(id, now);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? { ...t, seenAt: now } : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, t => ({ ...t, seenAt: now })) }));
   },
 
   markTasksSeen(ids) {
@@ -4690,7 +4691,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       pendingCompletionIds = pendingCompletionIds.filter(x => x !== id);
       armCompletionCollapse();
     }
-    let task = get().tasks.find(t => t.id === id);
+    let task = taskById(get().tasks, id);
     if (!task || task.completed) return;
     // There is no tap that finishes "don't smoke", so a negative habit has no
     // completion to run — see Task.polarity. Refused here rather than at each
@@ -4748,7 +4749,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       } else {
         get().stopTimer(id);
       }
-      task = get().tasks.find(t => t.id === id)!;
+      task = taskById(get().tasks, id)!;
     }
 
     const now = new Date();
@@ -4795,7 +4796,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // finished occurrence back into an open one and leave two live rows. A row
     // that is still open is the other-device case writeSpawnedTask exists for,
     // and is written over as before.
-    const successorSettled = built.nextTask !== null && get().tasks.some(t => t.id === built.nextTask!.id && t.completed);
+    const successorSettled = built.nextTask !== null && taskById(get().tasks, built.nextTask.id)?.completed === true;
     const nextTask = successorSettled ? null : built.nextTask;
     const nextSubtasks = successorSettled ? [] : built.nextSubtasks;
 
@@ -4879,7 +4880,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // for the day, it went on saying "one is due now" until evening.
     if (task.quotaReminders) cancelQuotaNudges(id);
 
-    const held = new Set(get().tasks.map(t => t.id));
+    // Every row this completion adds, and which of their ids are here already
+    // (see writeSpawnedTask). Asked about these few ids rather than by
+    // collecting every id in the list, which was a pass and a set the size of
+    // the whole history on every tick.
+    const spawned = [
+      ...(nextTask ? [nextTask] : []),
+      ...nextSubtasks,
+      ...rolledOver,
+      ...(followUpTask ? [followUpTask] : []),
+      ...followUpSubtasks,
+    ];
+    const held = idsPresent(get().tasks, spawned.map(t => t.id));
     if (nextTask) {
       writeSpawnedTask(nextTask, held);
       scheduleTaskReminder(nextTask);
@@ -4898,13 +4910,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
 
     set(s => ({
-      tasks: withSpawnedTasks(s.tasks.map(t => (t.id === id ? completed : t)), [
-        ...(nextTask ? [nextTask] : []),
-        ...nextSubtasks,
-        ...rolledOver,
-        ...(followUpTask ? [followUpTask] : []),
-        ...followUpSubtasks,
-      ]),
+      tasks: withSpawnedTasks(withTaskReplaced(s.tasks, id, completed), spawned),
       // See the option's own doc comment: a row that already animated its own
       // transition to the successor's look has nothing left for the hold to
       // protect, and masking it back to its pre-transition content for the
@@ -5184,7 +5190,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
-    syncGatedReminders(id, get().tasks);
+    // Open rows only: a finished one is skipped by both this and the pass below.
+    syncGatedReminders(id, openTasksOf(get().tasks));
 
     // A chain's next step carries the ready mark (a meal already cooked is still
     // cooked), so it completes the same way rather than waiting for a tick.
@@ -5195,8 +5202,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // nothing on screen would say so. ReadyOfferBar offers them a day. Not for
     // a miss or an unattended completion, which nobody is watching.
     if (!missed && (!neutral || byOther)) {
-      const freed = get().tasks.filter(t =>
-        !t.completed && !t.archived && !t.parentId &&
+      const freed = openTasksOf(get().tasks).filter(t =>
+        !t.archived && !t.parentId &&
         (blockerIdsOf(t).includes(id) || t.answerGate?.taskId === id) &&
         !isHeldBack(t) && !isInPausedProject(t) &&
         t.dueDate == null && t.deferUntil == null
@@ -5229,7 +5236,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // trusting the ids blindly — if the completion was undone in the
       // meantime (uncompleteTask), the task is no longer completed and its
       // pin was never actually touched, so it must stay untouched here too.
-      const stillPinned = get().tasks.filter(t => unpinIds.includes(t.id) && t.completed && t.pinned);
+      const stillPinned = unpinIds.length === 0
+        ? []
+        : get().tasks.filter(t => unpinIds.includes(t.id) && t.completed && t.pinned);
       const stillPinnedIds = stillPinned.map(t => t.id);
       stillPinned.forEach(t => unpinnedOnCompletion.set(t.id, t.pinnedOrder));
       if (stillPinnedIds.length > 0) dbBulkSetPinned(stillPinnedIds, false);
@@ -5321,7 +5330,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   uncompleteTask(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !task.completed) return;
     // Only the newest occurrence can be taken back: see reopenBlockedByLater.
     if (reopenBlockedByLater(task, get().tasks)) return;
@@ -5393,9 +5402,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
 
     set(s => ({
-      tasks: s.tasks
-        .filter(t => !followUpIds.has(t.id) && !(t.parentId && followUpIds.has(t.parentId)))
-        .map(t => (t.id === id ? updated : t)),
+      tasks: withTaskReplaced(
+        followUpIds.size === 0
+          ? s.tasks
+          : s.tasks.filter(t => !followUpIds.has(t.id) && !(t.parentId && followUpIds.has(t.parentId))),
+        id,
+        updated,
+      ),
       completionHoldIds: s.completionHoldIds.filter(x => x !== id),
       completionCollapseIds: s.completionCollapseIds.filter(x => x !== id),
     }));
@@ -5474,7 +5487,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         });
         set(s => ({
           tasks: [
-            ...s.tasks.map(t => (t.id === id ? original : t)),
+            ...withTaskReplaced(s.tasks, id, original),
             ...followUps,
             ...followUpSubtasks,
           ],
@@ -5507,8 +5520,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       : task.personIds;
     const updated = { ...task, personIds, deliverableValue: value, deliverableWhy: nextReasoning.why, deliverableRevisitIf: nextReasoning.revisitIf };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
-    syncGatedReminders(id, get().tasks);
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
+    syncGatedReminders(id, openTasksOf(get().tasks));
     get().setLastAction({
       label: value === null ? 'Answer cleared' : 'Answer saved',
       undo: () => get().setDeliverableValue(id, previous, previousReasoning),
@@ -5555,7 +5568,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const free = nextSlipIsFree(task, dayStart);
     const updated = { ...task, ...slipPatch(task, dayStart) };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
     if (free) {
       get().setLastAction({
         label: 'Logged',
@@ -5608,7 +5621,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const free = lastSlipWasFree(task, dayStart);
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
     if (free) return;
     // A guarded slip's charge is named by its slip, and one floored to zero
     // wrote nothing, so a guarded habit never falls back to "the newest loss".
@@ -5668,7 +5681,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!patch) return;
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
     payCleanDays(task, patch, new Date());
     get().setLastAction({
       label: `Day logged, streak ${updated.streakCount}`,
@@ -5685,7 +5698,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!patch) return;
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
     useRewardStore.getState().takeBackCleanDay(id, dayKeyOf(dayStart));
   },
 
@@ -5786,7 +5799,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         : {}),
     };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
     // Paid per tap (Task.coinsPerTap): this tap's share of the base coins now,
     // the rest at the completion. The tap that reaches the target took the
     // branch above, so this is never the completing one.
@@ -5848,7 +5861,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const progressCount = rotationDoneCount({ ...task, ...patch }, dayStart, weekStartsOn);
     const updated = { ...task, ...patch, progressCount };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
     return progressCount >= task.targetCount!;
   },
 
@@ -5898,7 +5911,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task || task.completed || !isRotationTask(task)) return;
     const updated = { ...task, rotationPlan: rotationPlanFor(task, itemId, getCurrentDayStart()) };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
   },
 
   unlogRotationUnit(id) {
@@ -5914,7 +5927,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       progressCount: rotationDoneCount({ ...task, ...patch }, dayStart, weekStartsOn),
     };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
   },
 
   unlogQuotaUnit(id) {
@@ -5929,7 +5942,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ...(countsUnits(task) && task.streakCount > 0 ? { streakCount: task.streakCount - 1 } : {}),
     };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
     // The tap's coins go with it. Not gated on coinsPerTap: switching the
     // setting off after a tap was paid must still let the undo take it back.
     useRewardStore.getState().takeBackTap(id, task.progressCount);
@@ -5998,7 +6011,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         : task;
       if (current !== task) {
         dbUpdateTask(current);
-        set(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? current : t)) }));
+        set(s => ({ tasks: withTaskReplaced(s.tasks, task.id, current) }));
       }
 
       const units = Math.min(current.targetCount!, Math.floor(totalMl / current.logHealthAmount!));
@@ -6014,7 +6027,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       } else {
         const updated = { ...current, progressCount: units };
         dbUpdateTask(updated);
-        set(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+        set(s => ({ tasks: withTaskReplaced(s.tasks, task.id, updated) }));
       }
     }
 
@@ -10683,7 +10696,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   toggleSubtask(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return;
     const updated = {
       ...task,
@@ -10691,7 +10704,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completedAt: !task.completed ? new Date().toISOString() : null,
     };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
   },
 
   deleteSubtask(id) {

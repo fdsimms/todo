@@ -289,7 +289,8 @@ npm run test:tz      # the suite in UTC+14, UTC-11 and Newfoundland (DST, half-h
                      # CI runs UTC+14 only, and a local run is usually UTC
 npx jest src/__tests__/dateUtils.test.ts  # one file, for iterating on a change
 npm run bench        # times the Today/Later/Expired selectors and search over 5,000 synthetic
-                     # tasks (src/__bench__/); compare two checkouts, it is not part of npm test
+                     # tasks, and what one tap costs in the real task store over a history-heavy
+                     # database (src/__bench__/); compare two checkouts, it is not part of npm test
 npm run copy         # every user-facing string with file:line, what is written out in many files, what
                      # is spelled several ways; `-- --grep "taken"` finds one. Prints, writes nothing
 npm run docs         # regenerate all three generated docs, then commit them
