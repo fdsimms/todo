@@ -206,6 +206,16 @@ describe('onCallWarningForDay', () => {
     const shifts = onCallSpans([timed('on call', at(9, 0, 23), at(17, 0, 23))], WORD);
     expect(onCallWarningForDay(shifts, new Date(2026, 10, 23), RESET, false)).toBe('You’re on call 9:00 AM to 5:00 PM');
   });
+  it('does not warn on the morning an overnight shift ends, only on the day it starts', () => {
+    const night = onCallSpans([timed('on call', at(18, 0, 21), at(8, 0, 22))], WORD);
+    expect(onCallWarningForDay(night, new Date(2026, 10, 21), RESET, false)).toBe('You’re on call 6:00 PM to Sun 8:00 AM');
+    expect(onCallWarningForDay(night, new Date(2026, 10, 22), RESET, false)).toBeNull();
+  });
+  it('still warns on a day a multi-day shift runs all the way through', () => {
+    const long = onCallSpans([timed('on call', at(17, 0, 21), at(8, 0, 24))], WORD);
+    expect(onCallWarningForDay(long, new Date(2026, 10, 22), RESET, false)).not.toBeNull();
+    expect(onCallWarningForDay(long, new Date(2026, 10, 24), RESET, false)).toBeNull();
+  });
   it('reads a midnight date as that date, not the day before the reset', () => {
     const spans = onCallSpans([allDay('on call', 21)], WORD);
     expect(onCallWarningForDay(spans, new Date(2026, 10, 20), RESET, false)).toBeNull();

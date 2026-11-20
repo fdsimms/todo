@@ -350,8 +350,21 @@ export function onCallWarningForTime(
 }
 
 /**
+ * The stretches worth warning about for a whole day: those that start on it, or
+ * that run through all of it. A shift that began the day before and ends part way
+ * through this one (Wed 6 PM to Thu 8 AM, on Thursday) is left out, since someone
+ * adding a task to Thursday is not adding it to Wednesday's on-call day. A task
+ * or event with a clock time still warns for the tail, through `onCallWarningForTime`.
+ */
+function onCallForWarningOnDay(spans: readonly OnCallSpan[], day: { start: Date; end: Date }): OnCallSpan[] {
+  return onCallOnDay(spans, day).filter(span => span.allDay
+    || span.start >= day.start.getTime()
+    || span.end >= day.end.getTime());
+}
+
+/**
  * The warning for a day with no time on it: a task dated that day, or an all-day
- * event. Any stretch that day counts.
+ * event. Any stretch that starts that day, or runs through it, counts.
  */
 export function onCallWarningForDay(
   spans: readonly OnCallSpan[],
@@ -360,7 +373,7 @@ export function onCallWarningForDay(
   use24Hour: boolean,
 ): string | null {
   const day = appDayOfDate(date, dayResetTime);
-  const hits = onCallOnDay(spans, day);
+  const hits = onCallForWarningOnDay(spans, day);
   if (hits.length === 0) return null;
   if (hits.some(span => span.allDay)) return `${YOURE_ON_CALL} all day`;
   const phrases = hits.map(span => describeSpan(span, day.start, use24Hour));
@@ -382,7 +395,7 @@ export function onCallWarningForDays(
   let count = 0;
   for (let i = 0; i < total; i++) {
     const day = appDayOfDate(addDays(first, i), dayResetTime);
-    if (onCallOnDay(spans, day).length > 0) count += 1;
+    if (onCallForWarningOnDay(spans, day).length > 0) count += 1;
   }
   if (count === 0) return null;
   if (total === 1) return `${YOURE_ON_CALL} on this day`;
