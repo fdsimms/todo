@@ -26,6 +26,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useBulkBarPresenceStore } from '../store/useBulkBarPresenceStore';
 import { useFabPresenceStore } from '../store/useFabPresenceStore';
 import { useFloatingBarStore } from '../store/useFloatingBarStore';
+import { useFocusedRouteStore } from '../store/useFocusedRouteStore';
 import { isCookTimerRunning } from '../utils/recipeTimer';
 import { resetToFocusSession } from '../navigation/navigationRef';
 
@@ -62,7 +63,12 @@ interface Props {
  * strip; tapping this one lands on Today with the sheet open
  * (`resetToFocusSession`), since that's where the sheet is mounted.
  */
-export function FocusFloatingBar({ hidden }: { hidden: boolean }) {
+export function FocusFloatingBar() {
+  // Read here rather than handed down: as a prop it was state on the navigator,
+  // which re-rendered it and every overlay beside this one on each switch to or
+  // from Today. Hidden until the navigator has said where it is, too, so a
+  // launch onto Today never shows it for a frame.
+  const hidden = useFocusedRouteStore(s => s.route === null || s.route === 'Today');
   const session = useFocusStore(s => s.session);
   const cooking = useRecipeStore(s => s.recipes.some(isCookTimerRunning));
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);

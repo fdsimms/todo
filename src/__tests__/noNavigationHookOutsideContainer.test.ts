@@ -56,7 +56,18 @@ function findOffender(entry: string): string[] | null {
 
 const navigatorSource = readFileSync(NAVIGATOR, 'utf8');
 const closeAt = navigatorSource.indexOf('</NavigationContainer>');
-const outside = navigatorSource.slice(closeAt);
+/**
+ * The overlays are elements made once at module level (`const NAME = ( … );`)
+ * and placed by name, so a `{NAME}` after the container stands for the tags in
+ * its definition: without this the scan would see none of them.
+ */
+function withHoistedElements(jsx: string): string {
+  return jsx.replace(/\{([A-Z][A-Z_]+)\}/g, (placed, name: string) => {
+    const definition = navigatorSource.match(new RegExp(`^const ${name} = \\(\\n([\\s\\S]*?)\\n\\);`, 'm'));
+    return definition ? definition[1] : placed;
+  });
+}
+const outside = withHoistedElements(navigatorSource.slice(closeAt));
 
 const hosted = [...outside.matchAll(/<([A-Z][A-Za-z]+)[\s/>]/g)].map(m => m[1]);
 const imported = new Map<string, string>();
@@ -80,6 +91,9 @@ describe('components mounted outside NavigationContainer', () => {
     // assertion below would pass against nothing.
     expect(closeAt).toBeGreaterThan(0);
     expect(components.length).toBeGreaterThan(3);
+    // One placed by name outside the container, and one placed by name inside it.
+    expect(components).toContain('UndoBar');
+    expect(components).not.toContain('LogMealEntrySheet');
   });
 
   it('still detects a container hook through the import chain', () => {
