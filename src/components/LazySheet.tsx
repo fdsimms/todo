@@ -2,6 +2,35 @@ import React, { useEffect, useState } from 'react';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { runAfterTransition } from '../utils/afterPaint';
 
+/** How long the JS thread is left free between one warmed sheet's build and the next. */
+const WARM_UP_GAP_MS = 250;
+
+const warmUps: (() => void)[] = [];
+let warming = false;
+
+function buildNextWarmUp(): void {
+  const build = warmUps.shift();
+  if (!build) {
+    warming = false;
+    return;
+  }
+  build();
+  setTimeout(buildNextWarmUp, WARM_UP_GAP_MS);
+}
+
+/** Queues one sheet's build behind any already waiting. Returns the call that takes it back out. */
+function queueWarmUp(build: () => void): () => void {
+  warmUps.push(build);
+  if (!warming) {
+    warming = true;
+    buildNextWarmUp();
+  }
+  return () => {
+    const at = warmUps.indexOf(build);
+    if (at >= 0) warmUps.splice(at, 1);
+  };
+}
+
 /**
  * Mounts a sheet the first time it opens, and keeps it from then on.
  *
@@ -42,6 +71,12 @@ import { runAfterTransition } from '../utils/afterPaint';
  * animations and first paint are done instead, so the screen opens without it
  * and the first tap still finds it ready. It changes only when the sheet is
  * built; a sheet that is warmed stays mounted exactly as an opened one does.
+ *
+ * Warmed sheets are built one at a time, `WARM_UP_GAP_MS` apart, in the order
+ * they sit on the screen. A screen with two (the task editor and quick add on
+ * every detail page) used to build both back to back the moment the
+ * transition settled: two long renders with nothing between them, exactly when
+ * someone who has just arrived makes their first tap. The gap lets that tap in.
  */
 export function LazySheet({
   open,
@@ -58,8 +93,14 @@ export function LazySheet({
     // Effects run again each time a frozen tab comes back; once warmed there
     // is nothing left to schedule.
     if (!warm || warmed) return;
-    const handle = runAfterTransition(() => setWarmed(true));
-    return () => handle.cancel();
+    let leaveQueue: (() => void) | null = null;
+    const handle = runAfterTransition(() => {
+      leaveQueue = queueWarmUp(() => setWarmed(true));
+    });
+    return () => {
+      handle.cancel();
+      leaveQueue?.();
+    };
   }, [warm, warmed]);
   return opened || warmed ? <HeldWhileClosed open={open}>{children}</HeldWhileClosed> : null;
 }

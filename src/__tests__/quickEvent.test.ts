@@ -36,6 +36,25 @@ describe('parseQuickEvent', () => {
     expect(draft.scheduled).toBe(true);
   });
 
+  // Friday Sep 25 2026, 2:25pm: 9am has gone by, so it is Saturday's.
+  it('puts a bare clock time that already passed on tomorrow', () => {
+    expect(parseQuickEvent('Frankie italki 9am', opts).start).toEqual(new Date(2026, 8, 26, 9, 0));
+    expect(parseQuickEvent('Frankie italki at 9am', opts).start).toEqual(new Date(2026, 8, 26, 9, 0));
+    expect(parseQuickEvent('Frankie italki 9am for 2h', opts).end).toEqual(new Date(2026, 8, 26, 11, 0));
+  });
+
+  it('keeps a bare clock time that is still ahead on today', () => {
+    expect(parseQuickEvent('Frankie italki 5pm', opts).start).toEqual(new Date(2026, 8, 25, 17, 0));
+  });
+
+  it('keeps a past time when the line names the day', () => {
+    expect(parseQuickEvent('Frankie italki today 9am', opts).start).toEqual(new Date(2026, 8, 25, 9, 0));
+  });
+
+  it('puts a bare clock range that already passed on tomorrow', () => {
+    expect(parseQuickEvent('Frankie italki 9-10am', opts).start).toEqual(new Date(2026, 8, 26, 9, 0));
+  });
+
   it('names everybody mentioned', () => {
     const draft = parseQuickEvent('beach with @gideon and @tessa tomorrow', opts);
     expect(draft.title).toBe('beach with Gideon and Tessa');

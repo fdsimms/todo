@@ -3231,7 +3231,7 @@ parsed
               table in utils/taskKinds is the only place that decides what
               a type takes off the toolbar — a chip left ungated here would
               silently ignore being listed there. */}
-          <OnCallWarning text={onCallWarning} />
+          <OnCallWarning text={onCallWarning} style={styles.onCallWarning} />
           <View style={styles.toolbar}>
             {visibleChips.map(chip => (
               <TouchableOpacity
@@ -4149,6 +4149,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   addBtnDisabled: {
     backgroundColor: colors.bgTertiary,
   },
+  onCallWarning: { marginBottom: spacing.smd },
   toolbar: {
     flexDirection: 'row',
     gap: spacing.xs,

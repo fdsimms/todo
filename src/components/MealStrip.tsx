@@ -334,7 +334,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.smd,
     paddingVertical: spacing.smd,
     // Tall enough for a label plus a two-line meal, so the strip doesn't change
     // height as meals are chosen. A minimum, so a larger text size can still grow it.
