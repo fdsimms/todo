@@ -2440,19 +2440,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // from one it merely re-listed — the split addByName's own undo makes per
     // line, done once for the batch.
     const preexisting = new Set(get().items.map(i => i.id));
-    for (const line of lines) {
-      const key = itemNameKey(parseGroceryInput(line).name);
-      // The same resolution addByName is about to make, or this loop counts a
-      // line it merged into an existing row as a freshly minted one.
-      const before = catalogItemForKey(key, get().items) ?? undefined;
-      // On the list being pasted into, not on any list: milk on the home list
-      // is a fresh add to the Airbnb one, and its undo has to take it off.
-      const wasOnList = !!before
-        && entryFor(get().listEntries, before.id, get().activeListId) !== null;
-      const item = get().addByName(line, undefined, undefined, { registerUndo: false });
-      if (wasOnList) alreadyOnList.push(item);
-      else added.push(item);
-    }
+    // One transaction for the paste, as addFromPlan does for a recipe: each
+    // line is an insert or an update and a membership write, and committed one
+    // at a time a thirty-line paste was thirty-odd commits before the list drew.
+    dbTransaction(() => {
+      for (const line of lines) {
+        const key = itemNameKey(parseGroceryInput(line).name);
+        // The same resolution addByName is about to make, or this loop counts a
+        // line it merged into an existing row as a freshly minted one.
+        const before = catalogItemForKey(key, get().items) ?? undefined;
+        // On the list being pasted into, not on any list: milk on the home list
+        // is a fresh add to the Airbnb one, and its undo has to take it off.
+        const wasOnList = !!before
+          && entryFor(get().listEntries, before.id, get().activeListId) !== null;
+        const item = get().addByName(line, undefined, undefined, { registerUndo: false });
+        if (wasOnList) alreadyOnList.push(item);
+        else added.push(item);
+      }
+    });
     // One combined undo for the whole paste rather than addByName's per-line
     // one, which the loop above suppresses — otherwise only the last line of
     // a ten-item paste would be undoable. undoForAdds owns the minted-vs-

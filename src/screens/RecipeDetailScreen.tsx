@@ -22,7 +22,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
@@ -36,7 +36,8 @@ import { useSyncStore } from '../store/useSyncStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
-import { useMealPlanStore } from '../store/useMealPlanStore';
+import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore';
+import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -218,11 +219,13 @@ export function RecipeDetailScreen() {
   // upcomingMealsForRecipe), and re-read when the plan changes or the screen
   // comes back into focus, since planning it from Meal plan happens elsewhere.
   const mealPlanEntries = useMealPlanStore(s => s.entries);
-  const [plannedStamp, setPlannedStamp] = useState(0);
-  useFocusEffect(useCallback(() => setPlannedStamp(n => n + 1), []));
-  const plannedMeals = useMemo(
+  // A focus re-reads and re-renders only on a difference. A stamp bumped on
+  // every focus rendered this whole screen twice as it was pushed (a focus
+  // effect fires on mount) and read the plan from the database twice.
+  const plannedMeals = useFocusRefreshedRead(
     () => useMealPlanStore.getState().upcomingMealsForRecipe(recipeId),
-    [recipeId, mealPlanEntries, plannedStamp],
+    [recipeId, mealPlanEntries],
+    sameMealPlanEntries,
   );
   const addIngredient = useRecipeStore(s => s.addIngredient);
   const updateIngredient = useRecipeStore(s => s.updateIngredient);

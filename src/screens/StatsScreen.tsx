@@ -141,6 +141,8 @@ const HABIT_DAYS = 30;
 // The same month HABIT_DAYS uses, and well inside MEAL_PLAN_RETENTION_DAYS (180)
 // and LEFTOVER_RETENTION_DAYS (60), so neither purge can quietly clip the window.
 const COOKING_DAYS = 30;
+// How long after the pre-paint read a focus effect counts as the same arrival.
+const FIRST_READ_COVERS_MS = 1000;
 const MOST_COOKED_LIMIT = 5;
 // The eating read shares the cooking window rather than picking its own. They
 // are the same question asked from two sides, and two headings a month apart on
@@ -473,6 +475,18 @@ export function StatsScreen() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const cookingCounts = kitchenEnabled ? storedCookingCounts : null;
 
+  // The layout effect below reads both windows before the first frame, and
+  // the focus effects run straight after it: on arriving at this tab, and on
+  // every return to it (a tab coming back from frozen runs its effects again).
+  // That was each window read from the database twice in a row. The focus
+  // effect that follows a first read within a moment skips its own.
+  const firstReadAt = useRef({ cooking: 0, food: 0 });
+  const takeFirstRead = useCallback((which: 'cooking' | 'food') => {
+    const fresh = Date.now() - firstReadAt.current[which] < FIRST_READ_COVERS_MS;
+    firstReadAt.current[which] = 0;
+    return fresh;
+  }, []);
+
   // Rebuilt on focus rather than once on mount. `enableScreens(false)` keeps a
   // blurred tab mounted for the life of the session (see CLAUDE.md), so a
   // window computed at mount would still end on the day the app was opened —
@@ -484,8 +498,8 @@ export function StatsScreen() {
       setCookWindow(prev =>
         prev && prev.startKey === next.startKey && prev.endKey === next.endKey ? prev : next,
       );
-      refreshCookingCounts(next);
-    }, [kitchenEnabled, refreshCookingCounts]),
+      if (!takeFirstRead('cooking')) refreshCookingCounts(next);
+    }, [kitchenEnabled, refreshCookingCounts, takeFirstRead]),
   );
 
   // The food log's own window, kept apart from the day view's — see
@@ -501,8 +515,8 @@ export function StatsScreen() {
     useCallback(() => {
       if (!kitchenEnabled) return;
       const next = cookingWindow(getLogicalToday(), COOKING_DAYS);
-      loadFoodWindow(next.startKey, next.endKey);
-    }, [kitchenEnabled, loadFoodWindow]),
+      if (!takeFirstRead('food')) loadFoodWindow(next.startKey, next.endKey);
+    }, [kitchenEnabled, loadFoodWindow, takeFirstRead]),
   );
 
   // The first read happens before the first frame is drawn. The focus effects
@@ -515,6 +529,7 @@ export function StatsScreen() {
     const first = cookingWindow(getLogicalToday(), COOKING_DAYS);
     refreshCookingCounts(first);
     loadFoodWindow(first.startKey, first.endKey);
+    firstReadAt.current = { cooking: Date.now(), food: Date.now() };
     // Mount only: everything after this is the focus effects' job.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

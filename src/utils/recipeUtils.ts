@@ -1909,6 +1909,45 @@ const MIN_SUGGESTION_COVERAGE = 0.5;
 // when the substitute genuinely beats that.
 const SUBSTITUTE_RECENCY_CREDIT = 0.75;
 
+interface CatalogCoverage { matched: number; total: number; coverage: number; avgRecency: number }
+
+/**
+ * What `catalogCoverage` reads off the catalog as a whole rather than off one
+ * recipe, so `suggestRecipesForEmptyNight` builds it once for the box. Same
+ * split, for the same reason, as `pantryLookups` (#2922): built per recipe,
+ * ranking a box of a few hundred recipes repeated three passes over the whole
+ * catalog for every one of them, twice over for each that made the cut, and
+ * Meal plan runs the ranking on every meal ticked cooked.
+ */
+interface CatalogLookups {
+  /** The catalog's on-hand keys, for choosing between a choice group's options. */
+  onHand: ReadonlySet<string>;
+  /** The standing swaps, applied before anything is matched. */
+  swaps: StandingSwapMap;
+  byKey: ReturnType<typeof itemKeyIndex>;
+  /**
+   * Built on the first line that misses, not up front: an install where nobody
+   * has declared a variety would otherwise pay a second full pass over the
+   * catalog to learn there are none.
+   */
+  varieties: () => ReadonlyMap<string, GroceryItem[]>;
+}
+
+function catalogLookups(
+  items: readonly GroceryItem[],
+  now: Date,
+  products: readonly ItemProduct[],
+  itemSubs: readonly ItemSubLink[],
+): CatalogLookups {
+  let varieties: ReadonlyMap<string, GroceryItem[]> | undefined;
+  return {
+    onHand: onHandNameKeys(items, now, products),
+    swaps: standingSwapMap(itemSubs, items),
+    byKey: itemKeyIndex(items),
+    varieties: () => (varieties ??= varietyIndex(items)),
+  };
+}
+
 /**
  * The freshest of a generic's declared varieties, or null for none.
  *
@@ -1941,7 +1980,8 @@ function catalogCoverage(
   products: readonly ItemProduct[],
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
-): { matched: number; total: number; coverage: number; avgRecency: number } {
+  lookups: CatalogLookups = catalogLookups(items, now, products, itemSubs),
+): CatalogCoverage {
   // Coverage has to be measured over everything the dish actually needs — a
   // parent with two ingredients of its own would otherwise score as a night's
   // cooking away from ready while its components' shopping list is untouched.
@@ -1959,16 +1999,11 @@ function catalogCoverage(
   // under its alternate ingredient doesn't score as less ready than one
   // scored under the option nobody has.
   const ingredients = flattenRecipeIngredients(
-    recipe, recipesById ?? new Map([[recipe.id, recipe]]), { onHand: onHandNameKeys(items, now, products) },
-    standingSwapMap(itemSubs, items)
+    recipe, recipesById ?? new Map([[recipe.id, recipe]]), { onHand: lookups.onHand },
+    lookups.swaps
   ).map(f => f.ingredient);
   if (ingredients.length === 0) return { matched: 0, total: 0, coverage: 0, avgRecency: 0 };
-  const byKey = itemKeyIndex(items);
-  // Built on the first line that misses, not up front: this runs once per
-  // recipe over the whole catalog, and an install where nobody has declared a
-  // variety would otherwise pay a second full pass per recipe to learn there
-  // are none. Once built it costs the same single pass `byKey` already does.
-  let varieties: ReadonlyMap<string, GroceryItem[]> | null = null;
+  const byKey = lookups.byKey;
   let matched = 0;
   let recencySum = 0;
   for (const ingredient of ingredients) {
@@ -1989,8 +2024,7 @@ function catalogCoverage(
       if (plural) item = byKey.get(plural);
     }
     if (!item && ingredient.nameKey) {
-      varieties ??= varietyIndex(items);
-      item = bestByRecency(varieties.get(ingredient.nameKey), now) ?? undefined;
+      item = bestByRecency(lookups.varieties().get(ingredient.nameKey), now) ?? undefined;
     }
     if (!item) continue;
     matched += 1;
@@ -2023,7 +2057,10 @@ export function scoreRecipeAgainstCatalog(
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): number {
-  const { matched, coverage, avgRecency } = catalogCoverage(recipe, items, now, products, recipesById, itemSubs);
+  return scoreOfCoverage(recipe, catalogCoverage(recipe, items, now, products, recipesById, itemSubs), now);
+}
+
+function scoreOfCoverage(recipe: Recipe, { matched, coverage, avgRecency }: CatalogCoverage, now: Date): number {
   if (matched === 0) return 0;
   const catalogFit = coverage * (0.5 + 0.5 * avgRecency);
   return catalogFit * suggestionNovelty(recipe, now);
@@ -2051,10 +2088,13 @@ export function suggestRecipesForEmptyNight(
   itemSubs: readonly ItemSubLink[] = [],
 ): Recipe[] {
   const byId = recipeMap(recipes);
+  // Built once for the box, and each recipe's coverage scored as it stands
+  // rather than worked out a second time: see `catalogLookups`.
+  const lookups = catalogLookups(items, now, products, itemSubs);
   return recipes
-    .map(recipe => ({ recipe, ...catalogCoverage(recipe, items, now, products, byId, itemSubs) }))
-    .filter(x => x.coverage >= MIN_SUGGESTION_COVERAGE)
-    .map(x => ({ recipe: x.recipe, score: scoreRecipeAgainstCatalog(x.recipe, items, now, products, byId, itemSubs) }))
+    .map(recipe => ({ recipe, found: catalogCoverage(recipe, items, now, products, byId, itemSubs, lookups) }))
+    .filter(x => x.found.coverage >= MIN_SUGGESTION_COVERAGE)
+    .map(x => ({ recipe: x.recipe, score: scoreOfCoverage(x.recipe, x.found, now) }))
     .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
     .slice(0, limit)
     .map(x => x.recipe);

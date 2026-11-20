@@ -41,6 +41,7 @@ import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
 import { editedTaskMove } from '../utils/editedTaskMove';
 import { completedOnDay, describeAllClear } from '../utils/allClear';
+import { idsPresent, taskById } from '../utils/taskRows';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -242,7 +243,7 @@ import {
   SpotlightOverlay,
   SpotlightProvider,
   SpotlightScrim,
-  useSpotlightElevation,
+  SpotlightElevatedView,
   useSpotlightProgress,
 } from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
@@ -1847,7 +1848,6 @@ export function TodayScreen() {
   );
 
   const spotlightActive = expandedTaskId !== null && !selectionMode;
-  const listElevated = useSpotlightElevation(spotlightActive);
   // One animation for the whole mask: the backdrop, every row's scrim, every
   // header's scrim and the FAB below all read this value, so they can't drift
   // apart no matter how much work the expanding row's own render costs.
@@ -2940,12 +2940,19 @@ export function TodayScreen() {
   const eventTaskLinks = useEventTaskLinkStore(s => s.links);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
-  const liveTaskIds = useMemo(() => new Set(allTasks.map(t => t.id)), [allTasks]);
   const movedEvents = useMemo(
     () => (calendarWindowStart && calendarWindowEnd
       ? movedLinkedEvents(eventTaskLinks, calendarEvents, new Date(calendarWindowStart), new Date(calendarWindowEnd))
       : []),
     [eventTaskLinks, calendarEvents, calendarWindowStart, calendarWindowEnd]
+  );
+  // Which of the tasks those events were planned around are still here. Asked
+  // about the linked ids alone, which is none at all on most days: a set of
+  // every task id, rebuilt on each task write, was a pass over all of history
+  // to answer a question about a handful of rows.
+  const liveTaskIds = useMemo(
+    () => idsPresent(allTasks, movedEvents.flatMap(moved => moved.link.taskIds)),
+    [allTasks, movedEvents],
   );
   const movedEventNotes = useMemo(() => {
     const notes = new Map<string, string>();
@@ -2967,6 +2974,18 @@ export function TodayScreen() {
   const contextRowsPainted = useRef(false);
   useEffect(() => { contextRowsPainted.current = true; }, []);
   const eventTravelNote = useEventTravelNote();
+  // Today's food totals, for the limit and goal rows below. Read here, keyed
+  // on the food log and the day, rather than inside the rows' own memo: that
+  // one also follows the task list and the clock, so the day's entries were
+  // read from the database (twice, with both kinds of row on) on every task
+  // ticked, deferred or edited and every half minute.
+  const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+  const todayFoodTotal = useMemo(
+    () => (limitsTodayCategory || goalsTodayCategory
+      ? foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total
+      : null),
+    [limitsTodayCategory, goalsTodayCategory, recentFoodEntries, todayFoodKey, foodLogCount, foodLogWindow],
+  );
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
@@ -3001,20 +3020,18 @@ export function TodayScreen() {
     // A nutrient whose Stay under / Aim for task is on the list draws its bar
     // on the task, so its row here would say the same thing twice.
     const coveredByTasks = nutrientsCoveredByTasks(allTasks, getLogicalDayKey(new Date(), dayResetTime));
-    if (limitsTodayCategory && activeLimits(nutritionTargets, todayLimits).length > 0) {
-      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+    if (limitsTodayCategory && todayFoodTotal && activeLimits(nutritionTargets, todayLimits).length > 0) {
       rows.push(...limitContextRows(
-        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        todayFoodTotal,
         nutritionTargets,
         todayLimits,
         { category: limitsTodayCategory, warnPercent: limitWarnPercent, covered: coveredByTasks },
       ));
     }
     // Targets that are figures to reach, under their own switch.
-    if (goalsTodayCategory) {
-      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+    if (goalsTodayCategory && todayFoodTotal) {
       rows.push(...goalContextRows(
-        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        todayFoodTotal,
         nutritionTargets,
         nutritionLimits,
         { category: goalsTodayCategory, hidden: goalsTodayHidden, covered: coveredByTasks },
@@ -3071,7 +3088,7 @@ export function TodayScreen() {
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
     limitsTodayCategory, limitsTodayHidden, goalsTodayCategory, goalsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
-    recentFoodEntries, foodLogCount, foodLogWindow,
+    todayFoodTotal,
     minuteTick, showEventPlaceholders, rememberedEventRows,
   ]);
 
@@ -5294,8 +5311,7 @@ export function TodayScreen() {
   const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
   const savingGoal = useMemo(() => {
     if (!showCoinPill) return null;
-    const byId = new Map(allTasks.map(t => [t.id, t]));
-    return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? byId.get(r.taskId) ?? null : null));
+    return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? taskById(allTasks, r.taskId) ?? null : null));
   }, [showCoinPill, allTasks, allRewards, coinEntries, rewardGoalId]);
   // While saving for the goal with a plan (rewardSavings.ts), the bar is the
   // savings toward it rather than the whole balance, which is partly spending money.
@@ -5498,8 +5514,10 @@ export function TodayScreen() {
           onPress={() => setExpandedTaskId(null)}
         />
 
-        <View
-          style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
+        <SpotlightElevatedView
+          active={spotlightActive}
+          style={styles.listWrapper}
+          elevatedStyle={styles.listWrapperElevated}
           // The list sits above the spotlight overlay, so the overlay can't see
           // taps here — catch any touch in the list area instead. The expanded
           // card stops propagation so its own controls keep working.
@@ -6048,7 +6066,7 @@ export function TodayScreen() {
         </FabDropZoneProvider>
         </PaintSelectionProvider>
         </ViewSwitchVeil>
-        </View>
+        </SpotlightElevatedView>
 
         {/* Today and Later get their own scroll-to-top button from
             ReorderableList's scrollToTop prop; Unscheduled and Inbox are

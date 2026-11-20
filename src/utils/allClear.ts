@@ -33,13 +33,18 @@ export function completedOnDay(tasks: Task[], dayKey: string, dayResetTime?: str
   // expensive part, is worked out. Today calls this on every task write, over
   // every completion there has ever been.
   const dayStart = getTaskDayStart(dayKeyToDate(dayKey), dayResetTime).getTime();
-  return tasks.filter(t =>
-    !t.parentId
-    && isRealCompletion(t)
-    && t.completedAt != null
-    && !(Date.parse(t.completedAt) < dayStart)
-    && getLogicalDayKey(new Date(t.completedAt), dayResetTime) === dayKey,
-  );
+  // And that comparison is made on the text where it can be. A stamp as
+  // `toISOString` writes it (24 characters, ending in Z) sorts the way its
+  // moment does, so nearly every row is ruled out without parsing a date at
+  // all; one in any other shape is parsed as before.
+  const dayStartIso = new Date(dayStart).toISOString();
+  return tasks.filter(t => {
+    const at = t.completedAt;
+    if (at == null || t.parentId) return false;
+    const canonical = at.length === 24 && at.charCodeAt(23) === 90;
+    if (canonical ? at < dayStartIso : Date.parse(at) < dayStart) return false;
+    return isRealCompletion(t) && getLogicalDayKey(new Date(at), dayResetTime) === dayKey;
+  });
 }
 
 /**
