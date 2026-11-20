@@ -1,5 +1,6 @@
 import type { Task } from '../types';
 import { offersMealLogOnCompletion } from './completionTap';
+import { activeChainStep } from './chain';
 import { formatDose, medicationsFor } from './medicationLog';
 
 /**
@@ -19,6 +20,11 @@ import { formatDose, medicationsFor } from './medicationLog';
 export interface CompletionLogChip {
   kind: 'dose' | 'food';
   text: string;
+  /**
+   * A dose that is the task's own single medicine, so its amount can be changed
+   * from the row. A chain step's dose or several doses are edited in the editor.
+   */
+  editable?: boolean;
 }
 
 export function completionLogChips(task: Task, mealLogPromptEnabled: boolean): CompletionLogChip[] {
@@ -28,7 +34,8 @@ export function completionLogChips(task: Task, mealLogPromptEnabled: boolean): C
   const doses = medicationsFor(task);
   if (doses.length === 1) {
     const phrase = formatDose({ amount: doses[0].amount, unit: doses[0].unit, strength: null });
-    chips.push({ kind: 'dose', text: phrase ? `Logs ${phrase}` : 'Logs dose' });
+    const own = !activeChainStep(task)?.medicationName?.trim() && !!task.medicationName?.trim();
+    chips.push({ kind: 'dose', text: phrase ? `Logs ${phrase}` : 'Logs dose', ...(own ? { editable: true } : {}) });
   } else if (doses.length > 1) {
     chips.push({ kind: 'dose', text: `Logs ${doses.length} doses` });
   }

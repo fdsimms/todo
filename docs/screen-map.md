@@ -506,6 +506,7 @@ Where each component can appear.
 - `src/components/TaskBreakdownSheet.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/TaskCheckbox.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/TaskDoseAmount.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, ScreenTimeScreen, +8 more
+- `src/components/TaskDoseSheet.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/TaskEditor.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/TaskFieldDefaultsFields.tsx` — on AutomationsScreen, ProjectDetailScreen, ProjectsScreen
 - `src/components/TaskGroupBody.tsx` — on ProjectDetailScreen, ProjectsScreen, TodayScreen
