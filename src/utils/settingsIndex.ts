@@ -604,6 +604,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['away', 'exclude', 'work calendar', 'trip'] },
   { id: 'onCallCalendars', requires: 'calendarRead', groupId: 'calendar', label: 'On-call calendars', section: 'Calendar',
     keywords: ['on call', 'oncall', 'pager', 'shift', 'work', 'duty', 'available', 'reachable', 'warning', 'today'] },
+  { id: 'onCallSwapIgnored', requires: 'calendarRead', groupId: 'calendar', label: 'Skip for swap tasks', section: 'Calendar',
+    keywords: ['on call', 'oncall', 'ignore', 'exclude', 'work calendar', 'meetings', 'trade', 'cover', 'conflict'] },
   { id: 'onCallWords', requires: 'calendarRead', groupId: 'calendar', label: 'On-call words', section: 'Calendar',
     keywords: ['on call', 'oncall', 'pager', 'shift', 'title', 'keyword', 'duty', 'warning', 'today'] },
   { id: 'calendarEventsOnToday', requires: 'calendarRead', groupId: 'calendar', label: 'Show events on Today', section: 'Calendar',

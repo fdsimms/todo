@@ -402,7 +402,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/occurrenceReset.ts` — freshOccurrenceFields
 - `src/utils/okAgainNotification.ts` — syncOkAgainNotification
 - `src/utils/onCall.ts` — ON_CALL_WINDOW_DAYS, ON_CALL_MAX_WORDS, OnCallConfig, OnCallSpan, onCallConfigured, cleanWords, splitTypedWords, onCallWordsProblem, parseOnCallWords, isOnCallEvent, +8 more
-- `src/utils/onCallSwapTasks.ts` — ON_CALL_SWAP_RULE_ID, onCallSwapSourceId, onCallSwapTitle, OnCallSwapMatch, matchedOnCallSwaps, OnCallSwapContext, onCallSwapContext
+- `src/utils/onCallSwapTasks.ts` — ON_CALL_SWAP_RULE_ID, ON_CALL_SWAP_AHEAD_DAYS, onCallSwapSourceId, onCallSwapTitle, OnCallSwapMatch, matchedOnCallSwaps, OnCallSwapContext, onCallSwapContext
 - `src/utils/openExternalUrl.ts` — ExternalKind, externalKindFor, externalFailureCopy, openExternalUrl
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal

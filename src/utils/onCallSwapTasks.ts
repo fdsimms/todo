@@ -31,6 +31,16 @@ import {
 /** The rule id in an on-call swap's source id. Never a `generateId()` value. */
 export const ON_CALL_SWAP_RULE_ID = 'onCallSwap';
 
+/**
+ * How far ahead of an event its swap task is written. A clash weeks out is not a
+ * task for today: it fills Today with things that may well change before then,
+ * and a week is time enough to arrange a swap. The conflict itself is still known
+ * further out (the warnings and the row's "no longer conflicts" read the whole
+ * window), so a task written now does not read as stale once the event is further
+ * than this.
+ */
+export const ON_CALL_SWAP_AHEAD_DAYS = 7;
+
 /** The longest an event's title may run in a task title before it is cut. */
 const TITLE_EVENT_MAX = 60;
 
@@ -54,19 +64,24 @@ export interface OnCallSwapMatch {
 }
 
 /**
- * The conflicts still worth a task: not over, and not already written for or
- * answered. A key written before the calendar server named the event is checked
+ * The conflicts still worth a task: not over, within `aheadDays`, and not already
+ * written for or answered. A key written before the calendar server named the event is checked
  * too (`eventOccurrenceKeys`), or the same event is two tasks across the change.
  */
 export function matchedOnCallSwaps(
   conflicts: readonly BusyEvent[],
   now: Date,
   handled: Readonly<HandledEventTasks>,
+  aheadDays: number,
 ): OnCallSwapMatch[] {
   const out: OnCallSwapMatch[] = [];
+  const horizon = now.getTime() + aheadDays * 86400000;
   for (const event of conflicts) {
     const end = Date.parse(event.end);
+    const start = Date.parse(event.start);
     if (!Number.isFinite(end) || end <= now.getTime()) continue;
+    // Not yet: it is written once it is within `aheadDays`, when it will be seen.
+    if (!Number.isFinite(start) || start > horizon) continue;
     const alreadyHandled = eventOccurrenceKeys(event).some(
       key => eventTaskSourceId(key, ON_CALL_SWAP_RULE_ID) in handled,
     );

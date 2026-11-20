@@ -1805,6 +1805,9 @@ interface SettingsStore {
   // On by default: it only acts once on call is set up and an event clashes.
   onCallSwapTasks: boolean;
   onCallSwapTaskCategory: string | null;
+  // Calendars whose events never get a swap task (a work calendar full of
+  // meetings). EventKit ids, so device-only like `calendarIds`.
+  onCallSwapIgnoredCalendarIds: string[];
   // calendarReviewLastDayKey's job for this generator: the logical day key the
   // check last decided about, spent before it looks at the events, so a task
   // swiped away stays gone until the next day. State, not a preference.
@@ -2617,6 +2620,7 @@ interface SettingsStore {
   setEventDetailsTaskCategory: (category: string | null) => void;
   setOnCallSwapTasks: (on: boolean) => void;
   setOnCallSwapTaskCategory: (category: string | null) => void;
+  setOnCallSwapIgnoredCalendarIds: (ids: string[]) => void;
   setEventDetailsLastDayKey: (dayKey: string | null) => void;
   setEventDetailsSkipped: (skipped: HandledEventTasks) => void;
   setWeatherTasks: (on: boolean) => void;
@@ -3462,6 +3466,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   eventDetailsTaskCategory: null,
   onCallSwapTasks: true,
   onCallSwapTaskCategory: null,
+  onCallSwapIgnoredCalendarIds: [],
   eventDetailsLastDayKey: null,
   eventDetailsSkipped: {},
   weatherTasks: false,
@@ -4039,6 +4044,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const eventDetailsTaskCategory = dbGetSetting('eventDetailsTaskCategory') || null;
     const onCallSwapTasks = dbGetSetting('onCallSwapTasks') !== 'false';
     const onCallSwapTaskCategory = dbGetSetting('onCallSwapTaskCategory') || null;
+    const onCallSwapIgnoredCalendarIds = parseCalendarIds(dbGetSetting('onCallSwapIgnoredCalendarIds'));
     const eventDetailsLastDayKey = dbGetSetting('eventDetailsLastDayKey') || null;
     // Pruned on load for eventTaskHandled's reason.
     const eventDetailsSkipped = pruneHandledEventTasks(
@@ -4579,6 +4585,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       nutritionLimits,
       nutritionTargets,
       onCallCalendarIds,
+      onCallSwapIgnoredCalendarIds,
       onCallSwapTaskCategory,
       onCallSwapTasks,
       onCallWords,
@@ -5351,6 +5358,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setOnCallSwapTasks(on: boolean) {
     dbSetSetting('onCallSwapTasks', on ? 'true' : 'false');
     set({ onCallSwapTasks: on });
+  },
+
+  setOnCallSwapIgnoredCalendarIds(ids: string[]) {
+    dbSetSetting('onCallSwapIgnoredCalendarIds', JSON.stringify(ids));
+    set({ onCallSwapIgnoredCalendarIds: ids });
   },
 
   setOnCallSwapTaskCategory(category: string | null) {

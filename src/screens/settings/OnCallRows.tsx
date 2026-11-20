@@ -33,7 +33,11 @@ export function OnCallRows({ calendars }: Props) {
   const setOnCallCalendarIds = useSettingsStore(s => s.setOnCallCalendarIds);
   const onCallWords = useSettingsStore(s => s.onCallWords);
   const setOnCallWords = useSettingsStore(s => s.setOnCallWords);
+  const onCallSwapTasks = useSettingsStore(s => s.onCallSwapTasks);
+  const ignoredIds = useSettingsStore(s => s.onCallSwapIgnoredCalendarIds);
+  const setIgnoredIds = useSettingsStore(s => s.setOnCallSwapIgnoredCalendarIds);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [ignoredOpen, setIgnoredOpen] = useState(false);
   const [typed, setTyped] = useState(() => onCallWords.join(', '));
 
   // A calendar no longer being read (or no longer on the device) is not counted.
@@ -47,6 +51,15 @@ export function OnCallRows({ calendars }: Props) {
     setOnCallCalendarIds(
       onCallCalendarIds.includes(id) ? onCallCalendarIds.filter(c => c !== id) : [...onCallCalendarIds, id],
     );
+  };
+
+  const ignored = calendars.filter(c => ignoredIds.includes(c.id));
+  const ignoredSummary = ignored.length === 0 ? undefined
+    : ignored.length === 1 ? ignored[0].title
+    : `${ignored.length} calendars`;
+  const toggleIgnored = (id: string) => {
+    haptics.tap();
+    setIgnoredIds(ignoredIds.includes(id) ? ignoredIds.filter(c => c !== id) : [...ignoredIds, id]);
   };
 
   return (
@@ -97,6 +110,33 @@ export function OnCallRows({ calendars }: Props) {
         />
         <FieldError>{onCallWordsProblem(typed)}</FieldError>
       </SettingsRow>
+
+      {onCallSwapTasks && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="onCallSwapIgnored"
+            icon="eye-off-outline"
+            iconColor={ignored.length > 0 ? colors.accent : undefined}
+            label="Skip for swap tasks"
+            hint="Events on these calendars never get a task to find someone to swap with. Pick your work calendar here."
+            value={ignoredSummary}
+            expanded={ignoredOpen}
+            onPress={() => { animateLayout(); setIgnoredOpen(open => !open); }}
+            accessibilityLabel="Choose which calendars to skip for swap tasks"
+          />
+          {ignoredOpen && (
+            <SettingsChoiceTray
+              caption="Skip"
+              options={calendars}
+              selectedIds={ignoredIds}
+              onSelect={option => toggleIgnored(option.id)}
+              emptyText="Pick the calendars to read above first."
+              accessibilityLabelFor={option => `Skip ${option.title} for swap tasks`}
+            />
+          )}
+        </>
+      )}
     </>
   );
 }
