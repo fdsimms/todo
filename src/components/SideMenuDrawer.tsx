@@ -96,11 +96,19 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, o
   useEffect(() => {
     if (visible) {
       fastCloseRef.current = false;
-      // Fully closed means parked at the old width's edge, which a resized
-      // window has moved: park at the current one so it slides in from off
-      // screen. Skipped mid-close, where jumping would be seen.
-      if (!isRendered) translateX.setValue(-drawerWidthRef.current);
-      setIsRendered(true);
+      if (!isRendered) {
+        // Fully closed means parked at the old width's edge, which a resized
+        // window has moved: park at the current one so it slides in from off
+        // screen. Skipped mid-close, where jumping would be seen.
+        translateX.setValue(-drawerWidthRef.current);
+        // The slide starts in the run of this effect that follows, once the
+        // menu is mounted. Started here, it ran on the UI thread while the
+        // modal, the blur and every row were still being built, so the menu
+        // first appeared partway across, by however long that took. A reopen
+        // mid-close is already mounted and starts at once, below.
+        setIsRendered(true);
+        return;
+      }
       Animated.parallel([
         Animated.spring(translateX, {
           toValue: 0,
@@ -117,6 +125,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, o
         }),
       ]).start();
     } else {
+      // Nothing is up to close: the first mount, and the run that follows the
+      // close finishing below.
+      if (!isRendered) return;
       const closeAnimations = fastCloseRef.current
         ? [
             Animated.timing(translateX, {
@@ -155,7 +166,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, o
         pendingActionRef.current = null;
       });
     }
-  }, [visible]);
+  }, [visible, isRendered]);
 
   // The screen a pick is headed for is drawn after the drawer has started to
   // leave, never in the same commit. In one commit the close animation (started

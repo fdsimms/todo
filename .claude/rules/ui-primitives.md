@@ -22,6 +22,10 @@ Reach for one of these before hand-rolling the thing it does. Each component's o
 - `LazySheet` (`src/components/LazySheet.tsx`) — a sheet on a screen that holds many: it mounts the
   sheet the first time it opens and keeps it. A closed sheet still subscribes and re-renders, and on a
   tab screen re-runs all its effects on every return to the tab, so the busy screens wrap theirs.
+  Once mounted, a closed sheet is not rendered again by its screen until it opens (it picks up changed
+  props then), so `open` must be true whenever the sheet's own `visible` is. A list the sheet reads
+  only while open goes through `useStoreWhileOpen` (`src/hooks/`), which stops its own subscriptions
+  re-rendering it while closed. `warm` sheets are built one at a time, a beat apart.
 - `TextField` (`src/components/TextField.tsx`) — **every** text field that takes a `value`. Same
   props and ref as `TextInput`, but the native field is the only writer while someone types, so the
   keystroke echo that drops the caret mid-word on iOS can't happen ("rutabaga" typed as
