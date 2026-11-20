@@ -1,4 +1,5 @@
 import {
+  linksForItem,
   describeShopAisles,
   isAsserted,
   isOutOfRange,
@@ -894,3 +895,16 @@ describe('describeOwnAisleOrders', () => {
     );
   });
 });
+
+describe('linksForItem', () => {
+  it('gives one item\'s links, in order, as filtering every link for it would', () => {
+    const links = [link('a', 's1', 1), link('b', 's1', 1), link('a', 's2', 1), link('c', 's3', 1)];
+    for (const id of ['a', 'b', 'c', 'nobody']) {
+      expect(linksForItem(links, id)).toEqual(links.filter(l => l.itemId === id));
+    }
+    // One bucketing per array, and a new one for a new array.
+    expect(linksForItem(links, 'a')).toBe(linksForItem(links, 'a'));
+    expect(linksForItem([...links, link('a', 's4', 1)], 'a')).toHaveLength(3);
+  });
+});
+

@@ -636,9 +636,11 @@ export function weekNutrition(
   range: { startKey: string; endKey: string },
   products: readonly ItemProduct[] = [],
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
+  /** The catalog's on-hand keys, for a caller that holds them already; worked out here otherwise. */
+  onHand: ReadonlySet<string> = onHandNameKeys(items, new Date(), products),
 ): RecipeNutrition | null {
   const planned = collectPlannedIngredients(
-    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products), { includeNotShopped: true },
+    entries, recipesById, range, swaps, onHand, { includeNotShopped: true },
   );
   if (planned.length === 0) return null;
 

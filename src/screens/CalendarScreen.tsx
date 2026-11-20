@@ -122,6 +122,9 @@ interface DayEvents {
   shown: BusyEvent[];
 }
 
+/** How long after the focus read the mount effect counts as the same arrival. */
+const GRID_READ_COVERS_MS = 250;
+
 /**
  * The person's calendar: a day, three days, a month, or the two weeks ahead.
  *
@@ -353,8 +356,19 @@ export function CalendarScreen() {
     const [firstKey, lastKey] = gridRangeKey.split(':');
     void useCalendarStore.getState().refreshGrid(dayStartOf(firstKey), addDays(dayStartOf(lastKey), 1));
   }, [gridRangeKey, dayStartOf]);
-  useFocusEffect(readGrid);
-  useEffect(() => { readGrid(); }, [readGrid, calendarEvents, calendarIds, calendarReadEnabled]);
+  // Arriving on the screen runs both of these (and so does every return to
+  // the tab, since a tab coming back from frozen runs its effects again), which
+  // was the grid read twice in a row. The effect stands down when the focus
+  // read has just gone out; on its own inputs changing it reads as before.
+  const focusReadAt = useRef(0);
+  useFocusEffect(useCallback(() => {
+    focusReadAt.current = Date.now();
+    readGrid();
+  }, [readGrid]));
+  useEffect(() => {
+    if (Date.now() - focusReadAt.current < GRID_READ_COVERS_MS) return;
+    readGrid();
+  }, [readGrid, calendarEvents, calendarIds, calendarReadEnabled]);
 
   /**
    * One day's calendar events, and how much is known about it. Shared by

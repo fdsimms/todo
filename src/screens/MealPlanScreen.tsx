@@ -2303,8 +2303,8 @@ export function MealPlanScreen() {
   // coverage floor) — the common case for a library that's only lightly
   // priced, same as a fresh install answering nothing at all.
   const weekCost = useMemo(
-    () => (range ? estimateWeekCost(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
-    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps]
+    () => (range ? estimateWeekCost(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, onHand) : null),
+    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, onHand]
   );
   // Null while too little of the week resolves to a panel to say anything, the
   // per-nutrient coverage floor in recipeNutrition.ts — the common case for a
@@ -2318,9 +2318,9 @@ export function MealPlanScreen() {
   const showsWeekNutrition = hasNutritionTargets || foodLogCount > 0;
   const weekNutritionEstimate = useMemo(
     () => (range && showsWeekNutrition
-      ? weekNutrition(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps)
+      ? weekNutrition(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, onHand)
       : null),
-    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, showsWeekNutrition]
+    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, onHand, showsWeekNutrition]
   );
   // The plan summary keeps the subtitle line; cost, nutrition and the added
   // stamp share the overline. Joined into one subtitle they wrapped beside the

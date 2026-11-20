@@ -29,3 +29,27 @@ export function projectTasksOf(tasks: readonly Task[], projectId: string): reado
   }
   return byProject.get(projectId) ?? NONE;
 }
+
+const bySeriesCache = new WeakMap<readonly Task[], Map<string, Task[]>>();
+
+/**
+ * The rows of `tasks` that share a series (`Task.seriesId`), in their original
+ * order, bucketed once per array for the same reason as `projectTasksOf`: a
+ * row that names the other dates of its series asked every task for them, and
+ * a list showing several such rows asked once per row on every task write.
+ */
+export function seriesTasksOf(tasks: readonly Task[], seriesId: string): readonly Task[] {
+  let bySeries = bySeriesCache.get(tasks);
+  if (!bySeries) {
+    bySeries = new Map();
+    for (const task of tasks) {
+      if (!task.seriesId) continue;
+      const rows = bySeries.get(task.seriesId);
+      if (rows) rows.push(task);
+      else bySeries.set(task.seriesId, [task]);
+    }
+    bySeriesCache.set(tasks, bySeries);
+  }
+  return bySeries.get(seriesId) ?? NONE;
+}
+

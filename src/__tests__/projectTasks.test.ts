@@ -1,4 +1,4 @@
-import { projectTasksOf } from '../utils/projectTasks';
+import { projectTasksOf, seriesTasksOf } from '../utils/projectTasks';
 import { benchBaseTask } from '../__bench__/benchTask';
 import type { Task } from '../types';
 
@@ -20,3 +20,15 @@ describe('projectTasksOf', () => {
     expect(projectTasksOf(tasks, 'p1').map(t => t.id)).toEqual(['a', 'd']);
   });
 });
+
+describe('seriesTasksOf', () => {
+  const dated = (id: string, seriesId: string | null): Task => ({ ...benchBaseTask, id, seriesId });
+  const tasks = [dated('a', 's1'), dated('b', null), dated('c', 's2'), dated('d', 's1')];
+
+  it('gives the same rows, in the same order, as filtering the list', () => {
+    for (const id of ['s1', 's2', 'nobody']) {
+      expect(seriesTasksOf(tasks, id)).toEqual(tasks.filter(t => t.seriesId === id));
+    }
+  });
+});
+

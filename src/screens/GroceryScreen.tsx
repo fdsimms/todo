@@ -93,7 +93,7 @@ import { describeSupplyStockCaption, suppliesStockedFrom } from '../utils/supply
 import { useRecipeStore } from '../store/useRecipeStore';
 import { alternativeCaptions } from '../utils/recipeComponents';
 import { buildGrocerySections, buildGroceryRecipeSections } from '../utils/grocerySuggest';
-import { buildGroceryStoreSections, shopWalkOrder } from '../utils/groceryShops';
+import { buildGroceryStoreSections, linksForItem, shopWalkOrder } from '../utils/groceryShops';
 import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -102,7 +102,7 @@ import { generateId } from '../utils/id';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { groceriesLinkUrl, groceriesUrlShop, isGroceriesUrl } from '../utils/deepLinks';
-import type { GroceryItem, ItemProduct, ItemShopLink, Recipe, Shop } from '../types';
+import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 import { shareContent } from '../utils/shareContent';
@@ -118,8 +118,6 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
 
 /** The one "Not at <store>" group, after the last section; its fold is remembered under this key. */
-/** What a row with no store link on record reads. */
-const NO_SHOP_LINKS: readonly ItemShopLink[] = [];
 const NOT_HERE_KEY = 'unavailable';
 /** The "Skipped" group under it; session-only, like the trip it belongs to. */
 const SKIPPED_KEY = 'skipped';
@@ -529,14 +527,20 @@ export function GroceryScreen() {
   // than in each row. Same call `storeMarkers` above makes: `GroceryRow` is
   // memoised, so handing every row the products array would re-render all of
   // them whenever any one item's products changed.
+  const productsById = useMemo(() => new Map(itemProducts.map(p => [p.id, p])), [itemProducts]);
   const preferredProductById = useMemo(() => {
     const out = new Map<string, ItemProduct>();
     for (const item of items) {
-      const product = preferredProductOf(item, itemProducts);
+      if (!item.preferredProductId) continue;
+      // The one product the item names, handed to the same rule: found by id
+      // here, where the rule would search every product for it, for every
+      // item, each time the catalog changed (a check-off at home is one).
+      const named = productsById.get(item.preferredProductId);
+      const product = named ? preferredProductOf(item, [named]) : null;
       if (product) out.set(item.id, product);
     }
     return out;
-  }, [items, itemProducts]);
+  }, [items, productsById]);
 
   // Grouped by store, the store each row sits under. Only read to keep a row's
   // "Usually Costco" off it while it sits under a "Costco" heading, where the
@@ -551,27 +555,13 @@ export function GroceryScreen() {
     return out;
   }, [grouped]);
 
-  // Every store link, bucketed by the item it is about, for the two per-row
-  // reads below. Each of them asks several things of one item's own links, and
-  // asked of the whole array that was rows times links, several times over, on
-  // every item checked off in the middle of a trip.
-  const linksByItem = useMemo(() => {
-    const out = new Map<string, ItemShopLink[]>();
-    for (const link of itemShops) {
-      const own = out.get(link.itemId);
-      if (own) own.push(link);
-      else out.set(link.itemId, [link]);
-    }
-    return out;
-  }, [itemShops]);
-
   const storeMarkers = useMemo(() => {
     const out = new Map<string, { text: string; substituteId?: string; unavailable: boolean }>();
     if (!activeTripShop) return out;
     for (const item of listRows) {
       // The whole catalog is still what a substitute is looked up in — only the
       // rows being marked up are the list's.
-      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items, itemProducts, linksByItem.get(item.id) ?? NO_SHOP_LINKS);
+      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items, itemProducts, linksForItem(itemShops, item.id));
       if (!marker) continue;
       // The store lens's heading already says it. `only` stays, since "Only at
       // CVS" says something a "CVS" heading doesn't: that no other store on
@@ -593,7 +583,7 @@ export function GroceryScreen() {
       });
     }
     return out;
-  }, [activeTripShop, listRows, items, itemShops, linksByItem, shops, itemSubs, itemProducts, sectionShopByItem]);
+  }, [activeTripShop, listRows, items, itemShops, shops, itemSubs, itemProducts, sectionShopByItem]);
 
   // What each checked row costs at the trip's own store, and whether that
   // number was actually typed during *this* trip — see GroceryRow's
@@ -607,10 +597,10 @@ export function GroceryScreen() {
     for (const item of listRows) {
       // The trip store's own price, or one typed this trip, and never another
       // store's: see tripPriceFor (#2936).
-      out.set(item.id, tripPriceFor(item, activeTripShop.id, linksByItem.get(item.id) ?? NO_SHOP_LINKS, tripStartedAt));
+      out.set(item.id, tripPriceFor(item, activeTripShop.id, linksForItem(itemShops, item.id), tripStartedAt));
     }
     return out;
-  }, [activeTripShop, tripStartedAt, listRows, linksByItem]);
+  }, [activeTripShop, tripStartedAt, listRows, itemShops]);
 
   // Resolves to setItemPrice/clearItemShopPrice against the trip's own store
   // — the row itself only knows the item id and a number, not which of the
@@ -652,7 +642,13 @@ export function GroceryScreen() {
   // state gates on — see buildGroceryListShareText. Sent the way the rows read:
   // the amount in this screen's units, the preferred product's caption and the
   // note, under the list's own name when it isn't the home one.
-  const shareText = useMemo(() => {
+  //
+  // Built when Share or Copy is pressed, not kept: as memos on the rows, both
+  // texts were written out again on every item checked off, for two buttons
+  // nobody was pressing. Whether there is anything to send is all the header
+  // needs between presses.
+  const hasRowsToSend = useMemo(() => listRows.some(i => i.onList && !i.checked), [listRows]);
+  const buildShareText = useCallback(() => {
     const productCaptions = new Map<string, string>();
     for (const [id, product] of preferredProductById) {
       const caption = describeProduct(product);
@@ -666,14 +662,15 @@ export function GroceryScreen() {
   }, [listRows, unitSystem, preferredProductById, away, activeListName]);
   // The same rows without the title line or the bullets, for pasting into
   // another shopping app rather than sending to a person — see shareText.ts.
-  const copyText = useMemo(() => buildGroceryListText(listRows), [listRows]);
+  const buildCopyText = useCallback(() => buildGroceryListText(listRows), [listRows]);
   const { copied, copy } = useCopyToClipboard();
   // ==== actions: share, estimate, bulk selection, adding ====
   const handleShare = useCallback(() => {
-    if (!shareText) return;
+    const message = buildShareText();
+    if (!message) return;
     haptics.tap();
-    void shareContent({ message: shareText });
-  }, [shareText]);
+    void shareContent({ message });
+  }, [buildShareText]);
   // What the trip is about to leave behind, in the walk order the list is in —
   // the finish sheet asks about these, and only these. Ids and names only: the
   // sheet has no business holding rows it can't edit.
@@ -1526,14 +1523,14 @@ export function GroceryScreen() {
     });
     list.push({
       icon: copied ? 'checkmark' : 'copy-outline',
-      onPress: () => copy(copyText),
-      disabled: selectionMode || !copyText,
+      onPress: () => copy(buildCopyText()),
+      disabled: selectionMode || !hasRowsToSend,
       accessibilityLabel: 'Copy the list as plain text',
     });
     list.push({
       icon: 'share-outline',
       onPress: handleShare,
-      disabled: selectionMode || !shareText,
+      disabled: selectionMode || !hasRowsToSend,
       accessibilityLabel: 'Share the list',
     });
     // Finishing the shop is deliberately not here. It was the sixth icon in
@@ -1543,7 +1540,7 @@ export function GroceryScreen() {
     // `ActiveTripBanner` during a trip, `StartTripPrompt` when rows have been
     // ticked without one. Both put it where the cart count already is.
     return list;
-  }, [selectionMode, handleShare, shareText, copied, copy, copyText, listCount, lens]);
+  }, [selectionMode, handleShare, hasRowsToSend, copied, copy, buildCopyText, listCount, lens]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // no longer needs a key by itself — a saved recipe imports nothing over the

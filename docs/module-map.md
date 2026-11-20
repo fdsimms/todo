@@ -259,7 +259,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
 - `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
-- `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, shopWalkOrder, shopAisleOrderToSave, describeOwnAisleOrders, +14 more
+- `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, linksForItem, isOutOfRange, describeShopAisles, shopWalkOrder, shopAisleOrderToSave, +15 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, buyAgainItems, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, +18 more
 - `src/utils/groceryTripTasks.ts` — TripLinkReaders, tripTasksToComplete
 - `src/utils/groupFold.ts` — sameGroupsApartFromFold
@@ -471,7 +471,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
 - `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, orderWithInserted, filterProjectListItems, filterTasksByTitle, projectPageOrder, projectCopyText
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats
-- `src/utils/projectTasks.ts` — projectTasksOf
+- `src/utils/projectTasks.ts` — projectTasksOf, seriesTasksOf
 - `src/utils/projectTemplate.ts` — BlueprintEntry, ProjectBlueprint, projectBlueprint, ProjectTemplateDraft, freshCopyDraft, templateFromProject
 - `src/utils/proteinPerWeight.ts` — ProteinPerWeight, PROTEIN_PER_WEIGHT_RANGE, parseProteinPerWeight, serializeProteinPerWeight, switchProteinUnit, proteinTargetFromWeight
 - `src/utils/pulseLog.ts` — PulseKind, PulseEntry, isPlausiblePulse, parsePulseInput, parsePulseSeries, standalonePulses, pulsesSince

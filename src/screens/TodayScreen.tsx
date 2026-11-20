@@ -2635,14 +2635,24 @@ export function TodayScreen() {
   // rather than currently visible — so a stack whose children are all still
   // waiting on a time segment/defer still renders as a collapsible group
   // header inside "Later Today" instead of each child appearing loose.
+  //
+  // Each stack's list is last time's array while its members are the same
+  // (`reuseUnchangedLists`): the header these go to is memoized, and a fresh
+  // array per rebuild re-rendered every Later Today header whenever any of
+  // this was recomputed.
+  const laterChildrenPrev = useRef<Map<string, Task[]> | null>(null);
   const laterGroupItems = useMemo(() => {
-    return taskGroups
-      .map(group => ({
-        group,
-        // Rostered first, same reason visibleGroupItems is — see its comment.
-        children: (rosterByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => upcomingTaskIds.has(t.id)),
-      }))
-      .filter(g => g.children.length > 0);
+    const lists = new Map<string, Task[]>();
+    for (const group of taskGroups) {
+      // Rostered first, same reason visibleGroupItems is — see its comment.
+      const children = (rosterByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => upcomingTaskIds.has(t.id));
+      if (children.length > 0) lists.set(group.id, children);
+    }
+    const stable = (laterChildrenPrev.current = reuseUnchangedLists(laterChildrenPrev.current, lists));
+    return taskGroups.flatMap(group => {
+      const children = stable.get(group.id);
+      return children ? [{ group, children }] : [];
+    });
   }, [taskGroups, rosterByGroupId, upcomingTaskIds]);
 
   // Which stacks are on Today at all — a visible child or a Later Today one,

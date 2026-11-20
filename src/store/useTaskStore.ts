@@ -878,7 +878,7 @@ function reconcileDeadlineEvent(task: Task, write?: ReconcileWrite): void {
         link.eventId === task.calendarEventId &&
         link.externalId === (task.calendarEventExternalId ?? null)
       ) return;
-      const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+      const current = taskById(useTaskStore.getState().tasks, task.id);
       if (!current) return;
       const updated = { ...current, calendarEventId: link.eventId, calendarEventExternalId: link.externalId };
       if (write?.keepStamp) {
@@ -913,7 +913,7 @@ function logCompletionEvent(task: Task, completedAt: Date): void {
       // The server id beside it, so reopening the task on a phone this backup is
       // restored to can still find the event to delete (#2950).
       const completionCalendarEventExternalId = await readExternalEventId(completionCalendarEventId);
-      const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+      const current = taskById(useTaskStore.getState().tasks, task.id);
       if (!current) return;
       // Reopened (an undo, straight after the tick) or completed again while
       // the write was out: the event records a completion that no longer
@@ -1236,7 +1236,7 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       return;
     }
     case 'supplyReorder': {
-      const source = useTaskStore.getState().tasks.find(t => t.id === sourceId);
+      const source = taskById(useTaskStore.getState().tasks, sourceId);
       if (!source || source.supplyCount === null) return;
       const stamp = value === false ? source.supplyCount : null;
       if (source.supplyDeclinedAtCount === stamp) return;
@@ -1259,7 +1259,7 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     // action through it would run the postpone derivation over a field that
     // isn't one.
     case 'waitingFollowUp': {
-      const source = useTaskStore.getState().tasks.find(t => t.id === sourceId);
+      const source = taskById(useTaskStore.getState().tasks, sourceId);
       if (!source) return;
       const stamp = value === false ? new Date().toISOString() : null;
       if (source.waitingFollowUpDeclinedAt === stamp) return;
@@ -1450,7 +1450,7 @@ function setTimeBlockLink(
   from?: string | null,
   write?: ReconcileWrite
 ): boolean {
-  const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
+  const current = taskById(useTaskStore.getState().tasks, taskId);
   if (!current) return false;
   if (from !== undefined && current.timeBlockEventId !== from) return false;
   if (current.timeBlockEventId === link.eventId && (current.timeBlockExternalId ?? null) === link.externalId) {
@@ -3487,7 +3487,7 @@ export function captureFollowUpDrafts(ids: string[], scope: 'occurrence' | 'seri
   const { tasks } = useTaskStore.getState();
   const saved = new Map<string, FollowUpTaskDraft | null>();
   for (const id of ids) {
-    const row = tasks.find(t => t.id === id);
+    const row = taskById(tasks, id);
     const source = row ? liveFollowUpSource(row, tasks) : null;
     if (source) saved.set(source.id, source.followUpTaskDraft ?? null);
   }
@@ -3633,7 +3633,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!canAutoComplete()) return;
     const requested: Record<string, string> = {};
     for (const id of ids) {
-      const task = get().tasks.find(t => t.id === id);
+      const task = taskById(get().tasks, id);
       if (!task || task.completed || task.archived) continue;
       const reason = autoCompleteReason(task);
       if (!reason) continue;
@@ -3657,7 +3657,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (unclaimed.length === 0) return;
       set({ autoComplete: {} });
       unclaimed.forEach(id => {
-        const task = get().tasks.find(t => t.id === id);
+        const task = taskById(get().tasks, id);
         if (task && !task.completed) get().completeTask(id, { autoCompleted: true });
       });
     }, AUTO_COMPLETE_PICKUP_MS);
@@ -4039,7 +4039,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   reconcileSyncedEvents(applied) {
-    const find = (id: string) => get().tasks.find(t => t.id === id) ?? null;
+    const find = (id: string) => taskById(get().tasks, id) ?? null;
     const plan = taskEventsAfterSync(applied, find);
     if (
       plan.deadlines.length === 0 &&
@@ -4184,11 +4184,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Each write adds or removes this one blocker and keeps whatever else the
     // row waits on: a task can wait on several now (Task.blockedByIds).
     const without = (id: string) => {
-      const row = get().tasks.find(t => t.id === id);
+      const row = taskById(get().tasks, id);
       return row ? blockerFields(blockerIdsOf(row).filter(b => b !== blockerId)) : blockerFields([]);
     };
     const withIt = (id: string) => {
-      const row = get().tasks.find(t => t.id === id);
+      const row = taskById(get().tasks, id);
       return blockerFields([...(row ? blockerIdsOf(row) : []), blockerId]);
     };
     const { unlink } = resolveBlocksEdit(blockerId, taskIds, get().tasks);
@@ -4203,7 +4203,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   applyTaskDates(taskId, dates, repeat) {
-    const anchor = get().tasks.find(t => t.id === taskId);
+    const anchor = taskById(get().tasks, taskId);
     if (!anchor) return;
     // The rules are taskDates.ts's; this is the device half around them.
     const step = datesAnchorStep(anchor, get().tasks, dates, repeat, generateId);
@@ -4296,7 +4296,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   duplicateTask(id) {
-    const original = get().tasks.find(t => t.id === id);
+    const original = taskById(get().tasks, id);
     if (!original) return null;
 
     const { copy, subtaskCopies } = duplicateRows(original, get().subtasksOf(id), {
@@ -4335,7 +4335,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // a real event on a real calendar with the only pointer to it discarded.
     if (isDemoModeActive()) return null;
 
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return null;
 
     if (task.timeBlockEventId) {
@@ -4355,7 +4355,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const { activeHoursStart, activeHoursEnd, dayResetTime } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
-    const blockTask = get().tasks.find(t => t.id === id) ?? task;
+    const blockTask = taskById(get().tasks, id) ?? task;
     const fields = timeBlockFieldsFor(blockTask, {
       now: new Date(),
       dayResetTime,
@@ -4542,7 +4542,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   applyPendingImport(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task?.pendingImport) return;
     // One updateTask call rather than a write of its own, so the suggestion
     // goes through the same path any other edit does — which is also what
@@ -4553,7 +4553,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   dismissPendingImport(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task?.pendingImport) return;
     // Only the suggestion goes. The title stays exactly as it was dictated —
     // the parse's stripped version was never written to the row, so there is
@@ -4562,7 +4562,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   markTaskSeen(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return;
     const now = new Date().toISOString();
     dbMarkTaskSeen(id, now);
@@ -4577,7 +4577,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deleteTask(id, opts = {}) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return false;
     const subtasks = get().subtasksOf(id);
     // A subtask goes with its parent, so a required one holds the parent too.
@@ -4665,7 +4665,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   registerTaskAdded(id) {
-    const row = get().tasks.find(t => t.id === id);
+    const row = taskById(get().tasks, id);
     if (!row) return;
     const ids = row.seriesId ? get().seriesRowsOf(row.seriesId).map(t => t.id) : [id];
     // Who waits on the new rows, taken now: the undo releases them (a deleted
@@ -4692,7 +4692,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   markMissed(id, options) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.completed) return;
     // A one-off task can be missed too: it closes as a non-completion with no
     // successor, the way a repeat that ran out its count does. That is the
@@ -5163,7 +5163,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed) {
       const restockTaskId = supplyReorderSourceId(task);
       if (restockTaskId) {
-        const source = get().tasks.find(t => t.id === restockTaskId);
+        const source = taskById(get().tasks, restockTaskId);
         if (source && source.supplyCount !== null) {
           restockBefore = {
             id: restockTaskId,
@@ -5533,7 +5533,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   setDeliverableValue(id, value, reasoning) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     // Guarded on the kind, not on `completed`: the answer belongs to a task
     // that asks a question, and a row can be un-completed and re-completed
     // without the answer needing to be retyped. Through the resolver, since
@@ -5575,7 +5575,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   logSlip(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !isNegativeTask(task) || task.archived) return;
     const dayStart = getCurrentDayStart();
     // A habit a reward guards: a slip you can pay for is the claim instead,
@@ -5647,7 +5647,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   undoSlip(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !isNegativeTask(task)) return;
     const dayStart = getCurrentDayStart();
     const patch = undoSlipPatch(task, dayStart);
@@ -5711,7 +5711,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   closeNegativeDay(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !isNegativeTask(task) || task.archived) return;
     const patch = closeDayPatch(task, getCurrentDayStart());
     if (!patch) return;
@@ -5727,7 +5727,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   reopenNegativeDay(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !isNegativeTask(task)) return;
     const dayStart = getCurrentDayStart();
     const patch = reopenDayPatch(task, dayStart);
@@ -5798,7 +5798,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   logQuotaUnit(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.completed || !isQuotaTask(task)) return;
     // The unit that reaches the target isn't a count bump, it's a completion —
     // hand off so recurrence, streaks, reminders and the Logbook all run
@@ -5884,7 +5884,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * but it is not one of the five.
    */
   recordRotationPick(id, itemId) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.completed || !isRotationTask(task) || !isQuotaTask(task)) return false;
     const { weekStartsOn } = useSettingsStore.getState();
     const dayStart = getCurrentDayStart();
@@ -5902,10 +5902,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   logRotationUnit(id, itemId) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.completed || !isRotationTask(task) || !isQuotaTask(task)) return;
     const covered = get().recordRotationPick(id, itemId);
-    const updated = get().tasks.find(t => t.id === id);
+    const updated = taskById(get().tasks, id);
     if (!updated) return;
     if (covered) {
       // The set is covered, so the period is done and the recurrence spawns
@@ -5943,7 +5943,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * counts.
    */
   planRotationItem(id, itemId) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.completed || !isRotationTask(task)) return;
     const updated = { ...task, rotationPlan: rotationPlanFor(task, itemId, getCurrentDayStart()) };
     dbUpdateTask(updated);
@@ -5951,7 +5951,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   unlogRotationUnit(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !isRotationTask(task)) return;
     const { weekStartsOn } = useSettingsStore.getState();
     const dayStart = getCurrentDayStart();
@@ -5967,7 +5967,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   unlogQuotaUnit(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !isQuotaTask(task) || task.progressCount === 0) return;
     const updated = {
       ...task,
@@ -6274,7 +6274,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   startQuotaRun(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.completed || task.archived || !isQuotaTask(task)) return;
     // Through updateTask rather than a direct write, so QUOTA_SPAN_FIELDS
     // re-derives targetCount against the span that just shrank, and the undo
@@ -6337,7 +6337,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deferTask(id, until) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return;
     const snapshot = { ...task };
     get().updateTask(id, { deferUntil: until.toISOString() });
@@ -10201,7 +10201,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   skipNextRecurrence(id, opts) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return;
     const patch = skipPatch(task, useSettingsStore.getState().dayResetTime);
     if (!patch) return;
@@ -10221,7 +10221,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   postBounty(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !canPostBounty(task, isListItemNow(task))) return 'not-allowed';
     if (liveBountyCount(get().tasks) >= useSettingsStore.getState().bountyLimit) return 'full';
     get().updateTask(id, { bountyPushes: 0 }, SKIP_POSTPONE);
@@ -10229,19 +10229,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   withdrawBounty(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.bountyPushes == null) return;
     get().updateTask(id, { bountyPushes: BOUNTY_WITHDRAWN }, SKIP_POSTPONE);
   },
 
   togglePin(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return;
     get().updateTask(id, { pinned: !task.pinned });
   },
 
   archiveTask(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.archived) return;
     // Archiving unpins, so the undo has to put the pin back — otherwise
     // undoing lands the task back on the list without the pin it had.
@@ -10260,7 +10260,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   unarchiveTask(id, dueDate) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || !task.archived) return;
     const { dueDate: oldDue, deferUntil, recurrenceAnchorDate } = task;
     // Resuming is lossy — it breaks the streak and drops the archived-on
@@ -10345,7 +10345,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   pinCategory(category) {
     const ids = get().tasksByCategory(category).map(t => t.id);
     if (ids.length === 0) return;
-    const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
+    const allPinned = ids.every(id => taskById(get().tasks, id)?.pinned);
     const nextPinned = !allPinned;
     const ranks = nextPinned ? freshPinRanks(get().tasks, ids) : null;
     dbBulkSetPinned(ids, nextPinned);
@@ -10398,12 +10398,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       else get().stopTimer(running.id);
     }
     get().updateTask(id, { timerStartedAt: new Date().toISOString() });
-    const started = get().tasks.find(t => t.id === id);
+    const started = taskById(get().tasks, id);
     if (started) scheduleTimerAlarm(started);
   },
 
   stopTimer(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     // Finish and log: banked time from earlier segments counts too, so pausing
     // a countdown and then completing the task still records the full session.
     if (!task || (task.timerStartedAt === null && task.timerElapsedSeconds <= 0)) return;
@@ -10421,7 +10421,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   discardTimer(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.timerStartedAt === null) return;
     const startedAt = task.timerStartedAt;
     cancelTimerAlarm(id);
@@ -10441,7 +10441,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           else get().stopTimer(running.id);
         }
         get().updateTask(id, { timerStartedAt: startedAt });
-        const restored = get().tasks.find(t => t.id === id);
+        const restored = taskById(get().tasks, id);
         if (restored) scheduleTimerAlarm(restored);
       },
     });
@@ -10462,7 +10462,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // dismissing a Timer app activity doesn't cancel the alarm it was counting
   // down to.
   dismissCompletionTimer(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.completionTimerStartedAt === null) return;
     get().updateTask(id, { completionTimerStartedAt: null });
   },
@@ -10490,21 +10490,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   pauseTimer(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task || task.timerStartedAt === null) return;
     cancelTimerAlarm(id);
     get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: timerElapsed(task) });
   },
 
   resetTimer(id) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return;
     cancelTimerAlarm(id);
     get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: 0 });
   },
 
   setMeasuredTime(id, minutes) {
-    const task = get().tasks.find(t => t.id === id);
+    const task = taskById(get().tasks, id);
     if (!task) return;
     get().updateTask(id, applyMeasuredTime(minutes, task), { scope: 'series' });
   },
@@ -10519,7 +10519,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recurring-series handling (seriesDefaults capture for 'occurrence'
     // scope) as any other content-field edit.
     const snapshots = categoryUpdates
-      .map(u => get().tasks.find(t => t.id === u.id))
+      .map(u => taskById(get().tasks, u.id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     const restoreRules = captureFollowUpDrafts(categoryUpdates.map(u => u.id), options?.scope);
@@ -10744,7 +10744,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deleteSubtask(id) {
-    const subtask = get().tasks.find(t => t.id === id);
+    const subtask = taskById(get().tasks, id);
     if (!subtask) return;
     // A subtask carrying a stretch of its parent's timer is part of that
     // timer's length (see utils/timerSegments.ts), so deleting it has to
@@ -10752,7 +10752,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Deleting the *last* stretch leaves the total where it was rather than
     // clearing it: the split is gone, but the task is still a timed task of
     // that length, and a null here would quietly demote it to a plain one.
-    const parent = subtask.parentId ? get().tasks.find(t => t.id === subtask.parentId) : undefined;
+    const parent = subtask.parentId ? taskById(get().tasks, subtask.parentId) : undefined;
     // Not on a target, whose `timedMinutes` is the per-unit countdown rather
     // than a total of its subtasks' stretches.
     const retotal = parent != null && parent.timedMinutes != null && !isQuotaTask(parent) && segmentMinutesOf(subtask) !== null;
@@ -10969,7 +10969,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // why the undo restores the category alongside the membership rather than
   // just unfiling the task.
   addExistingToGroup(taskId, groupId) {
-    const task = get().tasks.find(t => t.id === taskId);
+    const task = taskById(get().tasks, taskId);
     if (!task) return;
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     const siblings = get().tasks.filter(t => t.groupId === groupId);
@@ -10992,7 +10992,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   bulkAddToGroup(taskIds, groupId) {
     const joining = taskIds
-      .map(id => get().tasks.find(t => t.id === id))
+      .map(id => taskById(get().tasks, id))
       .filter((t): t is Task => !!t && t.groupId !== groupId);
     if (joining.length === 0) return;
     const historyBefore = get().undoStack;
@@ -11039,7 +11039,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // without this, stacking two tasks from the middle of Today teleports
     // them to the top of the section.
     const anchors = taskIds
-      .map(id => get().tasks.find(t => t.id === id)?.sortOrder)
+      .map(id => taskById(get().tasks, id)?.sortOrder)
       .filter((order): order is number => order !== undefined);
     if (anchors.length > 0) {
       useTaskGroupStore.getState().updateGroup(group.id, { sortOrder: Math.min(...anchors) });
@@ -11126,7 +11126,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       children.forEach(child => {
         if (child.completed || skip.has(child.id)) return;
         get().completeTask(child.id);
-        if (get().tasks.find(t => t.id === child.id)?.completed) {
+        if (taskById(get().tasks, child.id)?.completed) {
           completedIds.push(child.id);
           const action = get().lastAction;
           if (action) undos.push(action.undo);
@@ -11192,7 +11192,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   pinGroup(groupId) {
     const ids = get().groupRosterOf(groupId).filter(c => !c.completed && isRelevantToGroupToday(c)).map(c => c.id);
     if (ids.length === 0) return;
-    const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
+    const allPinned = ids.every(id => taskById(get().tasks, id)?.pinned);
     const nextPinned = !allPinned;
     // Ranked like pinCategory, so the stack lands together at the bottom of
     // the Pinned section instead of keeping whatever rank each member had.
@@ -11352,7 +11352,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A task created on a project's page is already filed there, and the
     // page calls this for it anyway: skipping the no-op keeps that add to one
     // store write rather than two full re-renders of every screen.
-    if (get().tasks.find(t => t.id === taskId)?.projectId === projectId) return;
+    if (taskById(get().tasks, taskId)?.projectId === projectId) return;
     get().updateTask(taskId, { projectId });
   },
 
@@ -11933,7 +11933,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().resetAllStreaks(),
       undo: () => {
         snapshot.forEach(({ id, streakCount, streakDate, priorBestStreak }) => {
-          const task = get().tasks.find(t => t.id === id);
+          const task = taskById(get().tasks, id);
           if (!task) return;
           dbUpdateTask({ ...task, streakCount, streakDate, priorBestStreak });
         });
@@ -11961,9 +11961,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ids.forEach(id => {
         // Already done: completeTask leaves it alone, so it is no part of this
         // batch and its undo must not reopen it.
-        if (get().tasks.find(t => t.id === id)?.completed) return;
+        if (taskById(get().tasks, id)?.completed) return;
         get().completeTask(id);
-        if (get().tasks.find(t => t.id === id)?.completed) {
+        if (taskById(get().tasks, id)?.completed) {
           completedIds.push(id);
           const action = get().lastAction;
           if (action) undos.push(action.undo);
@@ -11990,7 +11990,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbTransaction(() => {
       ids.forEach(id => {
         get().markMissed(id);
-        if (get().tasks.find(t => t.id === id)?.missedAt) missedIds.push(id);
+        if (taskById(get().tasks, id)?.missedAt) missedIds.push(id);
       });
     });
     if (missedIds.length === 0) return;
@@ -12007,7 +12007,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkSkipRecurrence(ids) {
     const before = new Map<string, Task>();
     ids.forEach(id => {
-      const t = get().tasks.find(x => x.id === id);
+      const t = taskById(get().tasks, id);
       if (t && !t.completed && t.recurrenceType !== 'none') before.set(t.id, { ...t });
     });
     if (before.size === 0) return;
@@ -12037,7 +12037,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const undos: Array<() => void> = [];
     dbTransaction(() => {
       ids.forEach(id => {
-        if (!get().tasks.find(t => t.id === id)?.completed) return;
+        if (!taskById(get().tasks, id)?.completed) return;
         get().uncompleteTask(id);
         const undo = get().lastAction?.undo;
         if (undo) undos.push(undo);
@@ -12060,7 +12060,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A required task of a locked unlock stays (see deleteTask); the rest go.
     const refused = opts.ignoreUnlockLock
       ? []
-      : requested.filter(id => { const t = get().tasks.find(x => x.id === id); return !!t && !!lockedUnlockBlocking(t); });
+      : requested.filter(id => { const t = taskById(get().tasks, id); return !!t && !!lockedUnlockBlocking(t); });
     const refusedSet = new Set(refused);
     const ids = refused.length > 0 ? requested.filter(id => !refusedSet.has(id)) : requested;
     if (ids.length === 0) return refused;
@@ -12164,7 +12164,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // of "these three, plus that one I'd already pinned" adds rather than clears.
   bulkTogglePin(ids) {
     if (ids.length === 0) return;
-    const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
+    const allPinned = ids.every(id => taskById(get().tasks, id)?.pinned);
     const nextPinned = !allPinned;
     const ranks = nextPinned ? freshPinRanks(get().tasks, ids) : null;
     dbBulkSetPinned(ids, nextPinned);
@@ -12182,7 +12182,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const deferUntil = until.toISOString();
     const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
-      .map(id => get().tasks.find(t => t.id === id))
+      .map(id => taskById(get().tasks, id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     const counts = bulkPostponeCounts(
@@ -12269,7 +12269,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
-      .map(id => get().tasks.find(t => t.id === id))
+      .map(id => taskById(get().tasks, id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     // Same reasoning as bulkDefer above: moving a pinned task to a different
@@ -12877,7 +12877,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
 // A wish list goal's item lives here, and the reward store needs it to know
 // whether the goal is still open (see registerGoalSourceLookup).
-registerGoalSourceLookup(taskId => useTaskStore.getState().tasks.find(t => t.id === taskId));
+registerGoalSourceLookup(taskId => taskById(useTaskStore.getState().tasks, taskId));
 
 // Lets visibilityUtils resolve Task.blockedById without importing this store —
 // it can't, since this module pulls in expo-sqlite and already imports it. See

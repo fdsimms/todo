@@ -33,7 +33,7 @@ import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } fr
 import { describeForgetLoss, linkCounts } from '../utils/groceryFacts';
 import { suppliesStockedFrom } from '../utils/supply';
 import { useTaskStore } from '../store/useTaskStore';
-import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
+import { itemIdsForShop, itemCountsByShop, linksForItem, primaryShopFor } from '../utils/groceryShops';
 import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -312,12 +312,16 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     const isSelected = selected.has(item.id);
     // Suppressed while a store filter is on: every row would name the store
     // you just filtered to, which is a column of the same word.
-    const usual = shopFilter ? null : primaryShopFor(item, itemShops, shops);
+    // Asked of the item's own links (`linksForItem`): both reads below look
+    // only at those, and handed every link they were a pass over all of them
+    // for each row drawn, on every tap and keystroke in the sheet.
+    const ownLinks = linksForItem(itemShops, item.id);
+    const usual = shopFilter ? null : primaryShopFor(item, ownLinks, shops);
     // Which price: the active store's own, if it has one, otherwise the
     // item's — same precedence the finish sheet already uses. Not shown at
     // all where nothing's ever been paid, rather than a "$0.00" that reads
     // as a real number.
-    const priceMinor = lastPriceFor(item, shopFilter, itemShops);
+    const priceMinor = lastPriceFor(item, shopFilter, ownLinks);
     const priceContext = priceMinor !== null ? describePriceContext(item, now) : null;
     const otherNames = describeOtherNames(item);
     return (
