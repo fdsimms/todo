@@ -523,7 +523,7 @@ describe('parseQuickEvent, trip, calendar and availability clauses', () => {
 
     it('leaves an off-step amount or a bare number in the title', () => {
       expect(parseArriveClause('Open mic 12 min early')).toBeNull();
-      expect(parseArriveClause('Open mic 90 min early')).toBeNull();
+      expect(parseArriveClause('Open mic 97 min early')).toBeNull();
       expect(parseArriveClause('Open mic 10 early')).toBeNull();
     });
   });
