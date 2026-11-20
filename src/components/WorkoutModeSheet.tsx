@@ -29,6 +29,7 @@ import { WorkoutTimesSheet } from './WorkoutTimesSheet';
 import { RecordsCard } from './RecordsCard';
 import { CountStepper } from './CountStepper';
 import { CheckPop } from './CheckPop';
+import { RecordPop } from './RecordPop';
 import { InlineAction } from './InlineAction';
 import { ProgressBar } from './ProgressBar';
 import { EmptyNote } from './EmptyNote';
@@ -295,6 +296,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [viewedId, setViewedId] = useState<string | null>(null);
   // The set whose type popover is open, and where it opens from (the set button's touch).
   const [openSetId, setOpenSetId] = useState<string | null>(null);
+  // The set whose record badge plays its entrance: the one just ticked into a record (RecordPop).
+  const [recordPopId, setRecordPopId] = useState<string | null>(null);
   const [setMenuAnchor, setSetMenuAnchor] = useState<CardAnchor | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [effort, setEffort] = useState<number | null>(null);
@@ -421,6 +424,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (!session) return;
     if (set.completedAt !== null) {
       haptics.tap();
+      setRecordPopId(null);
       edit(set.id, { completedAt: null });
       return;
     }
@@ -443,7 +447,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       sessionsList,
       dayResetTime,
     );
-    if (records.has(set.id)) haptics.success();
+    if (records.has(set.id)) {
+      haptics.success();
+      setRecordPopId(set.id);
+    }
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
@@ -1532,6 +1539,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
                         )}
                         {lines.length > 0 && (
+                          <RecordPop celebrate={recordPopId === set.id}>
                           <TouchableOpacity
                             style={styles.recordPill}
                             activeOpacity={interaction.activeOpacity}
@@ -1546,6 +1554,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
                           </TouchableOpacity>
+                          </RecordPop>
                         )}
                         {fields.map(f => (
                           <SetInput
