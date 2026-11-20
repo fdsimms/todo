@@ -84,6 +84,7 @@ import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { completionLogChips } from '../utils/completionLogChip';
+import { TaskDoseSheet } from './TaskDoseSheet';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { activeChainStep, chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
 import { isAnsweredByRecord, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
@@ -1604,6 +1605,8 @@ const TaskItemRow = React.memo(function TaskItem({
   const mountBreakdown = useSheetMount(showBreakdown);
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
   const mountMission = useSheetMount(showMission);
+  const [showDoseSheet, setShowDoseSheet] = useState(false);
+  const mountDoseSheet = useSheetMount(showDoseSheet);
   const mountAlarmCard = useSheetMount(showAlarmCard);
   const mountTemplateRun = useSheetMount(showTemplateRun);
   // Held, so a mission removed from the task while its sheet is up closes the
@@ -4543,7 +4546,15 @@ const TaskItemRow = React.memo(function TaskItem({
             {/* What ticking this row records (a dose, a meal), so a row that
                 logs something is told apart from one that doesn't. */}
             {logChips.map(chip => (
-              <View key={chip.kind} style={styles.logsChip} accessibilityLabel={chip.text}>
+              <TouchableOpacity
+                key={chip.kind}
+                style={styles.logsChip}
+                disabled={!chip.editable}
+                onPress={() => { haptics.tap(); setShowDoseSheet(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole={chip.editable ? 'button' : undefined}
+                accessibilityLabel={chip.editable ? `${chip.text}. Change the amount` : chip.text}
+              >
                 <Ionicons
                   name={chip.kind === 'dose' ? 'medkit-outline' : 'restaurant-outline'}
                   size={iconSize.xs}
@@ -4552,7 +4563,8 @@ const TaskItemRow = React.memo(function TaskItem({
                 <Text style={styles.logsChipLabel} numberOfLines={1}>
                   {chip.text}
                 </Text>
-              </View>
+                {chip.editable && <Ionicons name="chevron-down" size={iconSize.xs} color={colors.accentText} />}
+              </TouchableOpacity>
             ))}
             {mealSlot !== null && (
               <View style={styles.metaChip}>
@@ -6297,6 +6309,16 @@ const TaskItemRow = React.memo(function TaskItem({
           onClose={() => setShowTemplateRun(false)}
           // Running it is the work the task was a reminder for.
           onApplied={(created) => { if (created.length > 0) handleComplete(); }}
+        />
+      )}
+      {mountDoseSheet && task.medicationName && (
+        <TaskDoseSheet
+          visible={showDoseSheet}
+          medication={task.medicationName}
+          amount={task.medicationAmount ?? null}
+          unit={task.medicationUnit ?? null}
+          onSave={(amount, unit) => updateTask(task.id, { medicationAmount: amount, medicationUnit: unit })}
+          onClose={() => setShowDoseSheet(false)}
         />
       )}
       {missionSheet && (
