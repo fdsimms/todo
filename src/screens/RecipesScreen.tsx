@@ -7,7 +7,7 @@
 //
 // RecipeRow below it is the row; RecipesScreen near the bottom is the two-pane
 // wrapper.
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
 import {
   View,
   Text,
@@ -303,6 +303,14 @@ function RecipesList() {
   // The recipe whose day is being picked; null closes the sheet.
   const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
   const { query, clear: clearQuery, props: filterField } = useFilterField();
+  // What the list is searched for, a beat behind what is typed. Ranking the
+  // whole box and, on the first letter, trading the grouped list (every row
+  // mounted) for the search results are both more than a keystroke should
+  // wait on. Deferred, the field stays ahead and the list catches up in a
+  // render that the next letter can interrupt; clearing the field brings the
+  // grouped list back the same way. Everything the list draws reads this, so
+  // its header, rows and empty state always describe the same search.
+  const searched = useDeferredValue(query);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   // One cookbook the box is narrowed to, for this visit only, like the tags.
   const [cookbookFilter, setCookbookFilter] = useState<string | null>(null);
@@ -464,22 +472,22 @@ function RecipesList() {
     const byTag = filterRecipesByTags(recipes, activeTags);
     const byLoved = recipeLovedOnly ? byTag.filter(r => r.vote === 'loved') : byTag;
     const byBook = activeCookbook ? byLoved.filter(r => r.cookbookId === activeCookbook.id) : byLoved;
-    const matched = rankRecipes(query, byBook);
+    const matched = rankRecipes(searched, byBook);
     // rankRecipes already orders a search by weight; only the unfiltered list
     // takes RecipeSortFilterSheet's own sort, or a name match would lose its
     // place to a recipe that merely ranks higher under it.
-    if (query.trim()) return matched;
+    if (searched.trim()) return matched;
     return sortRecipesBy(matched, recipeSort);
-  }, [query, recipes, activeTags, recipeLovedOnly, recipeSort, activeCookbook]);
+  }, [searched, recipes, activeTags, recipeLovedOnly, recipeSort, activeCookbook]);
 
   // Grouping is only offered on the unfiltered box — see the doc comment
   // above. Built from `visible` (already sorted) so the flat and grouped
   // views agree on within-section order, not just on membership.
   const grouped = useMemo(
-    () => (groupByMealType && !query.trim()
+    () => (groupByMealType && !searched.trim()
       ? groupRecipesByMealType(visible, list => sortRecipesBy(list, recipeSort))
       : null),
-    [groupByMealType, query, visible, recipeSort]
+    [groupByMealType, searched, visible, recipeSort]
   );
 
   // ==== draggable sections and drop targets ====
@@ -741,7 +749,7 @@ function RecipesList() {
    * box below it). Hidden during search and selection — a search is already a
    * specific question, and reordering isn't a thing you're doing mid-bulk-edit.
    */
-  const upNextBlock = (selectionMode || query.trim() || upNextRecipes.length === 0) ? null : (
+  const upNextBlock = (selectionMode || searched.trim() || upNextRecipes.length === 0) ? null : (
     <View style={styles.upNextBlock}>
       <View style={styles.upNextHeader}>
         <Ionicons name="bookmark" size={13} color={colors.accent} />
@@ -893,16 +901,16 @@ function RecipesList() {
 
           {visible.length === 0 ? (
             <EmptyState
-              icon={filtering && !query.trim() ? (tagFiltering ? 'pricetags-outline' : 'thumbs-up-outline') : 'search-outline'}
+              icon={filtering && !searched.trim() ? (tagFiltering ? 'pricetags-outline' : 'thumbs-up-outline') : 'search-outline'}
               title="Nothing matched"
               // Three ways to end up here (tag, loved-only, search), and
               // they combine: naming every active filter is what tells you
               // which one to lift.
               subtitle={filtering
-                ? query.trim()
-                  ? `No recipe ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly, activeCookbook?.title ?? null)} is called “${query.trim()}” or uses it`
+                ? searched.trim()
+                  ? `No recipe ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly, activeCookbook?.title ?? null)} is called “${searched.trim()}” or uses it`
                   : `No recipe here is ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly, activeCookbook?.title ?? null)}`
-                : `No recipe here is called “${query.trim()}” or uses it`}
+                : `No recipe here is called “${searched.trim()}” or uses it`}
               actionLabel={filtering ? 'Clear filters' : undefined}
               onAction={filtering ? () => { animateLayout(); setSelectedTags([]); setRecipeLovedOnly(false); setCookbookFilter(null); } : undefined}
               bottomOffset={tabBarHeight}
