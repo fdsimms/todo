@@ -111,7 +111,7 @@ import type { SessionExercise } from '../utils/workoutSession';
 // which has none), so the popover reads as the same thing as the badge.
 // `amrap` is "Failure" to match the F badge and `setName`'s "To failure".
 /** Width of the set column: the set button, and the header and plate line that line up with it. */
-const SET_COL_WIDTH = 42;
+const SET_COL_WIDTH = 34;
 
 const SET_KIND_ORDER: { value: WorkoutSetKind; label: string }[] = [
   { value: 'working', label: 'Working' },
@@ -1464,7 +1464,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           accessibilityHint="Changes the set type"
                         >
                           <Text style={setBadge(set.kind) ? styles.setBadge : styles.setNumber}>{label}</Text>
-                          <Ionicons name="chevron-down" size={iconSize.xs} color={colors.textSecondary} />
                         </TouchableOpacity>
                         {prev ? (
                           <TouchableOpacity
@@ -2180,9 +2179,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 46,
     paddingHorizontal: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
   },
-  // The set number as a button: a tile like the value cells, with a chevron saying it opens something.
+  // The set number as a button: a tile like the value cells.
   setButton: {
-    width: SET_COL_WIDTH, minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxs,
+    width: SET_COL_WIDTH, minHeight: 32, alignItems: 'center', justifyContent: 'center',
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
   },
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold },
