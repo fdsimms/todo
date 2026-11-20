@@ -80,7 +80,7 @@ export const useOnCallStore = create<OnCallState>((set, get) => ({
     // the whole point is not missing it.
     if (result === null) return;
     const spans = onCallSpans(result.events, config);
-    const conflicts = settings.onCallSwapTasks ? onCallConflicts(result.events, config, spans) : [];
+    const conflicts = settings.onCallSwapTasks ? onCallConflicts(result.events, config, spans, settings.onCallSwapIgnoredCalendarIds) : [];
     const held = get();
     if (
       held.loaded
@@ -120,6 +120,7 @@ export function useOnCallSync(): void {
         || state.onCallCalendarIds !== prev.onCallCalendarIds
         || state.onCallWords !== prev.onCallWords
         || state.onCallSwapTasks !== prev.onCallSwapTasks
+        || state.onCallSwapIgnoredCalendarIds !== prev.onCallSwapIgnoredCalendarIds
         || state.vacationMode !== prev.vacationMode
         || state.vacationHiddenCalendarIds !== prev.vacationHiddenCalendarIds
         || state.dayResetTime !== prev.dayResetTime

@@ -33,7 +33,7 @@ describe('onCallConflicts', () => {
   it('finds a timed event that runs into a shift, and not one that clears it', () => {
     const clash = timed('Dinner', at(16), at(18));
     const clear = timed('Late dinner', at(17), at(19));
-    expect(onCallConflicts([clash, clear], CONFIG, spans)).toEqual([clash]);
+    expect(onCallConflicts([clash, clear], CONFIG, spans, [])).toEqual([clash]);
   });
   it('is not fooled by the shift itself, a canceled event or one marked Free', () => {
     const events = [
@@ -41,38 +41,53 @@ describe('onCallConflicts', () => {
       timed('Cancelled', at(10), at(11), { status: 'canceled' }),
       timed('Focus', at(10), at(11), { availability: 'free' }),
     ];
-    expect(onCallConflicts(events, CONFIG, spans)).toEqual([]);
+    expect(onCallConflicts(events, CONFIG, spans, [])).toEqual([]);
   });
   it('counts an all-day event on a shift day and against an all-day shift', () => {
     const birthday = allDay('Mom birthday', 21);
-    expect(onCallConflicts([birthday], CONFIG, spans)).toEqual([birthday]);
+    expect(onCallConflicts([birthday], CONFIG, spans, [])).toEqual([birthday]);
     const weekend = onCallSpans([allDay('on call', 21, 22)], CONFIG);
     const wedding = timed('Wedding', at(14, 0, 22), at(22, 0, 22));
-    expect(onCallConflicts([wedding, allDay('Holiday', 23)], CONFIG, weekend)).toEqual([wedding]);
+    expect(onCallConflicts([wedding, allDay('Holiday', 23)], CONFIG, weekend, [])).toEqual([wedding]);
+  });
+  it('skips events on a calendar that is set aside, and keeps the rest', () => {
+    const meeting = timed('Standup', at(10), at(11), { calendarId: 'work' });
+    const dinner = timed('Dinner', at(16), at(18), { calendarId: 'home' });
+    expect(onCallConflicts([meeting, dinner], CONFIG, spans, ['work'])).toEqual([dinner]);
   });
   it('has nothing to find with no shifts', () => {
-    expect(onCallConflicts([timed('Dinner', at(16), at(18))], CONFIG, [])).toEqual([]);
+    expect(onCallConflicts([timed('Dinner', at(16), at(18))], CONFIG, [], [])).toEqual([]);
   });
 });
 
 describe('matchedOnCallSwaps', () => {
   const dinner = timed('Dinner', at(16), at(18));
   it('writes one per conflict, due on the event', () => {
-    const [match] = matchedOnCallSwaps([dinner], NOW, {});
+    const [match] = matchedOnCallSwaps([dinner], NOW, {}, 7);
     expect(match.sourceId).toBe(onCallSwapSourceId(dinner));
     expect(match.endsAt).toBe(dinner.end);
   });
   it('leaves an event already handled, so a deleted or ticked task stays gone', () => {
     const handled = { [onCallSwapSourceId(dinner)]: dinner.end };
-    expect(matchedOnCallSwaps([dinner], NOW, handled)).toEqual([]);
+    expect(matchedOnCallSwaps([dinner], NOW, handled, 7)).toEqual([]);
   });
   it('also honors a key written before the server named the event', () => {
     const named = { ...dinner, externalId: 'server-1' };
     const handled = { [`${dinner.id}|${dinner.start}#onCallSwap`]: dinner.end };
-    expect(matchedOnCallSwaps([named], NOW, handled)).toEqual([]);
+    expect(matchedOnCallSwaps([named], NOW, handled, 7)).toEqual([]);
+  });
+  it('waits until the event is within the look-ahead, then writes it', () => {
+    // NOW is Nov 19; dinner is Nov 21 at 4 PM.
+    expect(matchedOnCallSwaps([dinner], NOW, {}, 1)).toEqual([]);
+    expect(matchedOnCallSwaps([dinner], NOW, {}, 3)).toHaveLength(1);
+    const far = timed('Standup', at(10, 0, 30), at(11, 0, 30));
+    expect(matchedOnCallSwaps([far], NOW, {}, 7)).toEqual([]);
+  });
+  it('still writes one for an event already under way', () => {
+    expect(matchedOnCallSwaps([dinner], at(17), {}, 7)).toHaveLength(1);
   });
   it('skips an event that is over', () => {
-    expect(matchedOnCallSwaps([dinner], at(19), {})).toEqual([]);
+    expect(matchedOnCallSwaps([dinner], at(19), {}, 7)).toEqual([]);
   });
 });
 
