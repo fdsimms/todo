@@ -24,6 +24,7 @@ import { SheetModal } from './SheetModal';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WorkoutVolumePill } from './WorkoutVolumePill';
 import { ActionMenu } from './ActionMenu';
+import { PressableScale } from './PressableScale';
 import { CardSheet, type CardAnchor } from './CardSheet';
 import { WorkoutTimesSheet } from './WorkoutTimesSheet';
 import { RecordsCard } from './RecordsCard';
@@ -58,7 +59,7 @@ import { ManualRestSheet } from './ManualRestSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, lineHeight, radius, spacing, type Colors } from '../theme';
 import { confirmDiscardWorkout } from '../utils/confirmDiscardWorkout';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -299,6 +300,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The set whose record badge plays its entrance: the one just ticked into a record (RecordPop).
   const [recordPopId, setRecordPopId] = useState<string | null>(null);
   const [setMenuAnchor, setSetMenuAnchor] = useState<CardAnchor | null>(null);
+  // The header's "•••" menu, which holds Discard so it never sits beside Finish.
+  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<CardAnchor | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [effort, setEffort] = useState<number | null>(null);
   const [sessionNotes, setSessionNotes] = useState('');
@@ -869,23 +872,54 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerIcon}
-            activeOpacity={interaction.activeOpacity}
+          <PressableScale
+            style={styles.headerCircle}
             onPress={minimize}
             accessibilityRole="button"
             accessibilityLabel="Minimize workout"
             accessibilityHint="The workout keeps running"
           >
-            <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
-          </TouchableOpacity>
-          <View style={styles.headerTitle} pointerEvents="box-none">
-            {session && (finishing
-              ? <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
-              : (
-                <TouchableOpacity
-                  activeOpacity={interaction.activeOpacity}
-                  hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+            <Ionicons name="chevron-down" size={iconSize.md} color={colors.accentText} />
+          </PressableScale>
+          {!finishing && session && (
+            <View style={styles.headerRight}>
+              <PressableScale
+                style={styles.headerCircle}
+                onPress={() => { haptics.tap(); Keyboard.dismiss(); setTimerOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={restsOff ? 'Timer, rest timers are off' : 'Start a timer'}
+              >
+                <Ionicons name="timer-outline" size={iconSize.md} color={restsOff ? colors.textTertiary : colors.accentText} />
+                {restsOff && <View style={styles.headerIconSlash} pointerEvents="none" />}
+              </PressableScale>
+              <PressableScale
+                style={styles.headerCircle}
+                onPress={e => { haptics.tap(); Keyboard.dismiss(); setHeaderMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); }}
+                accessibilityRole="button"
+                accessibilityLabel="More workout options"
+              >
+                <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
+              </PressableScale>
+              <SheetHeaderButton filled label="Finish" onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
+            </View>
+          )}
+        </View>
+        {/* The name gets its own full-width block under the buttons, so a long
+            routine name isn't squeezed between the minimize button and Finish.
+            It wraps to two lines rather than truncating: it is the one thing
+            here that says which workout this is. */}
+        <View style={styles.titleBlock}>
+          <Text style={styles.title} numberOfLines={2}>{headerTitle}</Text>
+          {session && (
+            <View style={styles.metaRow}>
+              {finishing ? (
+                <View style={styles.clockChip}>
+                  <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
+                </View>
+              ) : (
+                <PressableScale
+                  style={styles.clockChip}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   onPress={e => {
                     haptics.tap();
                     Keyboard.dismiss();
@@ -896,39 +930,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   accessibilityHint="Change the start time or restart the timer"
                 >
                   <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
-                </TouchableOpacity>
-              ))}
-          </View>
-          {!finishing && session ? (
-            <View style={styles.headerRight}>
-              <TouchableOpacity
-                style={styles.headerIcon}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => { haptics.tap(); Keyboard.dismiss(); setTimerOpen(true); }}
-                accessibilityRole="button"
-                accessibilityLabel={restsOff ? 'Timer, rest timers are off' : 'Start a timer'}
-              >
-                <Ionicons name="timer-outline" size={iconSize.lg} color={restsOff ? colors.textTertiary : colors.accentText} />
-                {restsOff && <View style={styles.headerIconSlash} pointerEvents="none" />}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.headerIcon}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => { Keyboard.dismiss(); confirmDiscardWorkout(close); }}
-                accessibilityRole="button"
-                accessibilityLabel="Discard workout"
-              >
-                <Ionicons name="trash-outline" size={iconSize.lg} color={colors.redText} />
-              </TouchableOpacity>
-              <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
+                </PressableScale>
+              )}
+              <View style={styles.metaDot} />
+              <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>
             </View>
-          ) : <View style={styles.headerSpacer} />}
-        </View>
-        {/* The name gets its own full-width line under the buttons, so a long
-            routine name isn't squeezed between the minimize button and Finish. */}
-        <View style={styles.titleBlock}>
-          <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-          {session && <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>}
+          )}
         </View>
 
         {/* Under the header, not in a footer: the keyboard is up while sets are
@@ -1696,6 +1703,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         anchor={recordCard?.anchor ?? null}
         onClose={() => setRecordCard(null)}
       />
+      <ActionMenu
+        visible={headerMenuAnchor !== null}
+        title="Workout"
+        anchor={headerMenuAnchor}
+        onClose={() => setHeaderMenuAnchor(null)}
+        actions={[
+          { key: 'discard', label: 'Discard workout', icon: 'trash-outline', destructive: true, onPress: () => confirmDiscardWorkout(close) },
+        ]}
+      />
       {(() => {
         const menuId = exerciseMenu?.exerciseId ?? null;
         const menuExercise = menuId ? exercises.find(e => e.exerciseId === menuId) ?? null : null;
@@ -2152,21 +2168,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
-  // Laid over the whole row rather than sharing it, so the clock sits at the
-  // screen's center whatever the widths of the minimize button and the timer + Finish group.
-  headerTitle: { position: 'absolute', left: 0, right: 0, top: spacing.sm, bottom: spacing.xsm, alignItems: 'center', justifyContent: 'center' },
-  headerSpacer: { minWidth: 64 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerCircle: { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' },
   // The slash across the timer icon while rest timers are off.
-  headerIconSlash: { position: 'absolute', width: 26, height: 2, borderRadius: 1, backgroundColor: colors.orangeText, transform: [{ rotate: '-45deg' }] },
+  headerIconSlash: { position: 'absolute', width: 22, height: 2, borderRadius: 1, backgroundColor: colors.orangeText, transform: [{ rotate: '-45deg' }] },
   restsOffBanner: { marginHorizontal: spacing.md, marginBottom: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md, paddingLeft: spacing.md, paddingRight: spacing.sm, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   restsOffText: { flex: 1, minWidth: 0, color: colors.textSecondary, fontSize: font.sm },
   restsOffBold: { color: colors.orangeText, fontWeight: fontWeight.semibold },
-  titleBlock: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
-  title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
-  elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
-  subtitle: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
+  titleBlock: { paddingHorizontal: spacing.md + spacing.xs, paddingTop: spacing.sm, paddingBottom: spacing.smd },
+  title: { color: colors.text, fontSize: font.xl, lineHeight: lineHeight.xl, fontWeight: fontWeight.bold },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  clockChip: { backgroundColor: colors.bgTertiary, borderRadius: radius.full, paddingHorizontal: spacing.smd, paddingVertical: spacing.xs },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.textTertiary },
+  elapsed: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
+  subtitle: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
   scroll: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
   emptyWrap: { padding: spacing.md },
   position: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginHorizontal: spacing.xs, marginBottom: spacing.smd },

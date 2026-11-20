@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, TouchableOpacity, type StyleProp, type TextStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { registerCommit } from '../utils/keyActions';
 
@@ -16,6 +16,8 @@ interface Props {
    */
   role?: 'confirm' | 'cancel';
   disabled?: boolean;
+  /** A filled accent pill instead of bare text, for the one primary action in a busy header (workout mode's Finish). */
+  filled?: boolean;
   accessibilityLabel?: string;
   /**
    * Reserves a matching width on the light side of the header so the title
@@ -39,6 +41,7 @@ export function SheetHeaderButton({
   onPress,
   role = 'confirm',
   disabled = false,
+  filled = false,
   accessibilityLabel,
   minWidth,
   style,
@@ -65,6 +68,7 @@ export function SheetHeaderButton({
     <TouchableOpacity
       onPress={disabled ? refuse : onPress}
       hitSlop={8}
+      style={filled ? styles.pill : undefined}
       activeOpacity={disabled ? 1 : interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
@@ -73,8 +77,9 @@ export function SheetHeaderButton({
       <Text
         style={[
           styles.label,
+          filled && styles.pillLabel,
           role === 'confirm' && styles.confirm,
-          minWidth !== undefined && { minWidth, textAlign: role === 'confirm' ? 'right' : 'left' },
+          !filled && minWidth !== undefined && { minWidth, textAlign: role === 'confirm' ? 'right' : 'left' },
           disabled && styles.disabled,
           style,
         ]}
@@ -91,6 +96,8 @@ function refuse() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   label: { color: colors.accentText, fontSize: font.md },
+  pill: { height: 36, paddingHorizontal: spacing.md + 2, borderRadius: radius.full, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
+  pillLabel: { color: colors.onAccent },
   confirm: { fontWeight: fontWeight.semibold },
   disabled: { opacity: 0.4 },
 });
