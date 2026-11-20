@@ -1,4 +1,5 @@
 import { Alert } from 'react-native';
+import { taskById } from '../utils/taskRows';
 import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRowSelection } from './useRowSelection';
@@ -59,7 +60,7 @@ export function useTaskSelection(allTasks: Task[]) {
             // first step, so missing one step misses the rest of its chain too
             // rather than spawning the next step to dismiss one at a time.
             missableIds.forEach(id => {
-              const task = allTasks.find(t => t.id === id);
+              const task = taskById(allTasks, id);
               markMissed(id, { wholeChain: !!task && isMissableMealPlanTask(task) });
             });
             explainRefusedDeletes(bulkDeleteTasks(restIds));
@@ -88,7 +89,7 @@ export function useTaskSelection(allTasks: Task[]) {
   // completing the rest is the right behaviour there: the bar hides the action
   // only when there is nothing at all for it to do.
   const completableCount = Array.from(selectedIds).filter(id => {
-    const t = allTasks.find(x => x.id === id);
+    const t = taskById(allTasks, id);
     return t ? t.polarity !== 'negative' : false;
   }).length;
 

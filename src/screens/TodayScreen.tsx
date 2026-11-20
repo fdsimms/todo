@@ -1461,7 +1461,7 @@ export function TodayScreen() {
     if (widgetCompletionIds.length === 0) return;
     widgetCompletionIds.forEach(id => {
       dequeueWidgetCompletion(id);
-      const task = allTasks.find(t => t.id === id);
+      const task = taskById(allTasks, id);
       if (!task || task.completed) return;
       completeThroughRow(task);
     });
@@ -5844,14 +5844,14 @@ export function TodayScreen() {
               // changes by reference, so leaving draggableData untouched left
               // the task sitting in the new category with nothing saved.
               const recategorizedRecurring = categoryUpdates.some(u => {
-                const task = allTasks.find(t => t.id === u.id);
+                const task = taskById(allTasks, u.id);
                 return task && task.recurrenceType !== 'none';
               });
               // A follow-up task repeats nothing itself, but the ones its rule
               // adds later are filed where the rule's draft says, so a drag
               // gets the same question with the wording for that.
               const recategorizedFollowUp = !recategorizedRecurring && categoryUpdates.some(u => {
-                const task = allTasks.find(t => t.id === u.id);
+                const task = taskById(allTasks, u.id);
                 return task && hasFollowUpSource(task, allTasks);
               });
               if (recategorizedFollowUp) {
@@ -6446,7 +6446,7 @@ export function TodayScreen() {
               const ids = Array.from(selectedIds);
               const tally = new Map<string | null, number>();
               for (const id of ids) {
-                const c = allTasks.find(t => t.id === id)?.category ?? null;
+                const c = taskById(allTasks, id)?.category ?? null;
                 tally.set(c, (tally.get(c) ?? 0) + 1);
               }
               let category: string | null = null;
@@ -6469,7 +6469,7 @@ export function TodayScreen() {
             }}
             onTogglePin={() => { animateLayout(); bulkTogglePin(Array.from(selectedIds)); exitSelection(); }}
             allPinned={selectedIds.size > 0 && Array.from(selectedIds).every(
-              id => allTasks.find(t => t.id === id)?.pinned,
+              id => taskById(allTasks, id)?.pinned,
             )}
             onSelectAll={() => selectAll(visibleForMode.map(t => t.id))}
             onDeselectAll={deselectAll}

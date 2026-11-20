@@ -36,6 +36,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { describeConditions, describeVariants, questionLabel, setItemConditionRange, setVariantText, toggleItemCondition, variantText } from '../utils/templateQuestions';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
 import { useShallow } from 'zustand/react/shallow';
 import {
   anchorLabel,
@@ -151,6 +152,9 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
   { value: 'sunset', label: 'Sunset' },
 ];
 
+/** What a list reads as before the editor has ever been opened (see `useStoreWhileOpen`, and `TaskEditor`'s own). */
+const NO_ROWS: never[] = [];
+
 export function TemplateItemEditor({ visible, templateId, templateName, item, initialDraft, onClose, onCreated }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -233,9 +237,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   // Every medication ever logged, for the "Log a dose" name field's own
   // suggestions below — see medicationVocabulary for what it unions
   // rather than a registry.
-  const medicationLogs = useMedicationStore(useShallow(s => s.logs));
-  const archivedMedications = useMedicationStore(useShallow(s => s.archived));
-  const registeredMedications = useMedicationStore(useShallow(s => s.registered));
+  const medicationLogs = useStoreWhileOpen(useMedicationStore, visible, s => s.logs, NO_ROWS);
+  const archivedMedications = useStoreWhileOpen(useMedicationStore, visible, s => s.archived, NO_ROWS);
+  const registeredMedications = useStoreWhileOpen(useMedicationStore, visible, s => s.registered, NO_ROWS);
   const medicationSuggestions = useMemo(
     () => medicationVocabulary(medicationLogs, archivedMedications, registeredMedications),
     [medicationLogs, archivedMedications, registeredMedications]

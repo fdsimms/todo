@@ -451,27 +451,33 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       // truth rather than a failed read to paper over, and holding the last
       // good number would keep reporting a figure after access was revoked —
       // the one state this feature must not misreport.
-      set({
-        today: {
-          dayKey,
-          steps: reading?.steps ?? null,
-          sleepHours: reading?.sleepMinutes == null ? null : reading.sleepMinutes / 60,
-          sodiumMg: reading?.sodiumMg ?? null,
-          proteinG: reading?.proteinG ?? null,
-          satFatG: reading?.satFatG ?? null,
-          fiberG: reading?.fiberG ?? null,
-          sugarG: reading?.sugarG ?? null,
-          caffeineMg: reading?.caffeineMg ?? null,
-          waterMl: reading?.waterMl ?? null,
-          calorieKcal: reading?.calorieKcal ?? null,
-          activeEnergyKcal: reading?.activeEnergyKcal ?? null,
-          exerciseMinutes: reading?.exerciseMinutes ?? null,
-          daylightMinutes: reading?.daylightMinutes ?? null,
-          exerciseMinutesSeenRecently,
-          rings: parseActivitySummary(summaryJson),
-          readAt: now.toISOString(),
-        },
-      });
+      const next = {
+        dayKey,
+        steps: reading?.steps ?? null,
+        sleepHours: reading?.sleepMinutes == null ? null : reading.sleepMinutes / 60,
+        sodiumMg: reading?.sodiumMg ?? null,
+        proteinG: reading?.proteinG ?? null,
+        satFatG: reading?.satFatG ?? null,
+        fiberG: reading?.fiberG ?? null,
+        sugarG: reading?.sugarG ?? null,
+        caffeineMg: reading?.caffeineMg ?? null,
+        waterMl: reading?.waterMl ?? null,
+        calorieKcal: reading?.calorieKcal ?? null,
+        activeEnergyKcal: reading?.activeEnergyKcal ?? null,
+        exerciseMinutes: reading?.exerciseMinutes ?? null,
+        daylightMinutes: reading?.daylightMinutes ?? null,
+        exerciseMinutesSeenRecently,
+        rings: parseActivitySummary(summaryJson),
+        readAt: now.toISOString(),
+      };
+      // The same figures as the reading already held are that reading: only
+      // the time it was read differs, which nothing shows. Stored as a new
+      // object anyway, every refresh (Today asks each half minute) re-rendered
+      // whatever follows `today`, the whole of Today included, to draw the
+      // numbers it already had.
+      const held = get().today;
+      if (held && JSON.stringify({ ...held, readAt: '' }) === JSON.stringify({ ...next, readAt: '' })) return;
+      set({ today: next });
     } finally {
       set({ refreshing: false });
     }

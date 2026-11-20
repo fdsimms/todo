@@ -122,6 +122,7 @@ import { logSlotToMealSlot, slotForHour } from '../utils/mealLog';
 import { categoryLabel } from '../utils/categoryLabel';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
+import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { describeSoundChoice, soundChoiceFrom } from '../utils/alarmSounds';
 import { NEXT_ALARM_LINK } from '../utils/morningAlarm';
@@ -554,6 +555,11 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
 ];
 
 const NO_TASKS: Task[] = [];
+// What a list reads as before the editor has ever been opened. Once it has, a
+// closed editor holds the lists it last showed (see `useStoreWhileOpen`): it
+// only needs them while open, and following them closed re-ran this whole
+// component on each grocery item checked off, dose logged or person edited.
+const NO_ROWS: never[] = [];
 
 function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inline = false, dirtyCheckRef, changedSummaryRef }: Props) {
   // ==== the task on screen ====
@@ -624,14 +630,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // site so the sheet's other ~40 store bindings all sit together. `addToPantry`
   // is the create path: a supply is a thing kept in a cupboard, not a thing
   // wanted on this week's list — going low is what puts it on the list.
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const groceryItems = useStoreWhileOpen(useGroceryStore, visible, s => s.items, NO_ROWS);
   const addGroceryItem = useGroceryStore(s => s.addToPantry);
   // Every medication ever logged, for the "Log a dose" name field's own
   // suggestions below — see medicationVocabulary for what it unions
   // rather than a registry.
-  const medicationLogs = useMedicationStore(useShallow(s => s.logs));
-  const archivedMedications = useMedicationStore(useShallow(s => s.archived));
-  const registeredMedications = useMedicationStore(useShallow(s => s.registered));
+  const medicationLogs = useStoreWhileOpen(useMedicationStore, visible, s => s.logs, NO_ROWS);
+  const archivedMedications = useStoreWhileOpen(useMedicationStore, visible, s => s.archived, NO_ROWS);
+  const registeredMedications = useStoreWhileOpen(useMedicationStore, visible, s => s.registered, NO_ROWS);
   const medicationSuggestions = useMemo(
     () => medicationVocabulary(medicationLogs, archivedMedications, registeredMedications),
     [medicationLogs, archivedMedications, registeredMedications]
@@ -639,7 +645,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // Archived people are out of the picker but never stripped off a task that
   // already names them: filing somebody away is about the list, not about
   // rewriting what you did together.
-  const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
+  const people = useStoreWhileOpen(usePersonStore, visible, s => s.people.filter(p => !p.archived), NO_ROWS);
   const colors = useColors();
   const { isDark } = useTheme();
   const textScaleFactor = useTextScale();
@@ -905,7 +911,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [logMealSlot, setLogMealSlot] = useState<LogMealSlot | null>(null);
   const [logSavedMealId, setLogSavedMealId] = useState<string | null>(null);
   const [logMealSlotByTime, setLogMealSlotByTime] = useState(false);
-  const savedMeals = useSavedMealsStore(s => s.meals);
+  const savedMeals = useStoreWhileOpen(useSavedMealsStore, visible, s => s.meals, NO_ROWS);
   const addSavedMeal = useSavedMealsStore(s => s.addMeal);
   const [newMealOpen, setNewMealOpen] = useState(false);
   // Every task this one waits on, in order. Several are allowed, and it waits
@@ -998,7 +1004,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // that is gone stays named as not found, as a deleted template does.
   const [experimentId, setExperimentId] = useState<string | null>(null);
   const [showExperimentPicker, setShowExperimentPicker] = useState(false);
-  const experiments = useExperimentStore(s => s.experiments);
+  const experiments = useStoreWhileOpen(useExperimentStore, visible, s => s.experiments, NO_ROWS);
   const linkedExperimentName = experimentId ? experiments.find(e => e.id === experimentId)?.label ?? null : null;
   const linkedTemplateName = useTemplateStore(s => templateId ? s.templates.find(t => t.id === templateId)?.name ?? null : null);
   // Task.workoutRoutineId / workoutProgramId: the routine "Workout" on the
@@ -1008,8 +1014,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [workoutProgramId, setWorkoutProgramId] = useState<string | null>(null);
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
   const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
-  const workoutRoutines = useWorkoutStore(s => s.routines);
-  const workoutPrograms = useWorkoutStore(s => s.programs);
+  const workoutRoutines = useStoreWhileOpen(useWorkoutStore, visible, s => s.routines, NO_ROWS);
+  const workoutPrograms = useStoreWhileOpen(useWorkoutStore, visible, s => s.programs, NO_ROWS);
   const pickWorkout = (link: { routineId?: string | null; programId?: string | null }) => {
     setWorkoutRoutineId(link.routineId ?? null);
     setWorkoutProgramId(link.programId ?? null);
@@ -1125,7 +1131,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
-  const appGroups = useAppGroupStore(s => s.groups);
+  const appGroups = useStoreWhileOpen(useAppGroupStore, visible, s => s.groups, NO_ROWS);
   const appGroupsMeta = useAppGroupStore(s => s.meta);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
@@ -1150,7 +1156,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   })();
   const activeHoursStart = useSettingsStore(s => s.activeHoursStart);
   const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
-  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarEvents = useStoreWhileOpen(useCalendarStore, visible, s => s.events, NO_ROWS);
   const calendarLoaded = useCalendarStore(s => s.loaded);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
@@ -1194,7 +1200,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // Whether the Date lands on an on-call stretch, said under the row. A task with
   // a time window is a moment (its start), so a day with a shift that ends before
   // it passes; without one, any stretch that day counts.
-  const onCallSpans = useOnCallStore(s => s.spans);
+  const onCallSpans = useStoreWhileOpen(useOnCallStore, visible, s => s.spans, NO_ROWS);
   const onCallWarning = useMemo(() => {
     if (!dueDate) return null;
     if (!windowStart) return onCallWarningForDay(onCallSpans, dueDate, dayResetTime, use24HourTime);

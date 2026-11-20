@@ -1756,9 +1756,9 @@ function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
 // selector runs on every store write and again on every render of its
 // component, so without this each row expanding or sheet opening on Today
 // re-ran every gate over every open task. The inputs are the task state the
-// lenses read, every store the gates consult (settings and categories
-// directly, projects and people through their registries), and the clock,
-// since a gate can open on the clock alone.
+// lenses read, every store the gates consult (the settings they read, see
+// LENS_SETTING_KEYS, and categories directly, projects and people through
+// their registries), and the clock, since a gate can open on the clock alone.
 //
 // The clock is read in half-minute steps, the heartbeat's own period
 // (NOW_TICK_MS). Read to the second, the cache missed on nearly every render
@@ -1776,12 +1776,38 @@ function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
 const LENS_CLOCK_MS = 30_000;
 const lensCache = new Map<string, { inputs: readonly unknown[]; result: Task[] }>();
 
+/**
+ * The settings the list gates read, which is what the lens cache keeps its
+ * answers per. Named one by one rather than keyed on the whole settings state:
+ * that changes on every settings write there is, so folding a category
+ * section on Today, or the navigator recording the screen it is on, threw
+ * every list away and refiltered them all.
+ *
+ * **A gate that starts reading another setting adds it here**, or the lists
+ * go on showing the old answer until something else changes. The
+ * "lens cache settings" test in `useDemoStore.test.ts` runs every lens over
+ * the demo data and fails on a setting read that isn't listed.
+ */
+export const LENS_SETTING_KEYS = [
+  'dayResetTime',
+  'vacationMode',
+  'morningStart',
+  'afternoonStart',
+  'eveningStart',
+  'nightStart',
+  'activeHoursStart',
+  'activeHoursEnd',
+  'weekStartsOn',
+  'sunLocation',
+] as const;
+
 function lensInputs(state: Pick<TaskStore, 'tasks' | 'completionHoldIds' | 'quotaHoldIds'>): unknown[] {
+  const settings = useSettingsStore.getState();
   return [
     state.tasks,
     state.completionHoldIds,
     state.quotaHoldIds,
-    useSettingsStore.getState(),
+    ...LENS_SETTING_KEYS.map(key => settings[key]),
     useCategoryStore.getState(),
     useProjectStore.getState(),
     usePersonStore.getState(),
