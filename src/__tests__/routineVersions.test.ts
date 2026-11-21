@@ -21,6 +21,7 @@ import {
   programStructureChanged,
   programVersionTrained,
   programWeeksText,
+  progressionHome,
   routineContentChanged,
   routineHistory,
   routineVersionTrained,
@@ -405,5 +406,22 @@ describe('sessionPlan', () => {
   it('falls back to the routine for a version this device lacks, and to nothing without a routine', () => {
     expect(sessionPlan({ routineId: 'r', routineVersionId: 'gone' }, [routine], [v1, v2])).toBe(routine);
     expect(sessionPlan({ routineId: null, routineVersionId: null }, [routine], [v1])).toBeNull();
+  });
+});
+
+describe('progressionHome', () => {
+  const routine = { id: 'r', currentVersionId: 'v2', items: [{ exerciseId: 'a' }] } as unknown as WorkoutRoutine;
+  const v1 = { id: 'v1', routineId: 'r', createdAt: '2026-01-01T00:00:00.000Z', items: [{ exerciseId: 'a' }] } as unknown as WorkoutRoutineVersion;
+  const v2 = { id: 'v2', routineId: 'r', createdAt: '2026-02-01T00:00:00.000Z', items: [{ exerciseId: 'a' }] } as unknown as WorkoutRoutineVersion;
+  const on = (routineVersionId: string | null) => ({ routineId: 'r', routineVersionId, startedAt: '2026-02-15T10:00:00.000Z' });
+
+  it('is the routine for a workout on its current version that has the exercise', () => {
+    expect(progressionHome(on('v2'), [routine], [v1, v2], 'a')).toBe('routine');
+  });
+
+  it('is the workout alone with no routine, on an older version, or for an exercise the routine lacks', () => {
+    expect(progressionHome({ routineId: null, routineVersionId: null, startedAt: '2026-02-15T10:00:00.000Z' }, [routine], [v1, v2], 'a')).toBe('workout');
+    expect(progressionHome(on('v1'), [routine], [v1, v2], 'a')).toBe('workout');
+    expect(progressionHome(on('v2'), [routine], [v1, v2], 'b')).toBe('workout');
   });
 });

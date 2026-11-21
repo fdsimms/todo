@@ -354,6 +354,17 @@ export interface WorkoutSession {
    */
   restOverrides?: Record<string, number>;
   /**
+   * How an exercise moves on, set on it while the workout was going, keyed by
+   * `Exercise.id`, for a workout whose routine can't take the choice: one with
+   * no routine, one started on an older version of it, or an exercise added
+   * mid-workout. It outranks the routine item's and the program's scheme for
+   * this workout only (`exerciseProposal`), and the finish summary offers it
+   * as a change to the routine where there is one. A workout on its routine's
+   * current version writes the routine itself and carries none. Absent when
+   * there are none.
+   */
+  progressionOverrides?: Record<string, ProgressionScheme>;
+  /**
    * The person's body weight in kilograms when the workout started, read from
    * Health and kept here so a later weigh-in doesn't rewrite an old workout's
    * bodyweight volume (`bodyweightVolumeKg`). Null or absent when Health had no

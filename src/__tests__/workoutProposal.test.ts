@@ -47,6 +47,18 @@ describe('exerciseProposal', () => {
     expect(p.item?.exerciseId).toBe(BENCH);
   });
 
+  it('takes the workout\'s own scheme over the item\'s, and works with no routine for a scheme that needs no rep target', () => {
+    // Linear moves up after a workout that reached the item's reps; the item says 6 to 8 and last time was 8.
+    const own = exerciseProposal({ ...base, routine: routine(), progressionOverrides: { [BENCH]: 'rpe' } })!;
+    expect(own.proposal).toMatchObject({ scheme: 'rpe', move: 'same' });
+    const free = exerciseProposal({ ...base, routine: null, progressionOverrides: { [BENCH]: 'rpe' } })!;
+    expect(free.proposal.scheme).toBe('rpe');
+    expect(free.item).toBeNull();
+    expect(exerciseProposal({ ...base, routine: null, progressionOverrides: { someoneElse: 'rpe' } })).toBeNull();
+    // Rep range and linear have nothing to measure against without a rep target.
+    expect(exerciseProposal({ ...base, routine: null, progressionOverrides: { [BENCH]: 'double' } })).toBeNull();
+  });
+
   it('is null with no scheme or no exercise to read', () => {
     expect(exerciseProposal({ ...base, routine: null })).toBeNull();
     expect(exerciseProposal({ ...base, exerciseId: 'nobody', routine: routine() })).toBeNull();

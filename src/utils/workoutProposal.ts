@@ -3,6 +3,7 @@ import type {
   Exercise,
   ExerciseKind,
   PlateInventory,
+  ProgressionScheme,
   WorkoutProgram,
   WorkoutRoutine,
   WorkoutRoutineItem,
@@ -64,6 +65,8 @@ export interface ExerciseProposalInput {
   gymDumbbells?: DumbbellRack | null;
   /** The Settings choice for two-dumbbell exercises, which scales the proposal's words only. */
   dumbbellEntry?: DumbbellEntry;
+  /** The workout's own scheme per exercise (`WorkoutSession.progressionOverrides`), which outranks the item's and the program's. */
+  progressionOverrides?: Readonly<Record<string, ProgressionScheme>> | null;
 }
 
 /** A proposal with what it was worked out against, which "Use" needs again. */
@@ -84,7 +87,7 @@ export function exerciseProposal(input: ExerciseProposalInput): ExerciseProposal
   if (!base) return null;
   const info = withGymBar(base, { barKg: input.gymBarKg ?? null });
   const item = input.routine?.items.find(i => i.exerciseId === input.exerciseId) ?? null;
-  const scheme = schemeFor(item, input.program);
+  const scheme = input.progressionOverrides?.[input.exerciseId] ?? schemeFor(item, input.program);
   if (!scheme) return null;
   const baseLoad = loadContextFor(info, input.plateInventory, input.unit, item, weightScale(base, input.dumbbellEntry ?? 'each'));
   const load: LoadContext = {

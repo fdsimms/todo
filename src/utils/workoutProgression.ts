@@ -115,6 +115,27 @@ export function schemeFor(
   return item?.progression?.scheme ?? program?.scheme ?? null;
 }
 
+/**
+ * The schemes worth offering for an exercise: ones that can propose anything.
+ * Rep range and linear read the item's rep target, so with none (a workout
+ * with no routine, or an exercise added mid-workout) only RPE can; a
+ * percentage needs a program's training max. `chosen`, a scheme already set,
+ * is always kept so it can be seen and changed.
+ */
+export function schemesOffered(
+  item: Pick<WorkoutRoutineItem, 'targets'> | null,
+  inProgram: boolean,
+  chosen: ProgressionScheme | null,
+): ProgressionScheme[] {
+  const hasReps = workingTargets(item).some(t => t.repsMin !== null || t.repsMax !== null);
+  return (['double', 'linear', 'percent', 'rpe'] as const).filter(s => {
+    if (s === chosen) return true;
+    if (s === 'percent') return inProgram;
+    if (s === 'double' || s === 'linear') return hasReps;
+    return true;
+  });
+}
+
 // ==== loads the person can make ====
 
 /** What rounding a weight needs to know about the exercise and the gym. */

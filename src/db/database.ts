@@ -29,6 +29,7 @@ import type {
   WorkoutRoutineVersion,
   WorkoutProgramVersion,
   WorkoutProgram,
+  ProgressionScheme,
   WorkoutSession,
   WorkoutSet,
   JournalEntry,
@@ -2591,6 +2592,8 @@ function runInitDatabase(): void {
     'ALTER TABLE workout_sessions ADD COLUMN routine_version_id TEXT',
     // WorkoutSession.restOverrides: rests set per exercise mid-workout, JSON. NULL on a workout that set none.
     'ALTER TABLE workout_sessions ADD COLUMN rest_overrides TEXT',
+    // WorkoutSession.progressionOverrides: a progression scheme set per exercise mid-workout where the routine can't take it, JSON. NULL on a workout that set none.
+    'ALTER TABLE workout_sessions ADD COLUMN progression_overrides TEXT',
     // WorkoutSession.bodyweightKg: the body weight read from Health when the workout started. NULL on every existing
     // workout, which has no bodyweight figure (none is backfilled), and on one started with no Health reading.
     'ALTER TABLE workout_sessions ADD COLUMN bodyweight_kg REAL',
@@ -8774,7 +8777,24 @@ function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
     timesEdited: Number(row.times_edited) === 1,
     bodyweightKg: numOrNull(row.bodyweight_kg),
     ...restOverridesField(row.rest_overrides),
+    ...progressionOverridesField(row.progression_overrides),
   };
+}
+
+/** `progression_overrides` as the spread the row mapper adds: nothing for NULL or JSON that isn't a map of known schemes. */
+function progressionOverridesField(raw: unknown): { progressionOverrides?: Record<string, ProgressionScheme> } {
+  if (typeof raw !== 'string') return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, ProgressionScheme> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (v === 'double' || v === 'linear' || v === 'percent' || v === 'rpe') out[k] = v;
+    }
+    return Object.keys(out).length > 0 ? { progressionOverrides: out } : {};
+  } catch {
+    return {};
+  }
 }
 
 /** `rest_overrides` as the spread the row mapper adds: nothing for NULL or JSON that isn't a map of whole seconds. */
@@ -8830,13 +8850,14 @@ export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions
       (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending,
-       measured_on_watch, times_edited, gym_id, routine_version_id, rest_overrides, bodyweight_kg)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       measured_on_watch, times_edited, gym_id, routine_version_id, rest_overrides, progression_overrides, bodyweight_kg)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
       s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0, s.timesEdited ? 1 : 0, s.gymId ?? null,
       s.routineVersionId ?? null,
       s.restOverrides && Object.keys(s.restOverrides).length > 0 ? JSON.stringify(s.restOverrides) : null,
+      s.progressionOverrides && Object.keys(s.progressionOverrides).length > 0 ? JSON.stringify(s.progressionOverrides) : null,
       s.bodyweightKg ?? null,
     ]
   );

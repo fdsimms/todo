@@ -83,12 +83,12 @@ import { parseSetCell, typedTickValues } from '../utils/workoutCell';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, rivalOf, routineChanges } from '../utils/routineUpdate';
-import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
+import { currentRoutineVersion, finishVersionText, progressionHome, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
 import { sessionBodyweightVolumeKg } from '../utils/bodyweightLoad';
 import { recordLines } from '../utils/workoutRecordText';
-import { proposalActionLabel, proposalApplied, proposalHeadline, schemeFor, workingSetLogged, type Proposal } from '../utils/workoutProgression';
+import { proposalActionLabel, proposalApplied, proposalHeadline, schemeFor, schemesOffered, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { PROGRESSION_EXPLAINERS, PROGRESSION_LABELS } from '../utils/workoutRoutine';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -574,31 +574,38 @@ export function WorkoutModeScreen() {
   // `open` names a list inside the menu to start on (the Set progression chip opens the schemes directly); no anchor centers the card.
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor | null; open?: string } | null>(null);
   // ==== progression: how an exercise moves on, set from inside the workout ====
-  // The routine item this workout is planned by, when a scheme can be set on it:
-  // a weight and reps exercise of a routine the workout is on the current
-  // version of. One started on an older version is planned by that version
-  // throughout (`sessionPlan`), so a scheme saved now would not reach it.
-  const progressionItem = (exerciseId: string) =>
-    session && session.endedAt === null && !oldVersion
-      && (catalogExercise(exerciseRows, exerciseId)?.kind ?? 'weight_reps') === 'weight_reps'
-      ? startedPlan?.items.find(i => i.exerciseId === exerciseId) ?? null
-      : null;
+  // Any weight and reps exercise of a live workout can have one set. Where it is
+  // kept is the store's call (`progressionHome`): on the routine when this
+  // workout is on its current version, else on the workout alone.
+  const canSetProgression = (exerciseId: string) =>
+    !!session && session.endedAt === null
+    && (catalogExercise(exerciseRows, exerciseId)?.kind ?? 'weight_reps') === 'weight_reps';
+  const itemOf = (exerciseId: string) => startedPlan?.items.find(i => i.exerciseId === exerciseId) ?? null;
+  // The scheme moving the exercise on in this workout, whoever set it.
+  const schemeOfExercise = (exerciseId: string) =>
+    session?.progressionOverrides?.[exerciseId] ?? schemeFor(itemOf(exerciseId), program);
   const chooseProgression = (exerciseId: string, scheme: ProgressionScheme | null) => {
     if (!session) return;
     const done = useWorkoutStore.getState().setExerciseProgression(session.id, exerciseId, scheme);
     if (done === true) { haptics.success(); return; }
     Alert.alert(
       'Couldn’t set the progression',
-      'This workout has finished, or its routine has changed since it started. Set it from the routine’s editor instead.',
+      'This workout has already finished. Set it from the routine’s editor instead.',
     );
   };
-  // The schemes as the exercise's "…" menu lists them. A scheme the item already has is ticked
-  // and does nothing when tapped; None shows only while there is one to clear.
+  // The schemes as the exercise's "…" menu lists them. A scheme already chosen
+  // for the exercise is ticked and does nothing when tapped. The last row takes
+  // the exercise's own choice back, and shows only while there is one.
   const progressionChoices = (exerciseId: string) => {
-    const own = progressionItem(exerciseId)?.progression?.scheme ?? null;
-    const choices = (['double', 'linear', 'percent', 'rpe'] as const)
-      // A percentage of the training max needs a program to hold the max.
-      .filter(s => s !== 'percent' || program !== null || own === 'percent')
+    if (!session) return [];
+    const store = useWorkoutStore.getState();
+    const onRoutine = progressionHome(session, store.routines, store.routineVersions, exerciseId) === 'routine';
+    const item = itemOf(exerciseId);
+    const override = session.progressionOverrides?.[exerciseId] ?? null;
+    const own = override ?? item?.progression?.scheme ?? null;
+    // What applies once this workout's own choice is taken back.
+    const without = schemeFor(item, program);
+    const choices = schemesOffered(item, program !== null, own)
       .map(s => ({
         key: s,
         label: PROGRESSION_LABELS[s],
@@ -606,10 +613,15 @@ export function WorkoutModeScreen() {
         checked: own === s,
         onPress: () => { if (own !== s) chooseProgression(exerciseId, s); },
       }));
-    return own === null ? choices : [...choices, {
+    const clearable = onRoutine ? item?.progression != null : override !== null;
+    if (!clearable) return choices;
+    const fallback = onRoutine ? (program?.scheme ?? null) : without;
+    return [...choices, {
       key: 'none',
-      label: 'None',
-      detail: program?.scheme ? 'Use the program’s choice.' : 'No weight suggestions for this exercise.',
+      label: !onRoutine && without ? `Back to ${PROGRESSION_LABELS[without]}` : 'None',
+      detail: fallback
+        ? (onRoutine ? 'Use the program’s choice.' : 'Undo the choice made in this workout.')
+        : 'No weight suggestions for this exercise.',
       checked: false,
       onPress: () => chooseProgression(exerciseId, null),
     }];
@@ -802,6 +814,7 @@ export function WorkoutModeScreen() {
         // A load taken from the suggestion is the plan working, not a change to it.
         suggestedKg: id => liveProposal(session.id, id)?.proposal.sets.find(x => x.kind !== 'warmup')?.weightKg ?? null,
         restOverrides: session.restOverrides,
+        progressionOverrides: session.progressionOverrides,
         defaultRestSeconds,
       });
     },
@@ -1298,6 +1311,7 @@ export function WorkoutModeScreen() {
                 gymIncrementKg: gymIncrementKg(gymSetting),
                 gymDumbbells: gym?.dumbbells ?? null,
                 dumbbellEntry,
+                progressionOverrides: session.progressionOverrides,
               }) : null;
               const proposal = shownProposal?.proposal ?? null;
 
@@ -1409,7 +1423,7 @@ export function WorkoutModeScreen() {
                         accessibilityLabel={`Add a note on ${viewedInfo?.name ?? 'this exercise'}`}
                       />
                     )}
-                    {schemeFor(progressionItem(viewed.exerciseId), program) === null && progressionItem(viewed.exerciseId) && (
+                    {canSetProgression(viewed.exerciseId) && schemeOfExercise(viewed.exerciseId) === null && (
                       <InlineAction
                         icon="trending-up-outline"
                         label="Set progression"
@@ -1795,7 +1809,7 @@ export function WorkoutModeScreen() {
                 icon: 'swap-horizontal' as const,
                 onPress: () => { setViewedId(menuId); setPicking('swap'); },
               }] : []),
-              ...(progressionItem(menuId) ? [{
+              ...(canSetProgression(menuId) ? [{
                 key: 'progression',
                 label: 'Progression…',
                 icon: 'trending-up-outline' as const,

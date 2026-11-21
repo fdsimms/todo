@@ -6787,6 +6787,17 @@ describe('workouts', () => {
     expect(dbGetAllWorkoutSessions()[0]).not.toHaveProperty('restOverrides');
   });
 
+  it('round-trips the progression chosen mid-workout, and reads junk as none', () => {
+    dbSaveWorkoutSession({ ...session, progressionOverrides: { 'lib:push-up': 'double', c1: 'rpe' } });
+    expect(dbGetAllWorkoutSessions()[0].progressionOverrides).toEqual({ 'lib:push-up': 'double', c1: 'rpe' });
+    dbSaveWorkoutSession({ ...session, progressionOverrides: {} });
+    expect(dbGetAllWorkoutSessions()[0]).not.toHaveProperty('progressionOverrides');
+    mockRawDb.prepare('UPDATE workout_sessions SET progression_overrides = ?').run('{"a":"linear","b":"nonsense","c":4}');
+    expect(dbGetAllWorkoutSessions()[0].progressionOverrides).toEqual({ a: 'linear' });
+    mockRawDb.prepare('UPDATE workout_sessions SET progression_overrides = ?').run('not json');
+    expect(dbGetAllWorkoutSessions()[0]).not.toHaveProperty('progressionOverrides');
+  });
+
   it('round-trips sessions and sets, in the order they are done', () => {
     dbSaveWorkoutSession(session);
     dbSaveWorkoutSets([set('b', { setIndex: 1 }), set('a'), set('c', { exerciseId: 'c1', position: 1, completedAt: null })]);

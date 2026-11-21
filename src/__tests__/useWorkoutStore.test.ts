@@ -495,26 +495,60 @@ describe('setting a progression from inside the workout', () => {
     expect(schemeOf(s.id, 'lib:back-squat')).toBe('linear');
   });
 
-  it('refuses a finished workout, an exercise the routine lacks, and a workout with no routine', () => {
+  it('refuses a finished workout and an unknown one', () => {
     const r = ok(state().addRoutine('Push A', [press]));
     const s = ok(state().startSession({ routineId: r.id }));
-    expect(state().setExerciseProgression(s.id, 'lib:back-squat', 'double')).toBe('notFound');
     expect(state().setExerciseProgression('nope', 'lib:push-up', 'double')).toBe('notFound');
     finish(s.id);
     expect(state().setExerciseProgression(s.id, 'lib:push-up', 'double')).toBe('finished');
-    const free = ok(state().startSession());
-    expect(state().setExerciseProgression(free.id, 'lib:push-up', 'double')).toBe('notFound');
     expect(state().routines[0].items[0].progression).toBeNull();
   });
 
-  it('refuses a workout started on an older version, which is planned by that version throughout', () => {
-    const r = ok(state().addRoutine('Push A', [press]));
-    const first = ok(state().startSession({ routineId: r.id }));
-    finish(first.id);
-    ok(state().updateRoutine(r.id, { items: [{ ...press, restSeconds: 90 }] }, { version: 'new' }));
-    const old = ok(state().startSession({ routineId: r.id, routineVersionId: first.routineVersionId }));
-    expect(state().setExerciseProgression(old.id, 'lib:push-up', 'double')).toBe('notFound');
-    expect(state().routines[0].items[0].progression).toBeNull();
+  describe('where the routine cannot take it', () => {
+    const overrideOf = (sessionId: string) => state().sessions.find(x => x.id === sessionId)?.progressionOverrides;
+
+    it('keeps it on a workout with no routine, and reads it back after a reload', () => {
+      const s = ok(state().startSession());
+      expect(state().setExerciseProgression(s.id, 'lib:push-up', 'double')).toBe(true);
+      expect(overrideOf(s.id)).toEqual({ 'lib:push-up': 'double' });
+      reload();
+      expect(overrideOf(s.id)).toEqual({ 'lib:push-up': 'double' });
+      expect(state().setExerciseProgression(s.id, 'lib:push-up', null)).toBe(true);
+      expect(dbGetWorkoutSession(s.id)).not.toHaveProperty('progressionOverrides');
+    });
+
+    it('keeps it on a workout started on an older version, and leaves the routine and its versions alone', () => {
+      const r = ok(state().addRoutine('Push A', [press]));
+      const first = ok(state().startSession({ routineId: r.id }));
+      finish(first.id);
+      ok(state().updateRoutine(r.id, { items: [{ ...press, restSeconds: 90 }] }, { version: 'new' }));
+      const old = ok(state().startSession({ routineId: r.id, routineVersionId: first.routineVersionId }));
+      const before = versionCount(r.id);
+      expect(state().setExerciseProgression(old.id, 'lib:push-up', 'double')).toBe(true);
+      expect(overrideOf(old.id)).toEqual({ 'lib:push-up': 'double' });
+      expect(state().routines[0].items[0].progression).toBeNull();
+      expect(versionCount(r.id)).toBe(before);
+      expect(state().sessions.find(x => x.id === old.id)?.routineVersionId).toBe(first.routineVersionId);
+    });
+
+    it('keeps it for an exercise the routine lacks, such as one added mid-workout', () => {
+      const r = ok(state().addRoutine('Push A', [press]));
+      const s = ok(state().startSession({ routineId: r.id }));
+      expect(state().setExerciseProgression(s.id, 'lib:back-squat', 'linear')).toBe(true);
+      expect(overrideOf(s.id)).toEqual({ 'lib:back-squat': 'linear' });
+      expect(state().routines[0].items).toHaveLength(1);
+    });
+
+    it('drops a workout-only choice once the routine holds one for that exercise', () => {
+      const r = ok(state().addRoutine('Push A', [press]));
+      const s = ok(state().startSession({ routineId: r.id }));
+      // Force a stale choice the way an older build or a restored version could leave one.
+      dbSaveWorkoutSession({ ...dbGetWorkoutSession(s.id)!, progressionOverrides: { 'lib:push-up': 'rpe' } });
+      reload();
+      expect(state().setExerciseProgression(s.id, 'lib:push-up', 'double')).toBe(true);
+      expect(overrideOf(s.id)).toBeUndefined();
+      expect(schemeOf(s.id)).toBe('double');
+    });
   });
 });
 

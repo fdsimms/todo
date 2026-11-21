@@ -553,7 +553,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/routinePicker.ts` — RoutineOption, RoutineFilterResult, filterRoutines, resolveRoutineSubmit
 - `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
 - `src/utils/routineUpdate.ts` — RoutineChange, rivalOf, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
-- `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, sessionPlan, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, +35 more
+- `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, sessionPlan, progressionHome, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, +36 more
 - `src/utils/rowAmount.ts` — ROW_AMOUNT_PRESETS, MAX_ROW_FACTOR, adjustedQuantity, canAdjustAmount, parseRowFactor, describeRowFactor
 - `src/utils/rowClock.ts` — rowFollowsClock
 - `src/utils/rowCursor.ts` — stepCursor, settleCursor
@@ -769,7 +769,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutLiveActivity.ts` — WorkoutRunPhase, WorkoutRun, buildWorkoutRun, workoutActivitySessionId
 - `src/utils/workoutProgram.ts` — ProgramProgress, nextCycleStart, liveRotation, programSessions, programProgress, isRunnableProgram, currentProgram, weekLabel, describeProgress
 - `src/utils/workoutProgramLibrary.ts` — LibraryProgramRoutine, LibraryProgram, PROGRAM_LIBRARY, libraryProgram, percentExercises
-- `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +29 more
+- `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +30 more
 - `src/utils/workoutProposal.ts` — ExerciseProposalInput, ExerciseProposal, exerciseProposal, proposalRamp, proposalWrites
 - `src/utils/workoutProposalApply.ts` — liveProposal, ApplyProposalOptions, applyProposal
 - `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, recordLines, metricLabel, metricNote, metricCaption, +6 more

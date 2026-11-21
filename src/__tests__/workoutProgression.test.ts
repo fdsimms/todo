@@ -18,6 +18,7 @@ import {
   roundLoad,
   sameLoad,
   schemeFor,
+  schemesOffered,
   suggestedTrainingMaxKg,
   trainingMaxRaises,
   waveOffset,
@@ -519,5 +520,25 @@ describe('a gym’s dumbbell rack', () => {
     const p = proposeNext(input({ scheme: 'linear', item: lin, history: heavy, load: racked }))!;
     expect(p.move).toBe('same');
     expect(proposeNext(input({ scheme: 'linear', item: lin, history: [done('s5', 0, 5, 5), done('s5', 1, 5, 5)], load: racked }))!.move).toBe('same');
+  });
+});
+
+describe('schemesOffered', () => {
+  const ranged = { targets: [{ kind: 'working' as const, repsMin: 8, repsMax: 12 }] };
+  const bare = { targets: [{ kind: 'warmup' as const, repsMin: null, repsMax: null }, { kind: 'working' as const, repsMin: null, repsMax: null }] };
+
+  it('offers every scheme but a percentage outside a program when the item has a rep target', () => {
+    expect(schemesOffered(ranged, false, null)).toEqual(['double', 'linear', 'rpe']);
+    expect(schemesOffered(ranged, true, null)).toEqual(['double', 'linear', 'percent', 'rpe']);
+  });
+
+  it('offers only RPE where there is no rep target to measure against', () => {
+    expect(schemesOffered(null, false, null)).toEqual(['rpe']);
+    expect(schemesOffered(bare, false, null)).toEqual(['rpe']);
+  });
+
+  it('keeps a scheme already chosen, so it can be seen and changed', () => {
+    expect(schemesOffered(null, false, 'percent')).toEqual(['percent', 'rpe']);
+    expect(schemesOffered(null, false, 'double')).toEqual(['double', 'rpe']);
   });
 });
