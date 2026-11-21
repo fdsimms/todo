@@ -71,6 +71,7 @@ describe('biostatsCollapsed', () => {
   it('draws calories as the ring and never repeats them as a bar', () => {
     const { ring, bars } = biostatsCollapsed(rows());
     expect(ring?.label).toBe('73%');
+    expect(ring).toMatchObject({ name: 'Calories', detail: '366 of 500 cal' });
     expect(bars.map(b => b.id)).not.toContain('goal-calorieKcal');
   });
 

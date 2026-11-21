@@ -96,6 +96,14 @@ export function BiostatsWidget({ rows, collapsed, onToggle, onNutrientPress }: P
           <Text style={styles.ringLabel}>{marks.ring.label}</Text>
         </View>
       )}
+      {/* With no bar beside it the ring would sit alone in an empty row, so it
+          says what it measures. With bars the row is full and the percentage is enough. */}
+      {marks.ring && marks.bars.length === 0 && (
+        <View style={styles.ringCaption}>
+          <Text style={styles.markLabel} numberOfLines={1}>{marks.ring.name}</Text>
+          {!!marks.ring.detail && <Text style={styles.ringDetail} numberOfLines={1}>{marks.ring.detail}</Text>}
+        </View>
+      )}
       {marks.bars.map(renderMark)}
       {!marks.ring && marks.bars.length === 0 && (
         <Text style={styles.fallback} numberOfLines={2}>{marks.text}</Text>
@@ -223,6 +231,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontVariant: ['tabular-nums'],
   },
+  ringCaption: { flex: 1, minWidth: 0 },
+  ringDetail: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text, fontVariant: ['tabular-nums'] },
   mark: { flex: 1, minWidth: 0 },
   markLabelRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.xs, marginBottom: spacing.xs },
   markLabel: { flexShrink: 1, fontSize: font.xs, color: colors.textSecondary },
