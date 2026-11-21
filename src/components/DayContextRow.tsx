@@ -6,10 +6,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SpotlightScrim } from './SpotlightOverlay';
-import { ActivityRingsGlyph, ringColor } from './ActivityRingsCard';
-import { RING_ORDER, describeRing } from '../utils/activityRings';
 import type { CardPosition } from '../utils/contextCards';
-import { ProgressBar } from './ProgressBar';
 import { CheckPop } from './CheckPop';
 import { PressableScale } from './PressableScale';
 
@@ -27,7 +24,7 @@ interface Props {
    */
   onMarkCooked?: () => void;
   /**
-   * Set on a readout (a health reading or a calendar event) that sits in a run
+   * Set on a readout (a calendar event) that sits in a run
    * of them: the run is drawn as one card, with this row's corners and hairline
    * taken from where it falls in it. Omit for a meal or a moved event, which
    * stay their own cards (see `contextCards.ts`).
@@ -88,10 +85,9 @@ interface Props {
  *   change that: ticking one meal is not being selected for a bulk edit, and
  *   Today's bulk bar acts on tasks.
  *
- * **A run of readouts is one card, though** (`cardPosition`): events and health
- * readings are drawn as a single card with hairlines between them, the same
- * width as a task card, so a day's calendar reads as one block rather than as N
- * things to do. Only rows with no action join (`contextCards.ts` holds that
+ * **A run of readouts is one card, though** (`cardPosition`): events are drawn
+ * as a single card with hairlines between them, the same width as a task card,
+ * so a day's calendar reads as one block rather than as N things to do. Only rows with no action join (`contextCards.ts` holds that
  * line); a meal's tick and a moved event's offer stay on their own cards.
  *
  * The card is a plain `View` with **two touchables side by side** rather than
@@ -136,25 +132,13 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
     }, MARK_COOKED_BEAT_MS);
   };
 
-  // Three sources now, each with a glyph fixed per kind. `footsteps-outline`
-  // rather than the heart the Settings group wears: a heart at 16pt in a list
-  // of tasks reads as a favourite, and what the row is about is walking
-  // rather than health in general. `health` now covers three rows
-  // (`dayContextRows.ts`'s `healthContextRows`), told apart by the row's own
-  // fixed `id` rather than by a new field — `flame-outline` for active
-  // calories matches the glyph `NutritionTargetsSheet` already uses for the
-  // same metric.
+  // Two sources, each with a glyph fixed per kind. Health's readings are not
+  // drawn here: they live in the Biostats widget (`BiostatsWidget`).
   //
   // Meal is the fall-through arm because it was here first, and that is worth
-  // knowing before adding a fourth kind: a new one added without an arm
+  // knowing before adding another kind: a new one added without an arm
   // silently draws cutlery.
-  const glyphName = row.kind === 'event' ? 'calendar-outline'
-    : row.kind === 'health' ? (
-      row.id === 'health-activeEnergy' ? 'flame-outline'
-        : row.id === 'health-rings' ? 'fitness-outline'
-          : row.id.startsWith('limit-') ? 'nutrition-outline'
-            : 'footsteps-outline')
-    : 'restaurant-outline';
+  const glyphName = row.kind === 'event' ? 'calendar-outline' : 'restaurant-outline';
 
   const leading = onMarkCooked ? (
     <TouchableOpacity
@@ -179,55 +163,18 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
     </TouchableOpacity>
   ) : (
     <View style={styles.slot}>
-      <Ionicons
-        name={glyphName}
-        size={iconSize.sm}
-        color={row.tone === 'over' ? colors.red : row.tone === 'near' ? colors.orangeText : colors.textTertiary}
-      />
+      <Ionicons name={glyphName} size={iconSize.sm} color={colors.textTertiary} />
     </View>
   );
 
-  // A step or calorie total has no caption: the title is the whole row.
   const hasMeta = row.caption !== '' || !!row.calendarTag || !!row.movedNote;
   const a11yLabel = [row.title, row.caption, row.movedNote].filter(Boolean).join(', ');
 
-  const visual = row.visual;
-  const ringLines = visual?.type === 'rings'
-    ? RING_ORDER.filter(id => (visual.rings[id].value ?? 0) > 0)
-    : [];
-  // A limit's bar takes the row's tone (violet while within, orange when near,
-  // red once over); the Move bar is the Move ring's red so the two read as the
-  // same thing.
-  const barColor = visual?.type === 'bar'
-    ? visual.hue === 'move' ? colors.red
-      : row.tone === 'over' ? colors.red
-        : row.tone === 'near' ? colors.orange
-          : colors.accent
-    : colors.accent;
-
   const body = (
     <>
-      {visual?.type === 'rings' ? (
-        // The legend stands in for the title, which stays the same sentence for
-        // a screen reader and a collapsed section.
-        <View style={styles.legend}>
-          {ringLines.map(id => (
-            <View key={id} style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: ringColor(id, colors) }]} />
-              <Text style={styles.title} numberOfLines={1}>
-                {describeRing(id, visual.rings[id])}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : (
-        <Text style={[styles.title, row.now && styles.titleNow, row.tone === 'over' && styles.titleOver]} numberOfLines={1}>
-          {row.title}
-        </Text>
-      )}
-      {visual?.type === 'bar' && (
-        <ProgressBar progress={visual.fraction} height={BAR_HEIGHT} color={barColor} style={styles.barTrack} decorative />
-      )}
+      <Text style={[styles.title, row.now && styles.titleNow]} numberOfLines={1}>
+        {row.title}
+      </Text>
       {/* One meta chip, shaped like TaskItem's. Every caption these rows can
           carry says *when* — "4:15 PM", "All day", "Now", "Lunch", "Use by
           today" — so one clock covers all of them, and it's the glyph the
@@ -365,9 +312,7 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
               accessibilityRole="button"
               accessibilityLabel={a11yLabel}
               accessibilityHint={
-                row.kind === 'event' ? "Opens the day’s events"
-                  : row.nutrientKey ? 'Shows which foods contributed'
-                    : 'Opens Meal plan'
+                row.kind === 'event' ? "Opens the day’s events" : 'Opens Meal plan'
               }
             >
               {body}
@@ -376,9 +321,6 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
             <View style={styles.content} accessible accessibilityLabel={a11yLabel}>
               {body}
             </View>
-          )}
-          {visual?.type === 'rings' && (
-            <ActivityRingsGlyph rings={visual.rings} size={RINGS_SIZE} stroke={6} gap={2} />
           )}
           {/* The next event's countdown, on that one row only. */}
           {row.startsIn ? (
@@ -435,10 +377,6 @@ const GLYPH_BOX_SIZE = 22;
 const GLYPH_SIZE = 13;
 /** How long a cooked meal's check shows before the row leaves: the pop, then a beat. */
 const MARK_COOKED_BEAT_MS = 420;
-
-/** The Activity rings at the row's trailing edge: three 6pt arcs, 2pt apart. */
-const RINGS_SIZE = 52;
-const BAR_HEIGHT = 6;
 
 // Every number below is TaskItem's, and that's the point — they're duplicated
 // rather than exported because this row is *shaped like* a task rather than
@@ -535,24 +473,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The one emphasis in the treatment, and only while an event is actually
   // running — see ContextRow.now. Weight only: the title is already at full
   // strength now that the row is a card, so the colour has nowhere left to go.
-  titleOver: { color: colors.redText },
   titleNow: {
     fontWeight: fontWeight.medium,
-  },
-  // The progress bar under a limit's or the Move goal's figure.
-  barTrack: { marginTop: spacing.xxs },
-  legend: {
-    gap: spacing.xxs,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: radius.full,
   },
   metaRow: {
     flexDirection: 'row',

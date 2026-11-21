@@ -23,10 +23,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { WorkoutVolumePill } from '../components/WorkoutVolumePill';
 import { ActionMenu } from '../components/ActionMenu';
+import { PressableScale } from '../components/PressableScale';
 import { CardSheet, type CardAnchor } from '../components/CardSheet';
+import { WorkoutTimesSheet } from '../components/WorkoutTimesSheet';
 import { RecordsCard } from '../components/RecordsCard';
 import { CountStepper } from '../components/CountStepper';
 import { CheckPop } from '../components/CheckPop';
+import { RecordPop } from '../components/RecordPop';
 import { InlineAction } from '../components/InlineAction';
 import { ProgressBar } from '../components/ProgressBar';
 import { EmptyNote } from '../components/EmptyNote';
@@ -55,7 +58,7 @@ import { ManualRestSheet } from '../components/ManualRestSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, lineHeight, radius, spacing, type Colors } from '../theme';
 import { confirmDiscardWorkout } from '../utils/confirmDiscardWorkout';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -167,6 +170,7 @@ function SetKindBadge({ kind }: { kind: WorkoutSetKind }) {
 
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
+import { sameMinute } from '../utils/workoutTimes';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** "today" is this workout's note on the exercise, "always" the exercise's own. */
@@ -282,7 +286,11 @@ export function WorkoutModeScreen() {
   const [viewedId, setViewedId] = useState<string | null>(null);
   // The set whose type popover is open, and where it opens from (the set button's touch).
   const [openSetId, setOpenSetId] = useState<string | null>(null);
+  // The set whose record badge plays its entrance: the one just ticked into a record (RecordPop).
+  const [recordPopId, setRecordPopId] = useState<string | null>(null);
   const [setMenuAnchor, setSetMenuAnchor] = useState<CardAnchor | null>(null);
+  // The header's "•••" menu, which holds Discard so it never sits beside Finish.
+  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<CardAnchor | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [effort, setEffort] = useState<number | null>(null);
   const [sessionNotes, setSessionNotes] = useState('');
@@ -402,6 +410,7 @@ export function WorkoutModeScreen() {
     if (!session) return;
     if (set.completedAt !== null) {
       haptics.tap();
+      setRecordPopId(null);
       edit(set.id, { completedAt: null });
       return;
     }
@@ -424,7 +433,10 @@ export function WorkoutModeScreen() {
       sessionsList,
       dayResetTime,
     );
-    if (records.has(set.id)) haptics.success();
+    if (records.has(set.id)) {
+      haptics.success();
+      setRecordPopId(set.id);
+    }
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
@@ -559,6 +571,9 @@ export function WorkoutModeScreen() {
   // This workout's rest timers are turned off (`restsAreOff`): no rest starts, and the Rest chips are hidden.
   const restsOff = restsAreOff(session?.restOverrides);
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
+  // The header clock's menu, and the card that moves the running workout's start.
+  const [clockMenu, setClockMenu] = useState<CardAnchor | null>(null);
+  const [startOpen, setStartOpen] = useState(false);
   // The trophy's card keeps the lines it was opened with, so it reads the same while it fades.
   const [recordCard, setRecordCard] = useState<{ lines: ReturnType<typeof recordLines>; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
@@ -622,6 +637,27 @@ export function WorkoutModeScreen() {
       [
         { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: run },
+      ],
+    );
+  };
+
+  // ==== the clock ====
+  // The elapsed time is "now minus the start", so changing it is changing the
+  // start. A finished workout's times are edited on its own page.
+  const changeStart = (next: Date) => {
+    if (!session || sameMinute(next, new Date(session.startedAt))) return;
+    useWorkoutStore.getState().updateSession(session.id, { startedAt: next.toISOString() });
+    haptics.success();
+  };
+  const restartClock = () => {
+    if (!session) return;
+    haptics.tap();
+    Alert.alert(
+      'Restart the timer?',
+      'The workout will show as started now. Sets you already logged stay in it.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Restart', style: 'destructive', onPress: () => { useWorkoutStore.getState().updateSession(session.id, { startedAt: new Date().toISOString() }); haptics.success(); } },
       ],
     );
   };
@@ -821,49 +857,70 @@ export function WorkoutModeScreen() {
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerIcon}
-            activeOpacity={interaction.activeOpacity}
+          <PressableScale
+            style={styles.headerCircle}
             onPress={minimize}
             accessibilityRole="button"
             accessibilityLabel="Back"
             accessibilityHint="The workout keeps running"
           >
-            <Ionicons name="chevron-back" size={iconSize.lg} color={colors.accentText} />
-          </TouchableOpacity>
-          <View style={styles.headerTitle} pointerEvents="none">
-            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
-          </View>
-          {!finishing && session ? (
+            <Ionicons name="chevron-back" size={iconSize.md} color={colors.accentText} />
+          </PressableScale>
+          {!finishing && session && (
             <View style={styles.headerRight}>
-              <TouchableOpacity
-                style={styles.headerIcon}
-                activeOpacity={interaction.activeOpacity}
+              <PressableScale
+                style={styles.headerCircle}
                 onPress={() => { haptics.tap(); Keyboard.dismiss(); setTimerOpen(true); }}
                 accessibilityRole="button"
                 accessibilityLabel={restsOff ? 'Timer, rest timers are off' : 'Start a timer'}
               >
-                <Ionicons name="timer-outline" size={iconSize.lg} color={restsOff ? colors.textTertiary : colors.accentText} />
+                <Ionicons name="timer-outline" size={iconSize.md} color={restsOff ? colors.textTertiary : colors.accentText} />
                 {restsOff && <View style={styles.headerIconSlash} pointerEvents="none" />}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.headerIcon}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => { Keyboard.dismiss(); confirmDiscardWorkout(close); }}
+              </PressableScale>
+              <PressableScale
+                style={styles.headerCircle}
+                onPress={e => { haptics.tap(); Keyboard.dismiss(); setHeaderMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); }}
                 accessibilityRole="button"
-                accessibilityLabel="Discard workout"
+                accessibilityLabel="More workout options"
               >
-                <Ionicons name="trash-outline" size={iconSize.lg} color={colors.redText} />
-              </TouchableOpacity>
-              <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
+                <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
+              </PressableScale>
+              <SheetHeaderButton filled label="Finish" onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
             </View>
-          ) : <View style={styles.headerSpacer} />}
+          )}
         </View>
-        {/* The name gets its own full-width line under the buttons, so a long
-            routine name isn't squeezed between the minimize button and Finish. */}
+        {/* The name gets its own full-width block under the buttons, so a long
+            routine name isn't squeezed between the minimize button and Finish.
+            It wraps to two lines rather than truncating: it is the one thing
+            here that says which workout this is. */}
         <View style={styles.titleBlock}>
-          <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-          {session && <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>}
+          <Text style={styles.title} numberOfLines={2}>{headerTitle}</Text>
+          {session && (
+            <View style={styles.metaRow}>
+              {finishing ? (
+                <View style={styles.clockChip}>
+                  <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
+                </View>
+              ) : (
+                <PressableScale
+                  style={styles.clockChip}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={e => {
+                    haptics.tap();
+                    Keyboard.dismiss();
+                    setClockMenu({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Change workout time"
+                  accessibilityHint="Change the start time or restart the timer"
+                >
+                  <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
+                </PressableScale>
+              )}
+              <View style={styles.metaDot} />
+              <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>
+            </View>
+          )}
         </View>
 
         {/* Under the header, not in a footer: the keyboard is up while sets are
@@ -1474,6 +1531,7 @@ export function WorkoutModeScreen() {
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
                         )}
                         {lines.length > 0 && (
+                          <RecordPop celebrate={recordPopId === set.id}>
                           <TouchableOpacity
                             style={styles.recordPill}
                             activeOpacity={interaction.activeOpacity}
@@ -1488,6 +1546,7 @@ export function WorkoutModeScreen() {
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
                           </TouchableOpacity>
+                          </RecordPop>
                         )}
                         {fields.map(f => (
                           <SetInput
@@ -1627,6 +1686,15 @@ export function WorkoutModeScreen() {
         anchor={recordCard?.anchor ?? null}
         onClose={() => setRecordCard(null)}
       />
+      <ActionMenu
+        visible={headerMenuAnchor !== null}
+        title="Workout"
+        anchor={headerMenuAnchor}
+        onClose={() => setHeaderMenuAnchor(null)}
+        actions={[
+          { key: 'discard', label: 'Discard workout', icon: 'trash-outline', destructive: true, onPress: () => confirmDiscardWorkout(close) },
+        ]}
+      />
       {(() => {
         const menuId = exerciseMenu?.exerciseId ?? null;
         const menuExercise = menuId ? exercises.find(e => e.exerciseId === menuId) ?? null : null;
@@ -1685,6 +1753,26 @@ export function WorkoutModeScreen() {
           />
         );
       })()}
+      <ActionMenu
+        visible={clockMenu !== null}
+        title="Workout time"
+        anchor={clockMenu}
+        onClose={() => setClockMenu(null)}
+        actions={[
+          { key: 'start', label: 'Change start time', icon: 'time-outline', onPress: () => setStartOpen(true) },
+          { key: 'restart', label: 'Restart timer', icon: 'refresh-outline', onPress: restartClock },
+        ]}
+      />
+      <WorkoutTimesSheet
+        visible={startOpen && session !== null}
+        live
+        start={session ? new Date(session.startedAt) : new Date(0)}
+        end={new Date(0)}
+        initial="start"
+        healthLimited={writesToHealth}
+        onConfirm={start => changeStart(start)}
+        onClose={() => setStartOpen(false)}
+      />
       <ManualRestSheet
         visible={timerOpen && session !== null}
         initialSeconds={defaultRestSeconds}
@@ -2063,21 +2151,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
-  // Laid over the whole row rather than sharing it, so the clock sits at the
-  // screen's center whatever the widths of the minimize button and the timer + Finish group.
-  headerTitle: { position: 'absolute', left: 0, right: 0, top: spacing.sm, bottom: spacing.xsm, alignItems: 'center', justifyContent: 'center' },
-  headerSpacer: { minWidth: 64 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerCircle: { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' },
   // The slash across the timer icon while rest timers are off.
-  headerIconSlash: { position: 'absolute', width: 26, height: 2, borderRadius: 1, backgroundColor: colors.orangeText, transform: [{ rotate: '-45deg' }] },
+  headerIconSlash: { position: 'absolute', width: 22, height: 2, borderRadius: 1, backgroundColor: colors.orangeText, transform: [{ rotate: '-45deg' }] },
   restsOffBanner: { marginHorizontal: spacing.md, marginBottom: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md, paddingLeft: spacing.md, paddingRight: spacing.sm, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   restsOffText: { flex: 1, minWidth: 0, color: colors.textSecondary, fontSize: font.sm },
   restsOffBold: { color: colors.orangeText, fontWeight: fontWeight.semibold },
-  titleBlock: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
-  title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
-  elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
-  subtitle: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
+  titleBlock: { paddingHorizontal: spacing.md + spacing.xs, paddingTop: spacing.sm, paddingBottom: spacing.smd },
+  title: { color: colors.text, fontSize: font.xl, lineHeight: lineHeight.xl, fontWeight: fontWeight.bold },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  clockChip: { backgroundColor: colors.bgTertiary, borderRadius: radius.full, paddingHorizontal: spacing.smd, paddingVertical: spacing.xs },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.textTertiary },
+  elapsed: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
+  subtitle: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
   scroll: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
   emptyWrap: { padding: spacing.md },
   position: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginHorizontal: spacing.xs, marginBottom: spacing.smd },

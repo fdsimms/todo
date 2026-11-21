@@ -57,15 +57,15 @@ describe('settings', () => {
     });
 
     it('stores the category in the spelling it was made in, and refuses one that does not exist', () => {
-      const result = updateSettings(replica, { newTaskDefaults: { category: 'home' }, limitsTodayCategory: 'HOME' });
-      expect(replica.settingValues().limitsTodayCategory).toBe('Home');
+      const result = updateSettings(replica, { newTaskDefaults: { category: 'home' }, groceryUseUpTaskCategory: 'HOME' });
+      expect(replica.settingValues().groceryUseUpTaskCategory).toBe('Home');
       expect(getSettings(replica).settings.tasks.newTaskDefaults.value).toMatchObject({ category: 'Home' });
-      expect(result.note).toMatch(/limitsTodayCategory is Home/);
+      expect(result.note).toMatch(/groceryUseUpTaskCategory is Home/);
 
       expect(() => updateSettings(replica, { newTaskDefaults: { category: 'Bogus' } })).toThrow(/newTaskDefaults\.category: "Bogus" isn't one of your categories/);
-      expect(() => updateSettings(replica, { limitsTodayCategory: 'Bogus' })).toThrow(/limitsTodayCategory/);
+      expect(() => updateSettings(replica, { groceryUseUpTaskCategory: 'Bogus' })).toThrow(/groceryUseUpTaskCategory/);
       // Nothing was stored by the refused calls.
-      expect(replica.settingValues().limitsTodayCategory).toBe('Home');
+      expect(replica.settingValues().groceryUseUpTaskCategory).toBe('Home');
     });
 
     it('files use-up tasks under a real category, in the spelling it was made in', () => {
@@ -80,11 +80,6 @@ describe('settings', () => {
       updateSettings(replica, { weekStartsOn: 1 });
       expect(() => updateSettings(replica, { weekStartsOn: 0, rewardListProjectId: 'nope' })).toThrow(/no project with id "nope"/);
       expect(replica.settings().weekStartsOn).toBe(1);
-    });
-
-    it('still lets healthCategory name a category that does not exist yet', () => {
-      updateSettings(replica, { healthCategory: 'Body' });
-      expect(replica.settingValues().healthCategory).toBe('Body');
     });
   });
 
@@ -108,13 +103,18 @@ describe('settings', () => {
     expect(() => updateSettings(replica, { transitLines: ['L', 'X'] })).toThrow(/list of 1, 2/);
   });
 
-  it('files Health readings under a category, creating it, or hides them', () => {
-    const result = updateSettings(replica, { healthCategory: 'Activity' });
-    expect(result.changed[0]).toMatchObject({ setting: 'healthCategory', to: 'Activity' });
-    expect(replica.categories().map(c => c.name)).toContain('Activity');
-    expect(mockRaw.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'healthCategory'")?.value).toBe('Activity');
-    expect(() => updateSettings(replica, { healthCategory: '  ' })).toThrow(/category name/);
-    updateSettings(replica, { healthCategory: null });
-    expect(getSettings(replica).settings.features.healthCategory.value).toBeNull();
+  it('shows Health readings in the Biostats widget, or hides them', () => {
+    const result = updateSettings(replica, { healthTodayShown: true });
+    expect(result.changed[0]).toMatchObject({ setting: 'healthTodayShown', to: true });
+    expect(mockRaw.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'healthTodayShown'")?.value).toBe('true');
+    expect(() => updateSettings(replica, { healthTodayShown: 'Activity' })).toThrow(/healthTodayShown/);
+    updateSettings(replica, { healthTodayShown: false });
+    expect(getSettings(replica).settings.features.healthTodayShown.value).toBe(false);
+  });
+
+  it('shows nutrient goals in the Biostats widget, or hides them', () => {
+    updateSettings(replica, { goalsTodayShown: true });
+    expect(replica.settingValues().goalsTodayShown).toBe(true);
+    expect(() => updateSettings(replica, { goalsTodayShown: 'yes' })).toThrow(/goalsTodayShown/);
   });
 });

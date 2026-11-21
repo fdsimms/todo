@@ -35,7 +35,7 @@ describe('completionLogChips', () => {
 
   it('names a dose with its amount and unit', () => {
     const t = task({ medicationName: 'Sodium Chloride', medicationAmount: 1, medicationUnit: 'tablet' });
-    expect(completionLogChips(t, true)).toEqual([{ kind: 'dose', text: 'Logs 1 tablet' }]);
+    expect(completionLogChips(t, true)).toEqual([{ kind: 'dose', text: 'Logs 1 tablet', editable: true }]);
   });
 
   it('pluralizes a counted unit', () => {
@@ -43,8 +43,18 @@ describe('completionLogChips', () => {
     expect(completionLogChips(t, true)[0].text).toBe('Logs 2 capsules');
   });
 
+  it('does not offer to edit a chain step\'s dose from the row', () => {
+    const t = task({
+      medicationName: 'Iron',
+      chainEnabled: true,
+      chainIndex: 0,
+      chainItems: [{ id: 's1', title: 'Morning', medicationName: 'Zinc', medicationAmount: 1, medicationUnit: 'tablet' }, { id: 's2', title: 'Evening' }],
+    } as Partial<Task>);
+    expect(completionLogChips(t, true)[0].editable).toBeUndefined();
+  });
+
   it('says "Logs dose" when no amount is set', () => {
-    expect(completionLogChips(task({ medicationName: 'Iron' }), true)).toEqual([{ kind: 'dose', text: 'Logs dose' }]);
+    expect(completionLogChips(task({ medicationName: 'Iron' }), true)).toEqual([{ kind: 'dose', text: 'Logs dose', editable: true }]);
   });
 
   it('counts several medicines', () => {

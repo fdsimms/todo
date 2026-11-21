@@ -149,6 +149,21 @@ export interface ContextRow {
    * with nothing to measure against (steps, every event and meal).
    */
   visual?: ContextVisual;
+  /**
+   * The same reading as separate parts, for the Biostats widget's tiles, which
+   * draw a label over a figure and "of" the goal rather than the title's
+   * sentence. Present on every steps, active calorie, limit and goal row; absent
+   * on the rings row (drawn as the rings) and on every event and meal.
+   */
+  reading?: ContextReading;
+}
+
+/** "Steps", "4,229", "8,000" (with `of` absent when nothing is measured against). */
+export interface ContextReading {
+  label: string;
+  figure: string;
+  /** The goal or limit, with its unit: "8,000", "16g". Absent when there is none. */
+  of?: string;
 }
 
 export type ContextVisual =

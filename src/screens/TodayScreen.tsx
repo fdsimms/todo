@@ -117,6 +117,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { MealStrip } from '../components/MealStrip';
 import { OnCallStrip } from '../components/OnCallStrip';
+import { BiostatsWidget } from '../components/BiostatsWidget';
 import { useOnCallStore } from '../store/useOnCallStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
@@ -2011,21 +2012,22 @@ export function TodayScreen() {
   // it. Declared here rather than beside the context rows below because the
   // deload note wants them first, and one declaration beats two.
   //
-  // Both the reading and the category are nullable and both mean "no row": the
-  // store holds nothing until the read is on and something has been recorded,
-  // and the category is also the row's off switch (see its note in
-  // useSettingsStore). `useHealthSync` in App.tsx is what keeps the reading
+  // The reading is nullable and means "no row": the store holds nothing until
+  // the read is on and something has been recorded, and `healthTodayShown` is
+  // the Biostats widget's switch for it. `useHealthSync` in App.tsx is what keeps the reading
   // current — nothing here fetches, the same split useCalendarStore draws.
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const shortNightNoteEnabled = useSettingsStore(s => s.shortNightNoteEnabled);
   const shortNightMinutes = useSettingsStore(s => s.shortNightMinutes);
-  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const healthTodayShown = useSettingsStore(s => s.healthTodayShown);
+  const biostatsCollapsedSetting = useSettingsStore(s => s.biostatsCollapsed);
+  const setBiostatsCollapsed = useSettingsStore(s => s.setBiostatsCollapsed);
   const stepGoal = useSettingsStore(s => s.stepGoal);
   const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
   const healthToday = useHealthStore(s => s.today);
-  const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
+  const limitsTodayShown = useSettingsStore(s => s.limitsTodayShown);
   const limitsTodayHidden = useSettingsStore(s => s.limitsTodayHidden);
-  const goalsTodayCategory = useSettingsStore(s => s.goalsTodayCategory);
+  const goalsTodayShown = useSettingsStore(s => s.goalsTodayShown);
   const goalsTodayHidden = useSettingsStore(s => s.goalsTodayHidden);
   const storedNutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const activeEnergyBoost = useSettingsStore(useShallow(s => s.activeEnergyBoost));
@@ -2986,62 +2988,60 @@ export function TodayScreen() {
   // ticked, deferred or edited and every half minute.
   const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
   const todayFoodTotal = useMemo(
-    () => (limitsTodayCategory || goalsTodayCategory
+    () => (limitsTodayShown || goalsTodayShown
       ? foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total
       : null),
-    [limitsTodayCategory, goalsTodayCategory, recentFoodEntries, todayFoodKey, foodLogCount, foodLogWindow],
+    [limitsTodayShown, goalsTodayShown, recentFoodEntries, todayFoodKey, foodLogCount, foodLogWindow],
   );
-  const contextRows = useMemo(() => {
+  // The Biostats widget's rows: Health's readings, then a row per Stay under
+  // limit and per goal. Own memo rather than part of `contextRows`, since they
+  // no longer file into the list; it re-runs on the minute tick so a reading
+  // is dropped as soon as the day turns over.
+  //
+  // Health is gated on `!demoActive` as well as its switch. The demo database
+  // has no switch and keeps `healthReadEnabled` off, but the health store is not
+  // part of the database swap, so a real step count left in it must not be drawn
+  // on a phone handed to someone as a demo.
+  const biostatsRows = useMemo(() => {
     const rows: ContextRow[] = [];
-    // Leads, above the calendar and the food. It is the only one of the four
-    // that is about the day as a whole rather than about a thing in it, and it
-    // is at most one line per metric — `healthContextRows` draws nothing for a
-    // null or a zero reading, which is most mornings, for either of the two it
-    // now covers (steps, active calories). Its own category by default, so in
-    // practice it leads a section of its own and this ordering only shows once
-    // somebody files it with something else.
-    //
-    // Gated on the category for the reason the events below are: a row with
-    // none goes to the very top of the list, above every section, which is the
-    // pinned strip this whole mechanism replaced. Here it is load-bearing twice
-    // over, because the category is also this row's off switch *and* the demo
-    // database has never had one — so a demo session cannot surface a real step
-    // count left in the store by the session before it.
-    if (healthCategory) {
+    if (healthTodayShown && !demoActive) {
       rows.push(...healthContextRows(healthToday, {
-        // Recomputed here rather than reusing `todayKey` above, which is memoized
-      // on mount: this memo already re-runs on `minuteTick`, so a reading is
-      // dropped as soon as the day turns over rather than at the next remount.
-      todayKey: getLogicalDayKey(new Date(), dayResetTime),
-        category: healthCategory,
+        todayKey: getLogicalDayKey(new Date(), dayResetTime),
+        category: null,
         stepGoal,
         hidden: healthTodayHidden,
       }));
     }
-    // A row per Stay under limit, read off today's food log. Off until the
-    // Nutrition sheet's "Show on Today" files them under a category, for the
-    // reason Health's rows are gated on theirs.
-    const todayLimits = limitsShownOnToday(nutritionLimits, limitsTodayHidden);
     // A nutrient whose Stay under / Aim for task is on the list draws its bar
     // on the task, so its row here would say the same thing twice.
     const coveredByTasks = nutrientsCoveredByTasks(allTasks, getLogicalDayKey(new Date(), dayResetTime));
-    if (limitsTodayCategory && todayFoodTotal && activeLimits(nutritionTargets, todayLimits).length > 0) {
+    const todayLimits = limitsShownOnToday(nutritionLimits, limitsTodayHidden);
+    if (limitsTodayShown && todayFoodTotal && activeLimits(nutritionTargets, todayLimits).length > 0) {
       rows.push(...limitContextRows(
         todayFoodTotal,
         nutritionTargets,
         todayLimits,
-        { category: limitsTodayCategory, warnPercent: limitWarnPercent, covered: coveredByTasks },
+        { category: null, warnPercent: limitWarnPercent, covered: coveredByTasks },
       ));
     }
-    // Targets that are figures to reach, under their own switch.
-    if (goalsTodayCategory && todayFoodTotal) {
+    if (goalsTodayShown && todayFoodTotal) {
       rows.push(...goalContextRows(
         todayFoodTotal,
         nutritionTargets,
         nutritionLimits,
-        { category: goalsTodayCategory, hidden: goalsTodayHidden, covered: coveredByTasks },
+        { category: null, hidden: goalsTodayHidden, covered: coveredByTasks },
       ));
     }
+    return rows;
+  }, [
+    healthToday, healthTodayShown, demoActive, stepGoal, healthTodayHidden, dayResetTime, allTasks,
+    limitsTodayShown, limitsTodayHidden, goalsTodayShown, goalsTodayHidden,
+    nutritionTargets, nutritionLimits, limitWarnPercent, todayFoodTotal, minuteTick,
+  ]);
+  const contextRows = useMemo(() => {
+    const rows: ContextRow[] = [];
+    // Health's readings and the nutrition rows are not here: they draw in the
+    // Biostats widget at the top of the list (`biostatsRows`), not in a section.
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory && showEventPlaceholders) {
@@ -3091,9 +3091,6 @@ export function TodayScreen() {
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
     isEventHidden, movedEventNotes, movedEvents, liveTaskIds, eventTravelNote,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
-    healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
-    limitsTodayCategory, limitsTodayHidden, goalsTodayCategory, goalsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
-    todayFoodTotal,
     minuteTick, showEventPlaceholders, rememberedEventRows,
   ]);
 
@@ -4076,16 +4073,6 @@ export function TodayScreen() {
               setEventsSheetFor(moved?.event ?? null);
               setEventsSheetVisible(true);
             }
-            // A health row has nowhere to go, which the prop supports and which
-            // is the honest answer here: the number came from another app, this
-            // one holds no detail behind it, and opening Health would be a task
-            // list throwing you out to a different app for a line you have
-            // already read. The arm is explicit rather than left to fall
-            // through, because the fall-through is the meal plan.
-            : item.row.kind === 'health'
-              ? (item.row.nutrientKey
-                ? () => { const key = item.row.nutrientKey!; setContributorsKey(key); }
-                : undefined)
             : openMealPlan;
       // While a task is focused, a tap anywhere else only unfocuses it, so a
       // context row must not open its sheet (or the meal plan) on that tap.
@@ -4938,9 +4925,23 @@ export function TodayScreen() {
   // unseen. `OnCallStrip` draws nothing on a day that isn't on call.
   const anyOnCall = useOnCallStore(s => s.spans.length > 0);
   const onCallBlock = viewMode === 'today' && anyOnCall ? <OnCallStrip refreshKey={minuteTick} /> : null;
-  const todayListHeader = onCallBlock === null && mealStripBlock === null && pinnedBlock === null && projectBandsBlock === null ? null : (
+  // Biostats follows on call and leads everything else: it is about the day as
+  // a whole, not a thing in it. Part of "everything else" for the pinned
+  // block's eye button, and drawn only on Today. Nothing when no switch is on
+  // or nothing has been read yet (`BiostatsWidget` returns null for no rows,
+  // so the null check here is on the rows rather than on its output).
+  const biostatsBlock = viewMode === 'today' && restVisible && biostatsRows.length > 0 ? (
+    <BiostatsWidget
+      rows={biostatsRows}
+      collapsed={biostatsCollapsedSetting}
+      onToggle={() => setBiostatsCollapsed(!biostatsCollapsedSetting)}
+      onNutrientPress={setContributorsKey}
+    />
+  ) : null;
+  const todayListHeader = onCallBlock === null && biostatsBlock === null && mealStripBlock === null && pinnedBlock === null && projectBandsBlock === null ? null : (
     <>
       {onCallBlock}
+      {biostatsBlock}
       {mealStripBlock}
       {pinnedBlock}
       {projectBandsBlock}
