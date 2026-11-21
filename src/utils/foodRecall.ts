@@ -208,6 +208,14 @@ export function recalledFoodOf(entry: FoodLogEntry): RecalledFood {
  * what a typed weight means. Only a search naming one food counts: with a
  * comma there are several weights and no way to tell which belongs to this row.
  */
+/**
+ * The weight typed in a one-food search, as a multiple of the whole an earlier
+ * estimate described, or null (see `describedEstimateFactor`).
+ */
+export function typedEstimateFactor(entry: FoodLogEntry, query: string): number | null {
+  return descriptionClauses(query).length === 1 ? describedEstimateFactor(recalledFoodOf(entry), query) : null;
+}
+
 export function helpingAtTypedWeight(entry: FoodLogEntry, query: string, now: Date): RecalledHelping | null {
   if (descriptionClauses(query).length !== 1) return null;
   const typed = describedGrams(query);
@@ -216,7 +224,7 @@ export function helpingAtTypedWeight(entry: FoodLogEntry, query: string, now: Da
   const ask = recallAmountAsk(food);
   if (ask.kind === 'weight') return recalledHelping(food, { grams: parseFloat(typed) }, now);
   if (ask.kind === 'count' || ask.kind === 'multiple') {
-    const factor = describedEstimateFactor(food, query);
+    const factor = typedEstimateFactor(entry, query);
     return factor === null ? null : recalledHelping(food, { factor }, now);
   }
   return null;

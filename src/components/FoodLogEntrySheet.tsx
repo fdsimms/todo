@@ -158,6 +158,7 @@ import {
   describedGrams,
   descriptionClauses,
   helpingAtTypedWeight,
+  typedEstimateFactor,
   type RecalledHelping,
 } from '../utils/foodRecall';
 
@@ -681,6 +682,8 @@ export function FoodLogEntrySheet({
   // The earlier estimated helping whose amount is being changed before it is
   // logged again (`openHelping`).
   const [amountHelping, setAmountHelping] = useState<FoodLogEntry | null>(null);
+  /** The multiple of the whole a weight typed in the search opens that card on. */
+  const [amountHelpingFactor, setAmountHelpingFactor] = useState<number | null>(null);
   /** Whether the "which item is this" picker is open under a database food. */
   const [catalogPickOpen, setCatalogPickOpen] = useState(false);
   // The label panel for the food on screen, opened from "Edit nutrition facts".
@@ -1961,13 +1964,23 @@ export function FoodLogEntrySheet({
    */
   const openHelping = (entry: FoodLogEntry) => {
     haptics.tap();
-    if (wholeEstimate(entry)) { Keyboard.dismiss(); setAmountHelping(entry); return; }
+    // A weight typed in the search is the amount the step opens on, and what a
+    // food that has no step logs.
+    const typed = helpingAtTypedWeight(entry, query, new Date());
+    if (wholeEstimate(entry)) {
+      Keyboard.dismiss();
+      setAmountHelpingFactor(typedEstimateFactor(entry, query));
+      setAmountHelping(entry);
+      return;
+    }
     const panel = keptDatabasePanel(entry);
-    if (!panel) { logHelpingAgain(entry); return; }
+    if (!panel) { if (typed) logHelpingTyped(entry, typed); else logHelpingAgain(entry); return; }
     handleDbPick(panel, entry.label);
     const grams = foodUnitOptionsFor(panel).find(o => o.key === 'g');
-    if (grams && entry.grams) {
-      const number = String(entry.grams);
+    const typedGrams = descriptionClauses(query).length === 1 ? describedGrams(query) : null;
+    const startGrams = typedGrams ? parseFloat(typedGrams) : entry.grams;
+    if (grams && startGrams) {
+      const number = String(startGrams);
       setAmountUnit('g');
       setAmountNumber(number);
       setAmount(composeFoodAmount(number, grams));
@@ -3265,6 +3278,7 @@ export function FoodLogEntrySheet({
         entry={amountHelping}
         saveLabel="Log"
         allowUnchanged
+        openAtFactor={amountHelpingFactor}
         slot={chosenSlot ?? amountHelping?.slot ?? null}
         onSave={(patch, slot) => { if (amountHelping) logHelpingAtAmount(amountHelping, patch, slot); }}
         onClose={() => setAmountHelping(null)}
