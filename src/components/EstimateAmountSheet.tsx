@@ -54,6 +54,11 @@ interface Props {
    * receives the choice. Omitted for a correction, where the entry keeps its meal.
    */
   slot?: MealSlot | null;
+  /**
+   * A multiple of the whole to open on in place of the amount last logged, for
+   * a weight typed in the search that led here. Opens on the whole, not parts.
+   */
+  openAtFactor?: number | null;
 }
 
 /**
@@ -144,7 +149,7 @@ export function amountRefusal(unit: AmountUnit, wholeGrams: number | null): stri
  * there is no unsaved-changes guard to need. The number pad opens for the
  * stepper's digits and the typed amount alike.
  */
-export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel = BUTTON_LABEL.save, allowUnchanged = false, slot }: Props) {
+export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel = BUTTON_LABEL.save, allowUnchanged = false, slot, openAtFactor = null }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -176,18 +181,22 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
 
   useEffect(() => {
     if (!visible) return;
-    setFactor(entry ? currentEstimateFactor(entry) : null);
+    setFactor(openAtFactor ?? (entry ? currentEstimateFactor(entry) : null));
     setTyped(null);
     setCountTyped(null);
     setChosenSlot(slot ?? null);
     setUnit(wholeGrams ? 'grams' : 'percent');
-    if (counted) setCount((entry && currentEstimateCount(entry)) ?? counted.count);
+    if (counted) {
+      setCount(openAtFactor !== null
+        ? Math.round(counted.count * openAtFactor * 100) / 100
+        : (entry && currentEstimateCount(entry)) ?? counted.count);
+    }
     // An entry already changed part by part opens on the parts, since no one
     // multiple of the whole says what it stands at.
     const now = entry && parts ? currentPartFactors(entry) : null;
     const wholeNow = entry ? currentEstimateFactor(entry) : null;
-    setMode(parts && now && wholeNow === null ? 'parts' : 'whole');
-    setPartFactors(parts ? now ?? parts.map(() => wholeNow ?? 1) : []);
+    setMode(parts && now && wholeNow === null && openAtFactor === null ? 'parts' : 'whole');
+    setPartFactors(parts ? (openAtFactor !== null ? parts.map(() => openAtFactor) : now ?? parts.map(() => wholeNow ?? 1)) : []);
     setPartTyped(parts ? parts.map(() => null) : []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, entry?.id]);
