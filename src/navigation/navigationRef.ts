@@ -7,6 +7,9 @@ import type { TemplateRunDestination } from '../utils/templateRunDestination';
 // threading a ref through props.
 export const navigationRef = createNavigationContainerRef<any>();
 
+/** The root-stack card workout mode is (`WorkoutModeScreen`); see `useWorkoutModeStore`. */
+export const WORKOUT_MODE_ROUTE = 'WorkoutMode';
+
 // A deep link or Home Screen quick action can arrive before the navigator has
 // mounted — a cold launch from tapping the Today widget's own "+" resolves
 // Linking.getInitialURL() and reaches this module racing against

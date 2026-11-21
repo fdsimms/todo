@@ -12,7 +12,7 @@ import { FieldLabel } from './FieldLabel';
  * The gym's parts of workout mode (docs/arch/workouts.md, "Gyms"): which gym
  * the workout is at, an exercise the gym can't do with a replacement proposed,
  * and the note kept for an exercise at this gym. Each is a plain presentation
- * of what `WorkoutModeSheet` works out, since that sheet owns the session and
+ * of what `WorkoutModeScreen` works out, since that page owns the session and
  * every write.
  */
 

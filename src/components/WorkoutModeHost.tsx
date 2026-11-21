@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
-import { WorkoutModeSheet } from './WorkoutModeSheet';
+import React, { useEffect } from 'react';
 import { DeliverablePromptQueue } from './DeliverablePromptQueue';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
@@ -8,25 +7,26 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { useRestChime } from '../hooks/useRestTimer';
 
 /**
- * Workout mode, mounted once beside the navigator, the way `CookRecap` is: a
- * task row on any screen, the Workouts screen and its Resume all open the
- * same sheet (`useWorkoutModeStore`), and a second copy mounted on a blurred
- * tab would present a second Modal for the same session.
+ * What workout mode needs app-wide while its page (`WorkoutModeScreen`) is
+ * not the one showing, mounted once beside the navigator the way `CookRecap`
+ * is. The page itself is a root-stack card, opened through
+ * `useWorkoutModeStore`.
  *
- * Three things live here rather than in the sheet:
+ * Three things live here rather than on the page:
  *
  * - **Dropping a rest whose session is over**, however it ended, so the
  *   workout store never has to reach into the timers.
  * - **The buzz when a rest runs out** (`useRestChime`), which has to come
- *   whatever screen is showing, not only while the sheet is up.
- * - **The question a linked task asks on completion.** Saving closes the
- *   sheet and hands the task here, and the queue asks it as the sheet goes:
- *   closing one sheet and opening another in one commit is safe, holding both
- *   open is not (see "Two sibling Modals" in CLAUDE.md).
+ *   whatever screen is showing, not only while the page is up.
+ * - **The question a linked task asks on completion.** Saving leaves the
+ *   page and hands the task over (`askAfterClose`); the queue asks it once the
+ *   page has finished leaving, because a sheet presented while the pop is
+ *   still animating is dropped. The navigator marks that moment
+ *   (`markAskReady`), and a timeout covers a transition that never reports,
+ *   so the question is late rather than lost.
  */
 export function WorkoutModeHost() {
-  const open = useWorkoutModeStore(s => s.open);
-  const hide = useWorkoutModeStore(s => s.hide);
+  const ask = useWorkoutModeStore(s => s.ask);
   const liveId = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null)?.id);
   const workoutsLoaded = useWorkoutStore(s => s.initialized);
   const timersLoaded = useStepTimerStore(s => s.hydrated);
@@ -38,13 +38,20 @@ export function WorkoutModeHost() {
   useEffect(() => {
     if (workoutsLoaded && timersLoaded) useStepTimerStore.getState().removeRestsOutside(liveId ?? null);
   }, [workoutsLoaded, timersLoaded, liveId]);
-  const onSaved = useCallback((askTaskId: string | null) => {
-    if (askTaskId) enqueue([askTaskId]);
-  }, [enqueue]);
-  return (
-    <>
-      <WorkoutModeSheet visible={open} onClose={hide} onSaved={onSaved} />
-      <DeliverablePromptQueue {...queueProps} />
-    </>
-  );
+  const askPending = ask !== null && !ask.ready;
+  useEffect(() => {
+    if (!askPending) return;
+    const fallback = setTimeout(() => useWorkoutModeStore.getState().markAskReady(), ASK_FALLBACK_MS);
+    return () => clearTimeout(fallback);
+  }, [askPending]);
+  const readyTaskId = ask?.ready ? ask.taskId : null;
+  useEffect(() => {
+    if (!readyTaskId) return;
+    useWorkoutModeStore.getState().clearAsk();
+    enqueue([readyTaskId]);
+  }, [readyTaskId, enqueue]);
+  return <DeliverablePromptQueue {...queueProps} />;
 }
+
+// Longer than a native-stack pop, so it only ever fires when `transitionEnd` didn't.
+const ASK_FALLBACK_MS = 1500;
