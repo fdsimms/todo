@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { clampCookedWeight } from '../utils/mealLog';
 import {
   Platform,
   View,
@@ -454,8 +455,12 @@ export function LeftoverSheet({
    */
   const commitWeight = () => {
     if (!leftover) return;
-    if (typedWeight === leftover.weightG) return;
-    onSetWeight(typedWeight);
+    // What the store keeps: rounded to the gram and held to its range.
+    const kept = clampCookedWeight(typedWeight);
+    if (kept !== leftover.weightG) onSetWeight(typedWeight);
+    // The field shows the kept figure. With cookware picked the text is a scale
+    // reading rather than the stored grams, so it is left as read.
+    if (!weighIn.hasCookware) setWeightText(kept === null ? '' : String(kept));
   };
 
   // An existing row's title commits on blur/submit rather than on every
@@ -469,6 +474,7 @@ export function LeftoverSheet({
       return;
     }
     onRename(clean);
+    setTitle(clean);
   };
 
   /**

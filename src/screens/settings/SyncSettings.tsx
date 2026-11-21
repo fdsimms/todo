@@ -18,6 +18,7 @@ import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { describeLastSynced } from '../../utils/syncStatus';
 import { TextField } from '../../components/TextField';
+import { isDemoModeActive } from '../../utils/demoState';
 import { AgentNotesRows } from './AgentNotesRows';
 
 /**
@@ -226,7 +227,11 @@ export function SyncSettings() {
           style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
           value={urlDraft}
           onChangeText={setUrlDraft}
-          onBlur={() => setServerUrl(urlDraft)}
+          onBlur={() => {
+            setServerUrl(urlDraft);
+            // The store trims; show what it kept.
+            setUrlDraft(useSyncStore.getState().serverUrl);
+          }}
           placeholder="e.g. https://sync.example.com"
           placeholderTextColor={colors.textTertiary}
           autoCapitalize="none"
@@ -250,7 +255,20 @@ export function SyncSettings() {
           style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
           value={tokenDraft}
           onChangeText={setTokenDraft}
-          onBlur={() => { if (tokenDraft) void setServerToken(tokenDraft); }}
+          onBlur={() => {
+            const token = tokenDraft.trim();
+            if (!token) return;
+            // Cleared once saved, as the other token fields are: the hint above
+            // says "Saved", and the field goes back to its empty state.
+            setTokenDraft('');
+            void setServerToken(token).then(saved => {
+              if (saved) return;
+              Alert.alert(
+                'Couldn’t save the token',
+                isDemoModeActive() ? 'Tokens aren’t saved in demo mode.' : 'The keychain didn’t take it. Paste it again.',
+              );
+            });
+          }}
           placeholder={hasServerToken ? '••••••••' : 'e.g. a1b2c3…'}
           placeholderTextColor={colors.textTertiary}
           secureTextEntry

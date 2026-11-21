@@ -135,7 +135,7 @@ import {
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { annotateSteps, stepIngredientLines, type StepSegment } from '../utils/stepIngredients';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
-import { describeCookedWeight } from '../utils/mealLog';
+import { clampCookedWeight, describeCookedWeight } from '../utils/mealLog';
 import { CookwareWeighIn } from '../components/CookwareWeighIn';
 import { useWeighIn } from '../hooks/useWeighIn';
 import { plannedEntryForRecipe } from '../utils/foodLog';
@@ -1092,7 +1092,11 @@ export function RecipeDetailScreen() {
       weighIn.clear();
       return;
     }
-    setCookedWeight(recipe.id, trimmed ? Number(trimmed.replace(',', '.')) : null);
+    const kept = clampCookedWeight(trimmed ? Number(trimmed.replace(',', '.')) : null);
+    setCookedWeight(recipe.id, kept);
+    // The row stays open after a blur, so it shows what the store kept (rounded,
+    // held to its range, or cleared) rather than what was typed.
+    setCookedWeightDraft(kept === null ? '' : String(kept));
   };
 
   // Save is the same commit as leaving the row. It is off only for a scale
