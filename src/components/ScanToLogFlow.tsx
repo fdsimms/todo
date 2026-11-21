@@ -129,6 +129,9 @@ export function ScanToLogFlow({
       // subject with no item yet carries them: a scanned one already has its box.
       brand?: string | null;
       variant?: string | null;
+      // The barcode the scanner raised this for, linked to the product the
+      // figures are filed under once they are saved.
+      gtin?: string | null;
       slot: MealSlot | null;
       at: Date;
       mealPlanEntryId: string | null;
@@ -140,7 +143,9 @@ export function ScanToLogFlow({
    * `panelFor`. The scanner stays up underneath the card, so cancelling lands
    * back on the same rows.
    */
-  const [naming, setNaming] = useState<{ slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null>(null);
+  const [naming, setNaming] = useState<
+    { gtin: string | null; slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null
+  >(null);
   // The panel's subject: one the scanner raised, else the caller's own label
   // photo. Read at render time, which is safe for the second because the
   // caller's props only change after the panel's `onSave`/`onClose` pair.
@@ -296,7 +301,7 @@ export function ScanToLogFlow({
           const context = { slot, at, mealPlanEntryId: mealPlanEntryId ?? null };
           // No name yet (a barcode nothing knew): ask for it first, since the
           // catalog row is named from it once the label is saved.
-          if (!subject.name.trim()) setNaming(context);
+          if (!subject.name.trim()) setNaming({ ...context, gtin: subject.gtin ?? null });
           else setPanelFor({ itemId: null, productId: null, ...subject, ...context });
         }}
       />
@@ -360,6 +365,19 @@ export function ScanToLogFlow({
               // box filed seeds it, and later boxes never overwrite it.
               if (panel && !item.nutrition) setItemNutrition(itemId, panel);
             } else setItemNutrition(itemId, panel);
+            // The barcode this label was photographed for, last: a link finds
+            // its box by the brand and variant filed just above, the same
+            // order `saveScanToCatalog` keeps. Without it the code stayed
+            // unknown, so the scanner's row still read "Not found" and the
+            // next scan of the package started over.
+            if (panelSubject.gtin) {
+              linkScannedGtins([{
+                gtin: panelSubject.gtin,
+                itemId,
+                brand: panelSubject.brand ?? null,
+                variant: panelSubject.variant ?? null,
+              }]);
+            }
           } else if (productId) {
             // Onto the box when the scan named one, onto the catalog row when
             // it didn't — the same precedence `nutritionFor` reads them back

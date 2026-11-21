@@ -835,7 +835,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         // code's linked row and remembered phrase stop speaking for the row.
         scan => ((scan as ScanRow).nameTyped ? null : gtinItemFor(scan.gtin) ?? aliasItemFor(null, scan.label))
       ),
-    [rows, items, aliasItemFor, gtinItemFor]
+    // `itemProducts` and `visible` are not read in the body: a barcode linked
+    // while the scanner was hidden behind the label flow lands in a box or an
+    // alias, and this is what makes the row re-resolve when it comes back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, items, itemProducts, visible, aliasItemFor, gtinItemFor]
   );
 
   /**
@@ -1325,7 +1329,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       title="Add nutrition from the label"
                       note="Not found yet. Photograph the label to log it"
                       tone="action"
-                      onPress={() => onPhotographLabel(labelSubjectNamed(row.name.trim()))}
+                      onPress={() => onPhotographLabel({ ...labelSubjectNamed(row.name.trim()), gtin: row.gtin ?? null })}
                       accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
                     />
                   ) : (
@@ -1346,7 +1350,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     title="Photograph the label instead"
                     note="Read the nutrition facts off the package"
                     tone="action"
-                    onPress={() => onPhotographLabel(labelSubjectNamed(''))}
+                    onPress={() => onPhotographLabel({ ...labelSubjectNamed(''), gtin: row.gtin ?? null })}
                     accessibilityLabel="Photograph the nutrition label instead of typing a name"
                   />
                 ) : null;
