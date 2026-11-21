@@ -68,6 +68,7 @@ import { formatStopwatch } from '../utils/effort';
 import { linkedTaskLine, rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
+import { useWorkoutGaps } from '../hooks/useWorkoutGaps';
 import { withCreatedExercises } from '../utils/describedExercises';
 import type { RoutineDraft } from '../utils/workoutDraft';
 import { swapCandidates, swappableSets } from '../utils/exerciseSwap';
@@ -366,6 +367,11 @@ export function WorkoutModeScreen() {
 
   const viewIndex = Math.max(0, exercises.findIndex(e => e.exerciseId === viewedId));
   const viewed = exercises[viewIndex] ?? null;
+  // The picker's "Fills a gap" rows: muscles this workout isn't hitting that the person usually does.
+  const pickerGaps = useWorkoutGaps({
+    open: picking !== null, session: session ?? null, sets, routineName: routine?.name ?? null, gym,
+    swapping: picking === 'swap' && viewed ? viewed.exerciseId : null,
+  });
   const program = session?.programId ? programs.find(p => p.id === session.programId) ?? null : null;
 
   // ==== writing a set ====
@@ -1883,6 +1889,7 @@ export function WorkoutModeScreen() {
         onPickMany={picking === 'swap' ? undefined : addExercises}
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
+        gaps={pickerGaps}
         suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId), alternateOf(viewed.exerciseId))) : undefined}
       />
       <DescribeWorkoutSheet
