@@ -1159,8 +1159,13 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   //
   // A lookup is the exception: what it holds is something read, not a pending
   // write, so closing loses nothing and never asks.
+  //
+  // Only a row that would be recorded, or one with a brand or flavor typed on
+  // it, counts as work to lose. A barcode nothing knew, still unnamed and
+  // unchecked, has nothing in it, and scanning it again brings it back.
   const handleCancel = () => {
-    const dirty = context !== 'lookup' && (rows.length > 0 || manual.trim() !== '');
+    const hasWork = rows.some(r => r.included || r.nameTyped || r.brandEdit != null || r.variantEdit != null);
+    const dirty = context !== 'lookup' && (hasWork || manual.trim() !== '');
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
