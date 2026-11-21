@@ -47,7 +47,7 @@ import { fieldChanged, fieldText, initialFieldSync, nextFieldSync, styleKeyOf, t
  * `keyboardShouldPersistTaps="handled"`, runs while the field still has focus,
  * so it reads the value from before the typing, and the blur that follows
  * writes over whatever the action did. Report the text as it is typed and let
- * the action use it (`SetInput`'s `onTyping` in `WorkoutModeSheet`,
+ * the action use it (`SetInput`'s `onTyping` in `WorkoutModeScreen`,
  * `RoutineSetTable`'s `onPendingChange`), or write each value that already
  * counts as it is typed (`CountStepper`, `typedStepperValue`). And write on
  * blur only what was typed since focus, never a draft seeded from the stored
