@@ -44,7 +44,7 @@ import {
 import { useSettingsStore } from './useSettingsStore';
 import { useWidgetCompletionStore } from './useWidgetCompletionStore';
 import { claimPendingCompletionDate } from '../utils/pendingCompletionDate';
-import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings, clearGeneratedCategorySettings, setGeneratedCategory } from './useCategoryStore';
+import { useCategoryStore, ensureCalendarEventCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings, clearGeneratedCategorySettings, setGeneratedCategory } from './useCategoryStore';
 import { clearInRuleCategories, renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
 import { clearInFollowUpDraft, clearInSeriesDefaults, clearInTitleRules, renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules } from '../utils/categoryRename';
 import {
@@ -3755,9 +3755,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // ensureCalendarEventCategory for why it only ever fills an *absent*
     // answer, never a cleared one).
     ensureCalendarEventCategory();
-    // And the same for the Health reading, which files the same way for the
-    // same reasons.
-    ensureHealthCategory();
     // And the same for the tasks the app writes itself. Both are here rather
     // than in the settings store because they add a category, and the
     // categories have just finished loading.
@@ -12686,12 +12683,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       clear();
       releases.push(restore);
     };
-    clearSetting(settings.healthCategory === name,
-      () => settings.setHealthCategory(null), () => useSettingsStore.getState().setHealthCategory(name));
-    clearSetting(settings.limitsTodayCategory === name,
-      () => settings.setLimitsTodayCategory(null), () => useSettingsStore.getState().setLimitsTodayCategory(name));
-    clearSetting(settings.goalsTodayCategory === name,
-      () => settings.setGoalsTodayCategory(null), () => useSettingsStore.getState().setGoalsTodayCategory(name));
     clearSetting(settings.newTaskDefaults.category === name,
       () => settings.setNewTaskDefaults({ category: null }), () => useSettingsStore.getState().setNewTaskDefaults({ category: name }));
     const clearList = <R,>(current: R[], next: R[], write: (rules: R[]) => void) => {
@@ -12790,9 +12781,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     renameGeneratedCategorySettings(name, trimmed);
     const settings = useSettingsStore.getState();
     if (settings.calendarEventCategory === name) settings.setCalendarEventCategory(trimmed);
-    if (settings.healthCategory === name) settings.setHealthCategory(trimmed);
-    if (settings.limitsTodayCategory === name) settings.setLimitsTodayCategory(trimmed);
-    if (settings.goalsTodayCategory === name) settings.setGoalsTodayCategory(trimmed);
     if (settings.newTaskDefaults.category === name) settings.setNewTaskDefaults({ category: trimmed });
     const titleRules = renameInTitleRules(settings.titleRules, name, trimmed);
     if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);

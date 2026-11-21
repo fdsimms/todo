@@ -20,7 +20,6 @@ import {
   activeLimits,
   type NutritionTargets,
 } from '../utils/nutritionTargets';
-import { HEALTH_CATEGORY, useCategoryStore } from '../store/useCategoryStore';
 import { setGeneratorEnabled } from '../store/generatorSwitch';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { describeWater, waterInUnit, waterTargetRange, waterToMl } from '../utils/waterLog';
@@ -128,9 +127,8 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
   const limits = useSettingsStore(useShallow(s => s.nutritionLimits));
   const setNutritionLimits = useSettingsStore(s => s.setNutritionLimits);
-  const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
-  const setLimitsTodayCategory = useSettingsStore(s => s.setLimitsTodayCategory);
-  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const limitsTodayShown = useSettingsStore(s => s.limitsTodayShown);
+  const setLimitsTodayShown = useSettingsStore(s => s.setLimitsTodayShown);
   const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
   const setLimitWarnPercent = useSettingsStore(s => s.setLimitWarnPercent);
   const limitWarningTasks = useSettingsStore(s => s.limitWarningTasks);
@@ -360,15 +358,10 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
     }
   };
 
-  // Files the rows under the Health reading's own section when there is one, so
-  // the day's readings sit together, and otherwise under a "Biostats" category
-  // made for it.
+  // The rows go in the Biostats card at the top of Today.
   const toggleLimitsOnToday = () => {
     haptics.tap();
-    if (limitsTodayCategory !== null) { setLimitsTodayCategory(null); return; }
-    const category = healthCategory ?? HEALTH_CATEGORY;
-    useCategoryStore.getState().addCategory(category);
-    setLimitsTodayCategory(category);
+    setLimitsTodayShown(!limitsTodayShown);
   };
 
   const toggleLimitWarning = () => {
@@ -592,36 +585,16 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   activeOpacity={interaction.activeOpacity}
                   onPress={toggleLimitsOnToday}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: limitsTodayCategory !== null }}
+                  accessibilityState={{ checked: limitsTodayShown }}
                   accessibilityLabel="Show limits on Today"
                 >
                   <Ionicons
-                    name={limitsTodayCategory !== null ? 'checkmark-circle' : 'ellipse-outline'}
+                    name={limitsTodayShown ? 'checkmark-circle' : 'ellipse-outline'}
                     size={iconSize.md}
-                    color={limitsTodayCategory !== null ? colors.accent : colors.textTertiary}
+                    color={limitsTodayShown ? colors.accent : colors.textTertiary}
                   />
-                  <Text style={styles.boostToggleLabel}>
-                    {limitsTodayCategory !== null ? `Show on Today, under ${limitsTodayCategory}` : 'Show on Today'}
-                  </Text>
+                  <Text style={styles.boostToggleLabel}>Show on Today</Text>
                 </TouchableOpacity>
-                {limitsTodayCategory !== null && (
-                  <TouchableOpacity
-                    style={[styles.boostToggleRow, styles.limitToggleRule]}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => {
-                      haptics.tap();
-                      onClose();
-                      navigateToSettingsEntry(navigation, 'limitsTodayCategory');
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Change the category the limits show under on Today"
-                    accessibilityHint="Opens the Automations setting"
-                  >
-                    <Ionicons name="pricetag-outline" size={iconSize.md} color={colors.textSecondary} />
-                    <Text style={styles.boostToggleLabel}>Change category</Text>
-                    <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                )}
                 <TouchableOpacity
                   style={[styles.boostToggleRow, styles.limitToggleRule]}
                   activeOpacity={interaction.activeOpacity}

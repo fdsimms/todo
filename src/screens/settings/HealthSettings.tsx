@@ -6,8 +6,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useHealthStore } from '../../store/useHealthStore';
 import { useDemoStore } from '../../store/useDemoStore';
-import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
-import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
 import { CountStepper } from '../../components/CountStepper';
 import { HEALTH_ROW_KEYS, HEALTH_ROW_LABELS } from '../../utils/dayContextRows';
@@ -130,14 +128,14 @@ export function HealthSettings() {
   const setWorkoutHealthWrite = useSettingsStore(s => s.setWorkoutHealthWrite);
   const healthWriteNutrients = useSettingsStore(useShallow(s => s.healthWriteNutrients));
   const setHealthWriteNutrients = useSettingsStore(s => s.setHealthWriteNutrients);
-  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const healthTodayShown = useSettingsStore(s => s.healthTodayShown);
   const stepGoal = useSettingsStore(s => s.stepGoal);
   const setStepGoal = useSettingsStore(s => s.setStepGoal);
   const shortNightNoteEnabled = useSettingsStore(s => s.shortNightNoteEnabled);
   const setShortNightNoteEnabled = useSettingsStore(s => s.setShortNightNoteEnabled);
   const shortNightMinutes = useSettingsStore(s => s.shortNightMinutes);
   const setShortNightMinutes = useSettingsStore(s => s.setShortNightMinutes);
-  const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
+  const setHealthTodayShown = useSettingsStore(s => s.setHealthTodayShown);
   const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
   const setHealthTodayHidden = useSettingsStore(s => s.setHealthTodayHidden);
   const weightUnit = useSettingsStore(s => s.weightUnit);
@@ -157,7 +155,6 @@ export function HealthSettings() {
   const journalCustomPrompts = useSettingsStore(s => s.journalCustomPrompts);
   const [wordGoalOpen, setWordGoalOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
-  const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
   const refresh = useHealthStore(s => s.refresh);
@@ -220,10 +217,9 @@ export function HealthSettings() {
   const onToggle = () => {
     const next = !healthReadEnabled;
     setHealthReadEnabled(next);
-    // Before the sheet, so the section is there for the reading whichever way
-    // the permission goes. `force` because this is the moment the answer is
-    // being given — see ensureHealthCategory for why the startup pass isn't.
-    if (next) ensureHealthCategory({ force: true });
+    // Before the sheet, so the readings are on the card whichever way the
+    // permission goes. Turning the read on is the moment the answer is given.
+    if (next) setHealthTodayShown(true);
     // Turning it on is the one moment a person is unambiguously asking, so it
     // is the one moment the sheet may be raised. A sweep never does this.
     if (next && requestStatus === 'shouldRequest') {
@@ -540,32 +536,18 @@ export function HealthSettings() {
 
           <View style={styles.sep} />
           <SettingsRow
-            entryId="healthCategory"
-            icon="pricetag-outline"
-            label="Show Health readings under"
-            hint={healthCategory
-              ? 'Steps, active calories and your Activity rings show as rows in this category'
-              : "Health readings don’t show on Today"}
-            value={healthCategory ? categoryLabel(healthCategory, categories) : 'Nowhere'}
-            tight
+            entryId="healthTodayShown"
+            icon="stats-chart-outline"
+            label="Show Health readings on Today"
+            hint={healthTodayShown
+              ? 'Steps, active calories and your Activity rings show in the Biostats card at the top of Today'
+              : 'Health readings don’t show on Today'}
+            toggle={healthTodayShown}
+            onPress={() => setHealthTodayShown(!healthTodayShown)}
+            accessibilityLabel="Show Health readings on Today"
+            tight={healthTodayShown}
           />
-          <View style={styles.pillGroupRow}>
-            <PillGroup
-              noun="category"
-              options={[
-                { value: null, label: 'Nowhere' },
-                ...categories.map(c => ({ value: c.name, label: categoryLabel(c.name, categories) })),
-              ].map(o => ({
-                key: String(o.value),
-                label: o.label,
-                selected: o.value === healthCategory,
-                pinned: o.value === null,
-                accessibilityLabel: `Show Health readings under: ${o.label}`,
-                onPress: () => { haptics.tap(); setHealthCategory(o.value); },
-              }))}
-            />
-          </View>
-          {healthCategory && (
+          {healthTodayShown && (
             <SettingsNested>
               <SettingsRow
                 entryId="healthTodayRows"

@@ -6,7 +6,7 @@ import { ALL_DAY_CAPTION } from './dayContextRows';
  * Which of Today's non-task rows are drawn as one joined card, and what a
  * collapsed section says about the card it is holding.
  *
- * A card row is a pure readout: a health reading, or a calendar event. A meal
+ * A card row is a pure readout: a calendar event. A meal
  * row (it has a tick) and a moved-off-today event (it carries the "move tasks"
  * offer) are not, and stay ordinary rows. That split is the rule this module
  * exists to hold: **nothing with an action is ever folded into a card**, so
@@ -22,7 +22,6 @@ export type CardPosition = 'single' | 'first' | 'middle' | 'last';
 const MOVED_PREFIX = 'moved-';
 
 export function isCardRow(row: ContextRow): boolean {
-  if (row.kind === 'health') return true;
   return row.kind === 'event' && !row.id.startsWith(MOVED_PREFIX);
 }
 
@@ -30,6 +29,7 @@ export function isCardRow(row: ContextRow): boolean {
  * Each card row's place in its run, keyed by row id. A run is consecutive card
  * rows of the same kind: a health card and an event card that happen to touch
  * stay two cards, and a meal or moved-event row between two events ends the run.
+ * (Health rows no longer come through here: they draw in the Biostats widget.)
  */
 export function contextCardPositions(items: readonly TodayListItem[]): Map<string, CardPosition> {
   const keyAt = (i: number): string | null => {
@@ -56,8 +56,8 @@ export function contextCardPositions(items: readonly TodayListItem[]): Map<strin
  * holding nothing but card rows of one kind gets one: a category that also has
  * tasks in it would be summarised by a line that left them out.
  *
- * Health reads out its own figures. Events read as the one that
- * matters now: the running event, else the next timed one.
+ * Events read as the one that matters now: the running event, else the next
+ * timed one.
  */
 export function contextSectionSummaries(items: readonly TodayListItem[]): Map<string, string> {
   const out = new Map<string, string>();
@@ -69,7 +69,7 @@ export function contextSectionSummaries(items: readonly TodayListItem[]): Map<st
     if (label === null || !pure || rows.length === 0) return;
     const kind = rows[0].kind;
     if (!rows.every(r => r.kind === kind)) return;
-    const text = kind === 'health' ? rows.map(r => r.title).join(' · ') : eventSummary(rows);
+    const text = kind === 'event' ? eventSummary(rows) : '';
     if (text) out.set(label, text);
   };
 

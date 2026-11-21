@@ -136,16 +136,7 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   simpleMode: { group: 'features', describe: 'Simplified mode: hides the advanced half of the app.', read: s => s.simpleMode, write: (s, v) => s.setSimpleMode(bool('simpleMode', v)) },
   simpleTaskForm: { group: 'features', describe: 'A shorter task editor.', read: s => s.simpleTaskForm, write: (s, v) => s.setSimpleTaskForm(bool('simpleTaskForm', v)) },
   hideCategories: { group: 'features', describe: 'Today shows one list instead of a section per category.', read: s => s.hideCategories, write: (s, v) => s.setHideCategories(bool('hideCategories', v)) },
-  healthCategory: {
-    group: 'features',
-    describe: 'The category Apple Health readings (steps, active calories) show as rows under on Today, or null to hide them. A category that does not exist yet is created. Readings only appear once Health access is on, which is set on the phone.',
-    read: s => s.healthCategory,
-    write: (s, v) => {
-      if (v === null) return s.setHealthCategory(null);
-      if (typeof v !== 'string' || !v.trim() || v.trim().length > 40) throw new Error('healthCategory is a category name, or null for none.');
-      s.setHealthCategory(v.trim());
-    },
-  },
+  healthTodayShown: { group: 'features', describe: 'Whether the Biostats widget at the top of Today shows Apple Health readings (steps, active calories, rings). Readings only appear once Health access is on, which is set on the phone.', read: s => s.healthTodayShown, write: (s, v) => s.setHealthTodayShown(bool('healthTodayShown', v)) },
   mealsOnToday: { group: 'features', describe: 'How Today shows the day\'s meals: as rows in the task list beside the meal tasks (inline), as a strip at the top that replaces the meal tasks and shows what was logged or planned for each meal (top), or not at all (off). While it is top, the phone writes no meal tasks and removes the open ones.', read: s => s.mealsOnToday, write: (s, v) => s.setMealsOnToday(oneOf('mealsOnToday', v, ['inline', 'top', 'off'] as const)) },
   mealSlotsEnabled: { group: 'features', describe: 'The meals of the day the meal plan has rows for.', read: s => s.mealSlotsEnabled, write: (s, v) => s.setMealSlotsEnabled(slots('mealSlotsEnabled', v)) },
 
@@ -174,7 +165,8 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   waterUnit: { group: 'kitchen', describe: 'The unit water is counted in: ml or flOz.', read: s => s.waterUnit, write: (s, v) => s.setWaterUnit(oneOf('waterUnit', v, ['ml', 'flOz'] as const)) },
   nutritionLimits: { group: 'kitchen', describe: 'The nutrients whose food log target is a limit to stay under rather than a figure to reach (keys as in set_nutrition_targets). The Food log then says what is left and turns red past it. Only mark one the person said is a limit.', read: s => s.nutritionLimits, write: (s, v) => s.setNutritionLimits(nutrients('nutritionLimits', v)) },
   limitWarnPercent: { group: 'kitchen', describe: 'The share of a limit, as a percent (50-100), at which a day counts as close to it: the Food log bar and the Today row turn orange.', read: s => s.limitWarnPercent, write: (s, v) => s.setLimitWarnPercent(int('limitWarnPercent', v, 50, 100)) },
-  limitsTodayCategory: { group: 'kitchen', describe: 'The category Today shows a row per limit under ("Sat fat 9 of 16g, 7g left"), or null for none. It must already exist.', read: s => s.limitsTodayCategory, write: (s, v) => s.setLimitsTodayCategory(v === null ? null : String(v)) },
+  goalsTodayShown: { group: 'kitchen', describe: 'Whether the Biostats widget at the top of Today has a row per nutrient goal, the targets that are figures to reach rather than limits ("Protein 42 of 120g").', read: s => s.goalsTodayShown, write: (s, v) => s.setGoalsTodayShown(bool('goalsTodayShown', v)) },
+  limitsTodayShown: { group: 'kitchen', describe: 'Whether the Biostats widget at the top of Today has a row per limit ("Sat fat 9 of 16g, 7g left").', read: s => s.limitsTodayShown, write: (s, v) => s.setLimitsTodayShown(bool('limitsTodayShown', v)) },
 
   cookTextSize: { group: 'kitchen', describe: 'How big cook mode draws the step being read: small, medium, large (the default) or xlarge.', read: s => s.cookTextSize, write: (s, v) => s.setCookTextSize(oneOf('cookTextSize', v, ['small', 'medium', 'large', 'xlarge'] as const)) },
   cookRecapEnabled: { group: 'kitchen', describe: 'When a meal is marked cooked, ask how it was, whether there are leftovers, and what it used up.', read: s => s.cookRecapEnabled, write: (s, v) => s.setCookRecapEnabled(bool('cookRecapEnabled', v)) },

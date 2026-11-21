@@ -27,7 +27,8 @@ const task = (id: string): TodayListItem => ({ type: 'task', task: { id } }) as 
 describe('isCardRow', () => {
   it('draws readouts as cards and leaves anything with an action out', () => {
     expect(isCardRow(row('event-1', 'event'))).toBe(true);
-    expect(isCardRow(row('health-steps', 'health'))).toBe(true);
+    // Health readings draw in the Biostats widget, not as rows in the list.
+    expect(isCardRow(row('health-steps', 'health'))).toBe(false);
     expect(isCardRow(row('meal-1', 'meal'))).toBe(false);
     expect(isCardRow(row('moved-1', 'event'))).toBe(false);
   });
@@ -54,24 +55,9 @@ describe('contextCardPositions', () => {
     expect(pos.has('moved-x')).toBe(false);
     expect(pos.has('meal-1')).toBe(false);
   });
-
-  it('keeps a health card and an event card apart when they touch', () => {
-    const pos = contextCardPositions([ctx(row('health-steps', 'health')), ctx(row('event-a', 'event'))]);
-    expect(pos.get('health-steps')).toBe('single');
-    expect(pos.get('event-a')).toBe('single');
-  });
 });
 
 describe('contextSectionSummaries', () => {
-  it('reads a health section out as its own figures', () => {
-    const items = [
-      header('Health'),
-      ctx(row('health-steps', 'health', { title: '5,348 steps' })),
-      ctx(row('health-activeEnergy', 'health', { title: '510 active cal' })),
-    ];
-    expect(contextSectionSummaries(items).get('Health')).toBe('5,348 steps · 510 active cal');
-  });
-
   it('names the next timed event with its time first, skipping all-day', () => {
     const items = [
       header('Calendar'),

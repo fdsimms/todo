@@ -4624,11 +4624,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // section nobody made, a lower-cased spelling never matched the real
       // category, and a project id that does not exist pointed the wish list
       // at nothing. The category is stored in the spelling the person made it
-      // in, as every task field's is (categoryNamed). `healthCategory` is the
-      // one that creates a missing category, as the app's own setting does.
+      // in, as every task field's is (categoryNamed).
       const refusals: string[] = [];
       const given: Record<string, unknown> = { ...changes };
-      for (const key of ['limitsTodayCategory', 'groceryUseUpTaskCategory', 'leftoverUseUpTaskCategory']) {
+      for (const key of ['groceryUseUpTaskCategory', 'leftoverUseUpTaskCategory']) {
         const value = given[key];
         if (typeof value === 'string') given[key] = categoryNamed(value, false, refusals, key) ?? value;
       }
@@ -4647,9 +4646,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const dry = new Proxy(state, { get: (target, prop) => (typeof prop === 'string' && prop.startsWith('set') ? () => {} : Reflect.get(target, prop)) });
       for (const [key, value] of Object.entries(given)) SETTINGS_SPEC[key].write(dry, value);
       db.dbTransaction(() => {
-        // A readings category the person names that doesn't exist yet is made, as the app's own
-        // "Show Health readings under" does; the dry run above must not, so it lives here.
-        if (typeof given.healthCategory === 'string') ensureCategory(given.healthCategory.trim());
         for (const [key, value] of Object.entries(given)) SETTINGS_SPEC[key].write(useSettingsStore.getState(), value);
       });
       refresh();
@@ -8575,7 +8571,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         categoryStore.renameGeneratedCategorySettings(from, to);
         const settings = useSettingsStore.getState();
         if (settings.calendarEventCategory === from) settings.setCalendarEventCategory(to);
-        if (settings.healthCategory === from) settings.setHealthCategory(to);
         if (settings.newTaskDefaults.category === from) settings.setNewTaskDefaults({ category: to });
         const titleRules = rename.renameInTitleRules(settings.titleRules, from, to);
         if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);

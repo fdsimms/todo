@@ -66,6 +66,7 @@ import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
 import { clampShortNightMinutes, parseShortNightMinutes, SHORT_NIGHT_MINUTES_DEFAULT } from '../utils/shortNight';
 import { parseLeftoverOptOuts, serializeLeftoverOptOuts } from '../utils/leftoverOptOut';
 import { parseHealthRowKeys, serializeHealthRowKeys, type HealthRowKey } from '../utils/dayContextRows';
+import { shownFromStored } from '../utils/biostatsWidget';
 import {
   parseNutritionTargets,
   serializeNutritionTargets,
@@ -1476,20 +1477,17 @@ interface SettingsStore {
    */
   bodyProfile: BodyProfile;
 
-  // Which category the health reading files under on Today, by name.
-  //
-  // Exactly `calendarEventCategory`'s shape and for its reasons: filing the row
-  // under a real category means placement, collapsing, ordering and renaming
-  // are the category's problem rather than this feature's. Null means the
-  // category hasn't been chosen yet, and `ensureHealthCategory` fills it in the
-  // first time the read is switched on.
-  //
-  // It doubles as the switch for the Today row, which is why there is no
-  // `healthOnToday` beside it: nothing shows while it is null, so clearing it
-  // is how somebody says "read Health, but not onto my list" — the same answer
-  // the calendar's own "Nowhere" gives, and one setting rather than two that
-  // could contradict each other.
-  healthCategory: string | null;
+  // Whether Apple Health's readings (steps, active calories, rings) show in the
+  // Biostats widget at the top of Today. Reading Health and showing it on Today
+  // are two answers, so this is its own switch: off says "read Health, but not
+  // onto my list". It replaced `healthCategory`, when the readings filed under
+  // a category; an install that still holds that key reads as on until the
+  // switch is written (see `loadShown`).
+  healthTodayShown: boolean;
+  // Whether that widget is folded to its one-line summary. Folded by default, as
+  // the Biostats category was when it was first created, and kept across
+  // launches since a person who opens it wants it open tomorrow too.
+  biostatsCollapsed: boolean;
   // The steps row's goal, or null for none (the default). Apple Health holds no
   // step goal an app can read, so this is typed in; see `src/utils/stepGoal.ts`.
   stepGoal: number | null;
@@ -1507,11 +1505,9 @@ interface SettingsStore {
   // write tasks from it" — and the pass requires both.
   //
   // `healthTaskCategory` is its own setting rather than a reuse of
-  // `healthCategory`, even though both default to a category named "Health"
-  // (addCategory is idempotent by name, so out of the box they share one
-  // section). Clearing the reading's category means "don't show my step count
-  // on Today", which is not the same instruction as "don't add health tasks",
-  // and one setting could not tell those apart.
+  // `healthTodayShown`. Turning off the readings on Today means "don't show my
+  // step count", which is not the same instruction as "don't add health
+  // tasks", and one setting could not tell those apart.
   healthTasks: boolean;
   healthTaskCategory: string | null;
   healthRules: HealthRule[];
@@ -1678,18 +1674,18 @@ interface SettingsStore {
    */
   limitWarnPercent: number;
   /**
-   * The category Today files a row per limit under ("Sat fat 9 of 16g, 7g
-   * left"), or null for no rows. Same double duty `healthCategory` does: the
-   * section and the off switch. Off by default; the Nutrition sheet's "Show on
-   * Today" sets it. See `limitContextRows`.
+   * Whether the Biostats widget at the top of Today has a row per limit ("Sat
+   * fat 9 of 16g, 7g left"). Off by default; the Nutrition sheet's "Show on
+   * Today" sets it. It replaced `limitsTodayCategory` (see `loadShown`). See
+   * `limitContextRows`.
    */
-  limitsTodayCategory: string | null;
+  limitsTodayShown: boolean;
   // Limits left off Today's rows. A hidden list rather than a shown one, so a
   // nutrient set to Stay under later appears there until it's turned off.
   limitsTodayHidden: NutrientKey[];
-  // Today's rows for nutrient targets that are not Stay under, filed under this
-  // category (null = no rows), and the ones left off.
-  goalsTodayCategory: string | null;
+  // Whether the widget has rows for nutrient targets that are not Stay under,
+  // and the ones left off. Replaced `goalsTodayCategory`.
+  goalsTodayShown: boolean;
   goalsTodayHidden: NutrientKey[];
   // Opt-in, off by default: a task the first time a day's food log passes
   // limitWarnPercent of a limit. See src/utils/limitWarningTasks.ts.
@@ -2532,7 +2528,9 @@ interface SettingsStore {
    * leaving whatever calorie target is already stored untouched.
    */
   syncWeightGoalCalorieTarget: (currentKg: number | null, measuredMaintenanceKcal?: number | null) => void;
-  setHealthCategory: (category: string | null) => void;
+  setHealthTodayShown: (on: boolean) => void;
+  /** Whether the Biostats widget on Today is folded to its one-line summary. */
+  setBiostatsCollapsed: (collapsed: boolean) => void;
   /** Replaces the whole set of Health readings left off Today's rows. */
   setHealthTodayHidden: (keys: HealthRowKey[]) => void;
   setStepGoal: (goal: number | null) => void;
@@ -2592,10 +2590,10 @@ interface SettingsStore {
   /** Replaces the whole set of nutrients whose target is a limit. */
   setNutritionLimits: (keys: NutrientKey[]) => void;
   setLimitWarnPercent: (percent: number) => void;
-  setLimitsTodayCategory: (category: string | null) => void;
+  setLimitsTodayShown: (on: boolean) => void;
   /** Replaces the whole set of limits left off Today's rows. */
   setLimitsTodayHidden: (keys: NutrientKey[]) => void;
-  setGoalsTodayCategory: (category: string | null) => void;
+  setGoalsTodayShown: (on: boolean) => void;
   setGoalsTodayHidden: (keys: NutrientKey[]) => void;
   setLimitWarningTasks: (on: boolean) => void;
   setLimitWarningTaskCategory: (category: string | null) => void;
@@ -3356,9 +3354,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   foodLogPinnedNutrients: [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS],
   nutritionLimits: [],
   limitWarnPercent: DEFAULT_LIMIT_WARN_PERCENT,
-  limitsTodayCategory: null,
+  limitsTodayShown: false,
   limitsTodayHidden: [],
-  goalsTodayCategory: null,
+  goalsTodayShown: false,
   goalsTodayHidden: [],
   limitWarningTasks: false,
   limitWarningTaskCategory: null,
@@ -3430,7 +3428,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   activeEnergyBoost: null,
   proteinPerWeight: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
-  healthCategory: null,
+  healthTodayShown: false,
+  biostatsCollapsed: true,
   stepGoal: null,
   shortNightNoteEnabled: true,
   shortNightMinutes: SHORT_NIGHT_MINUTES_DEFAULT,
@@ -3936,10 +3935,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const activeEnergyBoost = parseActiveEnergyBoost(dbGetSetting('activeEnergyBoost'));
     const proteinPerWeight = parseProteinPerWeight(dbGetSetting('proteinPerWeight'));
     const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
-    // '' persists as "not chosen", matching calendarEventCategory. Nothing
-    // creates the category from here — see ensureHealthCategory, which runs
-    // once the categories themselves have loaded.
-    const healthCategory = dbGetSetting('healthCategory') || null;
+    const healthTodayShown = shownFromStored(dbGetSetting('healthTodayShown'), dbGetSetting('healthCategory'), healthReadEnabled);
+    const biostatsCollapsed = dbGetSetting('biostatsCollapsed') !== 'false';
     const stepGoal = parseStepGoal(dbGetSetting('stepGoal'));
     const shortNightNoteEnabled = dbGetSetting('shortNightNoteEnabled') !== 'false';
     const shortNightMinutes = parseShortNightMinutes(dbGetSetting('shortNightMinutes'));
@@ -3991,9 +3988,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const nutritionLimits = parseNutritionLimits(dbGetSetting('nutritionLimits'));
     const limitWarnPercent = clampLimitWarnPercent(parseInt(dbGetSetting('limitWarnPercent') ?? '', 10));
     const limitWarningTasks = dbGetSetting('limitWarningTasks') === 'true';
-    const limitsTodayCategory = dbGetSetting('limitsTodayCategory') || null;
+    const limitsTodayShown = shownFromStored(dbGetSetting('limitsTodayShown'), dbGetSetting('limitsTodayCategory'));
     const limitsTodayHidden = parseNutritionLimits(dbGetSetting('limitsTodayHidden'));
-    const goalsTodayCategory = dbGetSetting('goalsTodayCategory') || null;
+    const goalsTodayShown = shownFromStored(dbGetSetting('goalsTodayShown'), dbGetSetting('goalsTodayCategory'));
     const goalsTodayHidden = parseNutritionLimits(dbGetSetting('goalsTodayHidden'));
     const limitWarningTaskCategory = dbGetSetting('limitWarningTaskCategory') || null;
     const limitWarningDeclined = parseNutritionLimits(dbGetSetting('limitWarningDeclined'));
@@ -4387,6 +4384,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       backgroundRefreshEnabled,
       beatLastDayKey,
       beatSoundEnabled,
+      biostatsCollapsed,
       birthdayGiftLeadDays,
       birthdayGiftTaskCategory,
       birthdayGiftTasks,
@@ -4486,8 +4484,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       generatedTaskDefaults,
       generatedTaskExtras,
       generatorEstimates,
-      goalsTodayCategory,
       goalsTodayHidden,
+      goalsTodayShown,
       goalTargetDeclined,
       goalTargetTaskCategory,
       goalTargetTasks,
@@ -4501,13 +4499,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       groceryUseUpTaskCategory,
       groceryUseUpTasks,
       hapticsEnabled,
-      healthCategory,
       healthFoodWriteRefusalSeen,
       healthReadEnabled,
       healthRules,
       healthTaskCategory,
       healthTasks,
       healthTodayHidden,
+      healthTodayShown,
       healthWorkoutWriteRefusalSeen,
       healthWriteEnabled,
       healthWriteNutrients,
@@ -4533,8 +4531,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       leftoverPromptOptOuts,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
-      limitsTodayCategory,
       limitsTodayHidden,
+      limitsTodayShown,
       limitWarningAutoSlips,
       limitWarningDeclined,
       limitWarningTaskCategory,
@@ -5210,14 +5208,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ limitWarnPercent: clamped });
   },
 
-  setLimitsTodayCategory(category: string | null) {
-    dbSetSetting('limitsTodayCategory', category ?? '');
-    set({ limitsTodayCategory: category });
+  setLimitsTodayShown(on: boolean) {
+    dbSetSetting('limitsTodayShown', on ? 'true' : 'false');
+    set({ limitsTodayShown: on });
   },
 
-  setGoalsTodayCategory(category: string | null) {
-    dbSetSetting('goalsTodayCategory', category ?? '');
-    set({ goalsTodayCategory: category });
+  setGoalsTodayShown(on: boolean) {
+    dbSetSetting('goalsTodayShown', on ? 'true' : 'false');
+    set({ goalsTodayShown: on });
   },
 
   setGoalsTodayHidden(keys: NutrientKey[]) {
@@ -6794,9 +6792,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     get().setNutritionTarget('calorieKcal', proposed);
   },
 
-  setHealthCategory(category: string | null) {
-    dbSetSetting('healthCategory', category ?? '');
-    set({ healthCategory: category });
+  setHealthTodayShown(on: boolean) {
+    dbSetSetting('healthTodayShown', on ? 'true' : 'false');
+    set({ healthTodayShown: on });
+  },
+
+  setBiostatsCollapsed(collapsed: boolean) {
+    dbSetSetting('biostatsCollapsed', collapsed ? 'true' : 'false');
+    set({ biostatsCollapsed: collapsed });
   },
 
   setHealthTodayHidden(keys: HealthRowKey[]) {
