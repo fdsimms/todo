@@ -20,7 +20,14 @@ export interface BiostatsMark {
 
 export interface BiostatsCollapsed {
   /** The day's calories as a ring, when a calorie target has a row. */
-  ring: { fraction: number; label: string } | null;
+  ring: {
+    fraction: number;
+    /** The percentage inside the ring. */
+    label: string;
+    /** What the ring measures ("Calories") and the figure against its goal ("0 of 2,000"). */
+    name: string;
+    detail: string;
+  } | null;
   /** At most two bars, the ones most worth a glance. */
   bars: BiostatsMark[];
   /**
@@ -48,7 +55,12 @@ const toneRank = (tone: ContextRow['tone']): number => (tone === 'over' ? 2 : to
 export function biostatsCollapsed(rows: readonly ContextRow[]): BiostatsCollapsed {
   const calorie = rows.find(r => r.nutrientKey === 'calorieKcal' && r.visual?.type === 'bar');
   const ring = calorie && calorie.visual?.type === 'bar'
-    ? { fraction: calorie.visual.fraction, label: `${Math.round(calorie.visual.fraction * 100)}%` }
+    ? {
+        fraction: calorie.visual.fraction,
+        label: `${Math.round(calorie.visual.fraction * 100)}%`,
+        name: calorie.reading?.label ?? 'Calories',
+        detail: calorie.reading ? (calorie.reading.of ? `${calorie.reading.figure} of ${calorie.reading.of}` : calorie.reading.figure) : '',
+      }
     : null;
 
   const limits = rows
