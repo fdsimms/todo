@@ -43,7 +43,7 @@ import { SortableList } from './SortableList';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
 import { WorkoutCompleteHero } from './WorkoutCompleteHero';
-import type { ExerciseKind, WorkoutSet, WorkoutSetKind } from '../types';
+import type { ExerciseKind, ProgressionScheme, WorkoutSet, WorkoutSetKind } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useDemoStore } from '../store/useDemoStore';
@@ -86,7 +86,8 @@ import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
 import { sessionBodyweightVolumeKg } from '../utils/bodyweightLoad';
 import { recordLines } from '../utils/workoutRecordText';
-import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
+import { proposalActionLabel, proposalApplied, proposalHeadline, schemeFor, workingSetLogged, type Proposal } from '../utils/workoutProgression';
+import { PROGRESSION_EXPLAINERS, PROGRESSION_LABELS } from '../utils/workoutRoutine';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
 import {
@@ -575,7 +576,49 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [timerOpen, setTimerOpen] = useState(false);
   // This workout's rest timers are turned off (`restsAreOff`): no rest starts, and the Rest chips are hidden.
   const restsOff = restsAreOff(session?.restOverrides);
-  const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
+  // `open` names a list inside the menu to start on (the Set progression chip opens the schemes directly); no anchor centers the card.
+  const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor | null; open?: string } | null>(null);
+  // ==== progression: how an exercise moves on, set from inside the workout ====
+  // The routine item this workout is planned by, when a scheme can be set on it:
+  // a weight and reps exercise of a routine the workout is on the current
+  // version of. One started on an older version is planned by that version
+  // throughout (`sessionPlan`), so a scheme saved now would not reach it.
+  const progressionItem = (exerciseId: string) =>
+    session && session.endedAt === null && !oldVersion
+      && (catalogExercise(exerciseRows, exerciseId)?.kind ?? 'weight_reps') === 'weight_reps'
+      ? startedPlan?.items.find(i => i.exerciseId === exerciseId) ?? null
+      : null;
+  const chooseProgression = (exerciseId: string, scheme: ProgressionScheme | null) => {
+    if (!session) return;
+    const done = useWorkoutStore.getState().setExerciseProgression(session.id, exerciseId, scheme);
+    if (done === true) { haptics.success(); return; }
+    Alert.alert(
+      'Couldn’t set the progression',
+      'This workout has finished, or its routine has changed since it started. Set it from the routine’s editor instead.',
+    );
+  };
+  // The schemes as the exercise's "…" menu lists them. A scheme the item already has is ticked
+  // and does nothing when tapped; None shows only while there is one to clear.
+  const progressionChoices = (exerciseId: string) => {
+    const own = progressionItem(exerciseId)?.progression?.scheme ?? null;
+    const choices = (['double', 'linear', 'percent', 'rpe'] as const)
+      // A percentage of the training max needs a program to hold the max.
+      .filter(s => s !== 'percent' || program !== null || own === 'percent')
+      .map(s => ({
+        key: s,
+        label: PROGRESSION_LABELS[s],
+        detail: PROGRESSION_EXPLAINERS[s],
+        checked: own === s,
+        onPress: () => { if (own !== s) chooseProgression(exerciseId, s); },
+      }));
+    return own === null ? choices : [...choices, {
+      key: 'none',
+      label: 'None',
+      detail: program?.scheme ? 'Use the program’s choice.' : 'No weight suggestions for this exercise.',
+      checked: false,
+      onPress: () => chooseProgression(exerciseId, null),
+    }];
+  };
   // The trophy's card keeps the lines it was opened with, so it reads the same while it fades.
   const [recordCard, setRecordCard] = useState<{ lines: ReturnType<typeof recordLines>; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
@@ -1324,6 +1367,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         accessibilityLabel={`Add a note on ${viewedInfo?.name ?? 'this exercise'}`}
                       />
                     )}
+                    {schemeFor(progressionItem(viewed.exerciseId), program) === null && progressionItem(viewed.exerciseId) && (
+                      <InlineAction
+                        icon="trending-up-outline"
+                        label="Set progression"
+                        variant="neutral"
+                        onPress={() => { haptics.tap(); setExerciseMenu({ exerciseId: viewed.exerciseId, anchor: null, open: 'progression' }); }}
+                        accessibilityLabel={`Set how ${viewedInfo?.name ?? 'this exercise'} moves on, so workout mode suggests the next weight`}
+                      />
+                    )}
                     {gym && gymNoteEdit !== viewed.exerciseId && (
                       <InlineAction
                         icon="location-outline"
@@ -1655,6 +1707,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             visible={exerciseMenu !== null}
             title={menuId ? nameOf(menuId) : ''}
             anchor={exerciseMenu?.anchor ?? null}
+            startOpen={exerciseMenu?.open ?? null}
             onClose={() => setExerciseMenu(null)}
             actions={menuId && menuExercise ? [
               ...(group.length > 1 ? (['up', 'down'] as const)
@@ -1690,6 +1743,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 label: 'Swap',
                 icon: 'swap-horizontal' as const,
                 onPress: () => { setViewedId(menuId); setPicking('swap'); },
+              }] : []),
+              ...(progressionItem(menuId) ? [{
+                key: 'progression',
+                label: 'Progression…',
+                icon: 'trending-up-outline' as const,
+                choices: progressionChoices(menuId),
               }] : []),
               {
                 key: 'remove',

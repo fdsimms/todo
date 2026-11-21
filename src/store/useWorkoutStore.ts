@@ -74,6 +74,7 @@ import { loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { libraryProgram } from '../utils/workoutProgramLibrary';
 import { groupNames, renamedRegistry, resolveGroupName } from '../utils/routineGroups';
 import { slotUpdates } from '../utils/projectOrder';
+import { withProgression } from '../utils/workoutRoutine';
 import {
   currentProgramVersion,
   currentRoutineVersion,
@@ -699,6 +700,25 @@ interface WorkoutStore {
    * changed.
    */
   setSessionRest: (sessionId: string, exerciseId: string, seconds: number | null) => boolean;
+  /**
+   * Sets how one exercise moves on (`WorkoutRoutineItem.progression`) from
+   * inside the workout, on the routine and for this workout at once: workout
+   * mode, the Lock Screen and the watch read a workout's suggestions from the
+   * routine version it is on (`sessionPlan`), so a change that only reached
+   * the routine would suggest nothing until the next workout. The routine is
+   * saved as `updateRoutine` does (amended in place until a workout has been
+   * finished on its version, a new version after), and a workout that was on
+   * the routine's current version is moved onto whichever version that leaves.
+   * Null clears it. Nothing else about the plan changes, and no weight is
+   * written (a suggestion still waits for a tap of Use).
+   *
+   * Refuses with `finished` for a workout already ended, and `notFound` for
+   * one with no routine, a routine without the exercise, or a workout started
+   * on an older version, which is planned by that version throughout.
+   */
+  setExerciseProgression: (
+    sessionId: string, exerciseId: string, scheme: ProgressionScheme | null,
+  ) => true | WorkoutRefusal;
   /**
    * Lays warm-up steps out as planned sets ahead of the exercise's other sets,
    * which move down to make room. Refuses a session, or an exercise not in it,
@@ -2686,6 +2706,31 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if ((seconds === null ? undefined : next[exerciseId]) === was) return false;
       const { restOverrides: _old, ...rest } = session;
       putSession(Object.keys(next).length > 0 ? { ...rest, restOverrides: next } : rest);
+      return true;
+    },
+
+    setExerciseProgression(sessionId, exerciseId, scheme) {
+      const session = get().sessions.find(s => s.id === sessionId);
+      if (!session) return 'notFound';
+      if (session.endedAt !== null) return 'finished';
+      const routine = session.routineId ? get().routines.find(r => r.id === session.routineId) : undefined;
+      if (!routine) return 'notFound';
+      const versions = routineVersionsOf(routine, get().routineVersions);
+      const current = currentRoutineVersion(routine, versions);
+      if (sessionVersionId(session, versions) !== current.id) return 'notFound';
+      if (!routine.items.some(i => i.exerciseId === exerciseId)) return 'notFound';
+      const saved = get().updateRoutine(
+        routine.id,
+        { items: routine.items.map(i => (i.exerciseId === exerciseId ? withProgression(i, scheme) : i)) },
+        { source: 'workout' },
+      );
+      if (typeof saved === 'string') return saved;
+      // A new version was started: this workout moves onto it, the one change
+      // between the two being the progression just set.
+      const now = get().sessions.find(s => s.id === sessionId);
+      if (now && saved.currentVersionId && saved.currentVersionId !== sessionVersionId(now, get().routineVersions.filter(v => v.routineId === routine.id))) {
+        putSession({ ...now, routineVersionId: saved.currentVersionId });
+      }
       return true;
     },
 

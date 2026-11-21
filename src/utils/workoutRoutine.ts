@@ -377,6 +377,17 @@ export const PROGRESSION_HINTS: Record<ProgressionScheme, string> = {
   rpe: 'Workout mode suggests a weight from how hard the last top set felt, from 1 to 10.',
 };
 
+/**
+ * What each scheme means, in plain words, for someone choosing one: the
+ * routine editor's "?" and workout mode's picker both read it.
+ */
+export const PROGRESSION_EXPLAINERS: Record<ProgressionScheme, string> = {
+  double: 'You aim for a range, like 8 to 12 reps. Once every set reaches the top, add weight and start at the bottom again.',
+  linear: 'Add a little weight each workout where you finish all your reps. Common for beginners.',
+  percent: 'Each set’s weight is a percentage of your heaviest lift, which you set in the program.',
+  rpe: 'After a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.',
+};
+
 /** Under the control with nothing chosen, in a program: its own choice is the one a routine's exercises fall back to. */
 export const PROGRESSION_NONE_HINT =
   'Nothing chosen. Workout mode suggests no weights, except for exercises whose routine chooses a progression.';
