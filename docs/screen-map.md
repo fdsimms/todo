@@ -443,8 +443,8 @@ Where each component can appear.
 - `src/components/SavedEntrySheets.tsx` — on SettingsGroupScreen, WorkoutModeScreen, WorkoutsScreen
 - `src/components/SavedFocusEditorSheet.tsx` — on RemindersScreen
 - `src/components/SavedLinkParts.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, RewardsScreen, SearchScreen, +7 more
-- `src/components/SavedMealReviewSheet.tsx` — on FoodLogScreen
-- `src/components/SavedMealsSheet.tsx` — on FoodLogScreen
+- `src/components/SavedMealReviewSheet.tsx` — on FoodLogScreen, app shell
+- `src/components/SavedMealsSheet.tsx` — on FoodLogScreen, app shell
 - `src/components/ScanLookupSheet.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen
 - `src/components/ScanPortionSheet.tsx` — on FoodLogScreen, app shell
 - `src/components/ScanToLogFlow.tsx` — on FoodLogScreen, app shell

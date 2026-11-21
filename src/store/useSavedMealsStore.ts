@@ -56,9 +56,11 @@ interface SavedMealsStore {
     /**
      * `taskId` stamps each entry with the task whose completion is logging it,
      * and `undoable: false` keeps the entries out of shake-to-undo, for that
-     * caller: the completion already has the undo bar.
+     * caller: the completion already has the undo bar. `mealPlanEntryId` links
+     * each entry to the planned meal it answers, for a caller that already
+     * knows which one (`LogMealEntrySheet`).
      */
-    opts?: { taskId?: string; undoable?: boolean },
+    opts?: { taskId?: string; undoable?: boolean; mealPlanEntryId?: string | null },
   ) => FoodLogEntry[];
 }
 
@@ -122,6 +124,7 @@ export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
     for (const item of meal.items) {
       const entry = addEntry({
         taskId: opts?.taskId,
+        mealPlanEntryId: opts?.mealPlanEntryId ?? null,
         savedMealId: meal.id,
         savedMealName: meal.name,
         label: item.label,

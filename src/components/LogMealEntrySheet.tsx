@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { logInstantFor } from '../utils/foodLog';
 import { featureHidden } from '../utils/simpleMode';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
+import { SavedMealReviewSheet } from './SavedMealReviewSheet';
+import { SavedMealsSheet } from './SavedMealsSheet';
 import { ScanToLogFlow } from './ScanToLogFlow';
 import type { LabelSubject } from './LabelSubjectSheet';
-import type { MealSlot } from '../types';
+import type { MealSlot, SavedMeal } from '../types';
 
 /**
  * When the meal is logged as having been eaten: now for today's, noon for
@@ -87,6 +92,15 @@ function mealInstant(dayKey: string): Date {
  * `ScanToLogFlow` does internally for its own scanner. It is the wrong one
  * here: a hidden Modal unmounts its children once it finishes dismissing, so
  * a cancelled scan would hand back an empty search field.
+ *
+ * **Saved meals are offered here as on the food log screen**: a SAVED MEALS
+ * block under a typed name, and the "Log a saved meal" tile, both of which
+ * `FoodLogEntrySheet` shows only when its caller passes the saved-meal props.
+ * Logging one writes its entries on the planned meal's own day and slot, linked
+ * to that plan entry (`logMeal`'s `mealPlanEntryId`), and clears `pending` like
+ * any other completed log. `FoodLogScreen` keeps its own copy of this glue
+ * because it has a third host (the header's list), so a change to how a saved
+ * meal is reviewed or logged belongs in both.
  */
 export function LogMealEntrySheet() {
   const pending = useFoodLogStore(s => s.pendingManualMealLog);
@@ -119,6 +133,49 @@ export function LogMealEntrySheet() {
     { subject: LabelSubject; slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
   >(null);
 
+  // ==== saved meals ====
+  const savedMeals = useSavedMealsStore(useShallow(s => s.meals));
+  const logSavedMeal = useSavedMealsStore(s => s.logMeal);
+  const removeSavedMeal = useSavedMealsStore(s => s.removeMeal);
+  const replaceSavedMealItems = useSavedMealsStore(s => s.replaceItems);
+  const [savedMealsOpen, setSavedMealsOpen] = useState(false);
+  // An id, so the review reads the store's current copy after "Save changes to
+  // this meal" rewrites it. `reviewHost` says which sheet it is raised from:
+  // each renders its own review inside its own Modal, and only that one shows.
+  const [reviewMealId, setReviewMealId] = useState<string | null>(null);
+  const [reviewHost, setReviewHost] = useState<'list' | 'search'>('list');
+  const reviewMeal = savedMeals.find(m => m.id === reviewMealId) ?? null;
+  const shownReviewMeal = useSheetSubject(reviewMeal);
+  const openReview = (meal: SavedMeal, host: 'list' | 'search') => {
+    setReviewHost(host);
+    setReviewMealId(meal.id);
+  };
+
+  /**
+   * Writes a saved meal on the planned meal's day, linked to it, and finishes
+   * the prompt. Everything nested is closed in the same commit, which
+   * `SheetModal` sequences innermost first.
+   */
+  const logSaved = (meal: SavedMeal, slot: MealSlot | null) => {
+    if (!pending) return;
+    logSavedMeal(meal, slot ?? pending.slot, mealInstant(pending.dayKey), { mealPlanEntryId });
+    setSavedMealsOpen(false);
+    setReviewMealId(null);
+    setPending(null);
+  };
+
+  const savedMealReview = (host: 'list' | 'search') => shownReviewMeal && (
+    <SavedMealReviewSheet
+      visible={reviewMeal !== null && reviewHost === host}
+      meal={shownReviewMeal}
+      slot={pending?.slot ?? null}
+      at={pending ? mealInstant(pending.dayKey) : new Date()}
+      onLog={(items, chosenSlot) => logSaved({ ...shownReviewMeal, items }, chosenSlot)}
+      onSaveChanges={items => replaceSavedMealItems(shownReviewMeal.id, items)}
+      onClose={() => setReviewMealId(null)}
+    />
+  );
+
   return (
     <FoodLogEntrySheet
         visible={!!pending && !pendingFinishLeftoverId}
@@ -134,6 +191,10 @@ export function LogMealEntrySheet() {
           setLabel({ subject, slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
         }}
         canEstimate={estimateRoute !== 'unavailable'}
+        onSavedMeal={() => setSavedMealsOpen(true)}
+        savedMeals={savedMeals}
+        onPickSavedMeal={meal => openReview(meal, 'search')}
+        onLogSavedMeal={(meal, slot) => logSaved(meal, slot)}
         onDeclineMeal={mealPlanEntryId ? () => {
           setLogMeal(mealPlanEntryId, false);
           setPending(null);
@@ -151,6 +212,18 @@ export function LogMealEntrySheet() {
               label={label?.subject ?? null}
               onLabelClose={() => setLabel(null)}
             />
+            <SavedMealsSheet
+              visible={savedMealsOpen}
+              meals={savedMeals}
+              onLog={meal => logSaved(meal, pending?.slot ?? null)}
+              onDelete={meal => removeSavedMeal(meal.id)}
+              onReview={meal => openReview(meal, 'list')}
+              onClose={() => { setSavedMealsOpen(false); setReviewMealId(null); }}
+              // Inside the list's own Modal, for the same reason the list is
+              // inside this sheet's (the sibling Modal rule).
+              overlays={savedMealReview('list')}
+            />
+            {savedMealReview('search')}
           </>
         }
     />
