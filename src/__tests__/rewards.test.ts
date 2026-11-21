@@ -41,6 +41,8 @@ import {
   fullBountyFor,
   DIFFICULTY_MULTIPLIER,
   formatCoins,
+  formatCoinChange,
+  netCoinsForTask,
   latestLossFor,
   parseRewardCost,
   signedAmount,
@@ -811,5 +813,20 @@ describe('projectBonusFor', () => {
     const easy = projectBonusFor([earn('a', 2), earn('b', 2)], ids);
     const hard = projectBonusFor([earn('a', 12), earn('b', 12)], ids);
     expect(hard).toBeGreaterThan(easy);
+  });
+});
+
+describe('netCoinsForTask and formatCoinChange', () => {
+  const e = (kind: 'earn' | 'loss', amount: number, taskId: string | null) => ({ kind, amount, taskId });
+  it('sums earnings minus losses for one task only', () => {
+    const entries = [e('earn', 5, 'a'), e('loss', 2, 'a'), e('earn', 9, 'b'), e('earn', 4, null)];
+    expect(netCoinsForTask(entries, 'a')).toBe(3);
+    expect(netCoinsForTask(entries, 'c')).toBe(0);
+  });
+  it('signs the change and pluralizes', () => {
+    expect(formatCoinChange(3)).toBe('+3 coins');
+    expect(formatCoinChange(1)).toBe('+1 coin');
+    expect(formatCoinChange(-1)).toBe('-1 coin');
+    expect(formatCoinChange(-4)).toBe('-4 coins');
   });
 });

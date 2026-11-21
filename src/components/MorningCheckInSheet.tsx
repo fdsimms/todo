@@ -12,6 +12,8 @@ import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import type { Task, TaskGroup } from '../types';
 import { hasMission } from '../utils/missions';
+import { useRewardStore } from '../store/useRewardStore';
+import { formatCoinChange, netCoinsForTask } from '../utils/rewards';
 import { isAnsweredByRecord } from '../utils/recordTasks';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -41,6 +43,8 @@ interface Answer {
   groupKey: string;
   groupLabel: string;
   kind: AnswerKind;
+  /** Coins this answer earned (positive) or cost (negative); 0 when none, or rewards are off. */
+  coins: number;
   /** A skip rewrites the whole row, so taking it back puts this copy back. Unused by the other three. */
   before: Task | null;
 }
@@ -102,11 +106,18 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
     if (visible) setAnswers([]);
   }, [visible]);
 
-  const record = (task: Task, kind: AnswerKind, before: Task | null = null) => {
+  // Runs the store action and reads what it did to the task's coin ledger.
+  const withCoins = (task: Task, act: () => void) => {
+    const before = netCoinsForTask(useRewardStore.getState().entries, task.id);
+    act();
+    return netCoinsForTask(useRewardStore.getState().entries, task.id) - before;
+  };
+
+  const record = (task: Task, kind: AnswerKind, coins = 0, before: Task | null = null) => {
     const { key, label } = groupOfTask(task, groups);
     setAnswers(prev => [
       ...prev.filter(a => a.taskId !== task.id),
-      { taskId: task.id, title: task.title, groupKey: key, groupLabel: label, kind, before },
+      { taskId: task.id, title: task.title, groupKey: key, groupLabel: label, kind, coins, before },
     ]);
   };
 
@@ -160,8 +171,8 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
   const answerYes = (task: Task) => {
     haptics.success();
     animateLayout();
-    completeTask(task.id, { completedAt: task.dueDate ?? undefined });
-    record(task, 'yes');
+    const coins = withCoins(task, () => completeTask(task.id, { completedAt: task.dueDate ?? undefined }));
+    record(task, 'yes', coins);
   };
 
   const answerSomeoneElse = (task: Task) => {
@@ -176,14 +187,14 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
     animateLayout();
     const before = useTaskStore.getState().tasks.find(t => t.id === task.id) ?? task;
     skipNextRecurrence(task.id);
-    record(task, 'skip', { ...before });
+    record(task, 'skip', 0, { ...before });
   };
 
   const answerMissed = (task: Task) => {
     haptics.impactMedium();
     animateLayout();
-    markMissed(task.id);
-    record(task, 'missed');
+    const coins = withCoins(task, () => markMissed(task.id));
+    record(task, 'missed', coins);
   };
 
   const renderChoice = (
@@ -237,6 +248,11 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                           <View style={styles.answerLine}>
                             <Ionicons name={ANSWER_DISPLAY[a.kind].icon} size={iconSize.sm} color={answerTint(a.kind)} />
                             <Text style={styles.answerText}>{ANSWER_DISPLAY[a.kind].label}</Text>
+                            {a.coins !== 0 && (
+                              <Text style={[styles.answerText, { color: a.coins > 0 ? colors.done : colors.red }]}>
+                                {formatCoinChange(a.coins)}
+                              </Text>
+                            )}
                           </View>
                         </View>
                         <TouchableOpacity
