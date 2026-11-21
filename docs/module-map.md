@@ -799,6 +799,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, vacationReturnCalendarIds, useCalendarStore, useCalendarSync
 - `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, ensureCalendarEventCategory, renameGeneratedCategorySettings, getGeneratedCategory, setGeneratedCategory, clearGeneratedCategorySettings, ensureGeneratedTaskCategory, ensureGeneratedTaskCategories
 - `src/store/useCheckInStore.ts` — CheckInInput, useCheckInStore
+- `src/store/useCookModeStore.ts` — CookModeSetup, CookModeRequest, useCookModeStore
 - `src/store/useCookwareStore.ts` — CookwarePatch, useCookwareStore
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
 - `src/store/useDemoStore.ts` — clearUndoHistories, reloadAfterDataReplaced, useDemoStore
@@ -881,6 +882,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useClipboardImage.ts` — useClipboardImage
 - `src/hooks/useClockTimeToken.ts` — useClockTimeToken
 - `src/hooks/useCommitHandler.ts` — useCommitHandler
+- `src/hooks/useCookModeLink.ts` — useCookModeLink
 - `src/hooks/useCopyToClipboard.ts` — COPIED_TICK_MS, useCopyToClipboard
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
 - `src/hooks/useDeletedDoseUndo.ts` — useDeletedDoseUndo

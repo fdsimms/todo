@@ -15,7 +15,7 @@ import { FAB_SIZE, useFabBottom } from './Fab';
 import { activeKitchenTimer, cookTimerElapsed, isCookTimerRunning, isPrepTimerRunning, prepTimerElapsed } from '../utils/recipeTimer';
 import { formatStopwatch } from '../utils/effort';
 import { haptics } from '../utils/haptics';
-import { resetToRecipeDetail, WORKOUT_MODE_ROUTE } from '../navigation/navigationRef';
+import { resetToRecipeDetail, isFullPageMode } from '../navigation/navigationRef';
 import { useFocusedRouteStore } from '../store/useFocusedRouteStore';
 import { GlassLayer, glassSupported } from './GlassLayer';
 
@@ -58,9 +58,9 @@ export function CookingBar() {
   // Its offset above the tab bar is where a bulk bar's count and close button
   // land, so it steps aside while one is up rather than covering them.
   const bulkSelecting = useBulkBarPresenceStore(s => s.count > 0);
-  // Not over the workout page, which the sheet it replaced covered whole.
-  const onWorkoutPage = useFocusedRouteStore(s => s.route === WORKOUT_MODE_ROUTE);
-  const shown = kitchenEnabled && !!recipe && !bulkSelecting && !onWorkoutPage;
+  // Not over a full-page mode, which the sheets they replaced covered whole.
+  const onFullPage = useFocusedRouteStore(s => isFullPageMode(s.route));
+  const shown = kitchenEnabled && !!recipe && !bulkSelecting && !onFullPage;
   const fabShown = useFabPresenceStore(s => s.count > 0);
   const fabHand = useSettingsStore(s => s.fabHand);
 

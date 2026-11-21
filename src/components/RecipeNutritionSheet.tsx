@@ -222,7 +222,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
   // the reset above clears a guess when the recipe changes, but a reply
   // already on its way landed after it, so one recipe's estimate sat under
   // another's lines (or under a sheet that had been closed). Same guard
-  // CookModeSheet's `stillHere` keeps for a step left behind.
+  // CookModeScreen's `stillHere` keeps for a step left behind.
   const estimateKeyRef = useRef(estimateKey);
   useEffect(() => { estimateKeyRef.current = estimateKey; }, [estimateKey]);
   const visibleRef = useRef(visible);

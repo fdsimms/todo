@@ -1105,7 +1105,7 @@ amount, and answering that in the unit they already had answers nothing.
 ## A line's weight beside its measure (`lineWeight.ts`)
 
 A recipe line written in cups, spoons or pieces shows a weight under its quantity pill on
-`RecipeDetailScreen` and in both of `CookModeSheet`'s ingredient lists ("4 tbsp" over "≈57 g")
+`RecipeDetailScreen` and in both of `CookModeScreen`'s ingredient lists ("4 tbsp" over "≈57 g")
 whenever the ingredient's catalog food can say what that measure weighs. The shared recipe and the
 copied ingredients carry it too, in parentheses after the name ("4 tbsp butter (≈57 g),
 softened"), so what's sent matches the page; `shareText.ts` takes the lookups as an option
@@ -1130,10 +1130,10 @@ amount *before* unit conversion, since weighing an already-rounded figure compou
 Every other kitchen surface here is built for *preparing* to cook. This is the twenty minutes of
 doing it: mise en place first, then one step at a time, full screen, the screen held awake, the
 cook timer in reach throughout. It is a **read plus one timer**, no schema change and nothing
-written — `cookSteps` derives the method, `CookModeSheet` draws it, and position and the
+written — `cookSteps` derives the method, `CookModeScreen` draws it, and position and the
 ingredient panel's fold die with the modal.
 
-- **Mise en place is screen `-1`, not a step.** `CookModeSheet` opens on a full read of
+- **Mise en place is screen `-1`, not a step.** `CookModeScreen` opens on a full read of
   `flattenRecipeIngredients` — the same list the tray's collapsed panel shows mid-step, just the
   main event instead of folded behind a header — whenever there's anything to gather; a recipe
   with a method but no ingredient lines skips straight to step 1. It isn't step 0 of `cookSteps`,
@@ -1166,8 +1166,7 @@ ingredient panel's fold die with the modal.
   `RecipeDetailScreen` reads through the same hook, so "start it here, log it there" is structural
   rather than a promise; a second stopwatch that merely looked alike would have a cook running two
   and logging one. It takes an undefined recipe so a screen can call it above its own "the row is
-  gone" guard — and `CookModeSheet` passes `visible ? recipe : undefined`, since a modal mounted
-  invisible must not hold a once-a-second interval open.
+  gone" guard — and `CookModeScreen` mounts only while it is up, so its interval stops with it.
   **The prep timer is the same hook**, drawn above the cook row on the mise en place screen and on a
   step only while it is running or paused (`showsPrepRow`), so a cook who never times prep pays no
   footer space. Start cooking pauses a running prep timer before starting the cook one
@@ -1175,8 +1174,8 @@ ingredient panel's fold die with the modal.
 - **The either/or picks are made here, not before.** Cook mode used to resolve every group to its
   default and ignore the recipe screen's chips, so the only way to cook the jalapeño version was to
   remember to pick it before pressing Cook, and forgetting meant backing out and starting over.
-  `CookModeSheet` now takes the screen's `choices` and hands every pick back (`onChoicesChange`),
-  one state rather than a copy, so what's picked at the stove is still the pick for the cost,
+  `CookModeScreen` takes the recipe screen's `choices` through `useCookModeStore` and hands every pick
+  back (`onChoicesChange`), one state rather than a copy, so what's picked at the stove is still the pick for the cost,
   nutrition and food-log reads afterwards. Mise en place shows every group above the list it
   changes; the mid-step ingredient panel shows only the ingredient groups, because swapping a
   *component* rewrites the method under the step being read, and that belongs one Back away on the
@@ -1204,7 +1203,7 @@ ingredient panel's fold die with the modal.
   only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
   a header icon shouldn't move it.
 - **The oven temperature is a line on mise en place, not a step.** `Recipe.ovenTemp` + `ovenTempUnit`
-  (`src/utils/ovenTemp.ts`) is one number for the whole dish, drawn by `CookModeSheet` as a
+  (`src/utils/ovenTemp.ts`) is one number for the whole dish, drawn by `CookModeScreen` as a
   "Preheat oven" row in its own card above the ingredients, tickable like them (the same
   `gatheredLines` mark, keyed `oven:<recipeId>`). `ovenSetupsFor` walks `cookedDishes`, so a component with
   its own temperature gets a row named for its dish and one on the road not taken gets none. A recipe
@@ -1229,7 +1228,7 @@ ingredient panel's fold die with the modal.
   except while the cook timer runs, the same rule as the step position.
 - **Leaving does not cancel a cook; the header's trash button does.** Closing with the X keeps the
   cook timer running, because stepping away mid-cook is the ordinary case. Abandoning one is
-  `cancelCook` in `CookModeSheet`: it appears only while the timer has time on it, asks first
+  `cancelCook` in `CookModeScreen`: it appears only while the timer has time on it, asks first
   (`recipeTimerResetPrompt`), then resets the recipe's cook timer without logging, clears that recipe's
   step timers and closes.
 - **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
@@ -1526,3 +1525,13 @@ chosen for the week and not yet given a night or a meal.
 - **Choosing a recipe for the week answers its Up Next bookmark**, as planning it on a day does.
 - Not built: dragging a pool meal onto a day. A row is tapped and `PlanMealSheet` offers the week's
   days and meals.
+
+## Cook mode is a page
+
+Cook mode is `CookModeScreen`, a `presentation: 'card'` route on the root stack (`COOK_MODE_ROUTE`) pushed over `RecipeDetail`, not a `fullScreen` `SheetModal`. The reasoning is the one in `docs/arch/workouts.md`, "Workout mode is a page". What is particular to cooking:
+
+- **The recipe screen still owns the scale, the picks and the replacements**, and cook mode both reads and changes them, so they travel through `useCookModeStore` (`open`, `update`). `useCookModeLink` is the recipe screen's one line: it copies each change back into the screen's own state, so the cost, nutrition and food-log reads see a pick made at the stove, and it clears when the page unmounts so `saveCookSetup` stops writing.
+- **The end screen's two offers are requests, not calls.** The post-cook sheet and the food-log prompt belong to the recipe screen, and a sheet can't be presented from a screen another card covers. The page records the request (`requestAfterClose`) and leaves; the recipe screen answers it when the root stack reports the pop finished (`markRequestReady`), with a 1.5 second fallback.
+- **The page unmounts on every exit**, so it no longer resets on close. What a running cook timer keeps (the step, and now the checked and set-out ingredient lines) is read back from `cookPosition.ts` when it mounts; with no timer running it opens at the start, as before.
+- **CookingBar and the cooking Live Activity still land on the recipe** (`resetToRecipeDetail` with `openCookMode`), which pushes the page once its own push has settled.
+

@@ -175,7 +175,7 @@ here names a file it is the authority: the two maps are indexes, not write-ups.
 | showing amounts in metric or US units | `src/utils/unitConvert.ts` — see `docs/arch/recipes.md` |
 | whether an ingredient line is something you already buy | `src/utils/ingredientCatalogMatch.ts` — see `docs/arch/recipes.md` |
 | reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see `docs/arch/recipes.md` |
-| reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see `docs/arch/recipes.md` |
+| reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/screens/CookModeScreen.tsx` + `src/store/useCookModeStore.ts` — see `docs/arch/recipes.md` |
 | asking about the cooking step you're on, and keeping the answer | `src/utils/cookQuestions.ts` + `askCookQuestion` — see `docs/arch/recipes.md` |
 | the amount and the swap a step's own sentence implies | `src/utils/stepIngredients.ts` + `src/components/StepText.tsx` — see `docs/arch/recipes.md`. The recipe's own list only, whole words, two closed tables for the shorter name a method actually uses, a name used as a verb takes nothing, and an amount spent over several steps says so |
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |

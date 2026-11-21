@@ -1,8 +1,8 @@
 // Where the cook is in a recipe's method, kept while a cook timer is running.
 //
-// CookModeSheet resets to the start on every close, because a cooking is one
+// CookModeScreen opens at the start unless a cook timer is running, because a cooking is one
 // sitting and step 6 of yesterday's dish is worse than the start. A running
-// cook timer says the sitting is still going, so closing the sheet (or coming
+// cook timer says the sitting is still going, so leaving the page (or coming
 // back from a Live Activity tap) must not throw the place away.
 //
 // The cook timer itself survives the app being killed (it is a stored start
@@ -28,6 +28,14 @@ export interface CookPosition {
    * was closed doesn't hand the cook the step next to theirs.
    */
   stepId?: string;
+  /**
+   * The ingredient lines checked off in the tray and set out in the mise en
+   * place, by their node-and-line keys. Kept with the place for the same
+   * reason: the page unmounts on every exit, and a cook timer that is still
+   * running says the sitting is.
+   */
+  checked?: string[];
+  gathered?: string[];
 }
 
 /**
