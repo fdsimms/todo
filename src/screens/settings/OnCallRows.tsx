@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useColors } from '../../theme/ThemeContext';
@@ -6,7 +6,7 @@ import { TextField } from '../../components/TextField';
 import { FieldError } from '../../components/FieldError';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { haptics } from '../../utils/haptics';
-import { onCallWordsProblem, splitTypedWords } from '../../utils/onCall';
+import { cleanWords, onCallWordsProblem, splitTypedWords } from '../../utils/onCall';
 import { SettingsRow } from './SettingsRow';
 import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { makeSettingsStyles } from './settingsStyles';
@@ -22,9 +22,9 @@ interface Props {
  * feature is off. Rows of `CalendarSettings`, in a file of their own so that
  * screen keeps its length.
  *
- * Words are typed comma-separated and saved when the field is left. What the
- * match will not use (too short, too many) is said under the field while it is
- * typed, never dropped without saying so.
+ * Words are typed comma-separated and saved when the field is left, and the field
+ * then shows the saved list. What the match will not use (too short, too many) is
+ * said under the field while it is typed, never dropped without saying so.
  */
 export function OnCallRows({ calendars }: Props) {
   const colors = useColors();
@@ -39,6 +39,25 @@ export function OnCallRows({ calendars }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [ignoredOpen, setIgnoredOpen] = useState(false);
   const [typed, setTyped] = useState(() => onCallWords.join(', '));
+  const typedRef = useRef(typed);
+  typedRef.current = typed;
+
+  // Saves what is typed, then shows what was saved: the store trims, collapses
+  // spaces, drops repeats and drops what is too short, so leaving the typed text
+  // as it was would keep showing words the match does not use.
+  const commitWords = (text: string) => {
+    setOnCallWords(splitTypedWords(text));
+    setTyped(useSettingsStore.getState().onCallWords.join(', '));
+  };
+
+  // Leaving the screen with the field still focused may not end the edit first,
+  // so what is typed is saved on the way out as well. Nothing changes when the
+  // field already saved it.
+  useEffect(() => () => {
+    const saved = useSettingsStore.getState().onCallWords;
+    const typedWords = cleanWords(splitTypedWords(typedRef.current));
+    if (typedWords.join('\n') !== saved.join('\n')) setOnCallWords(typedWords);
+  }, []);
 
   // A calendar no longer being read (or no longer on the device) is not counted.
   const chosen = calendars.filter(c => onCallCalendarIds.includes(c.id));
@@ -100,7 +119,7 @@ export function OnCallRows({ calendars }: Props) {
           style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
           value={typed}
           onChangeText={setTyped}
-          onEndEditing={() => setOnCallWords(splitTypedWords(typed))}
+          onEndEditing={() => commitWords(typed)}
           placeholder="e.g. on call, pager"
           placeholderTextColor={colors.textTertiary}
           autoCapitalize="none"

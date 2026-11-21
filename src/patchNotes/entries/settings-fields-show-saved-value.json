@@ -1,0 +1,1 @@
+{ "message": "On-call words and the sync server address now show what was saved after you leave the field (extra spaces and repeats are gone). The sync token field clears once saved, like the other token fields.", "date": "2026-11-21" }

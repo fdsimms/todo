@@ -179,6 +179,14 @@ consequence the person has to see before confirming. `SettingsRow`, `EditorRow` 
 No test enforces this (whether a line is help text is a judgment call), so check it on sight when
 adding a hint.
 
+**A field that saves on blur shows what was saved, not what was typed.** A draft kept in local state
+and committed on `onBlur`/`onEndEditing` has to be set from the store afterwards, because the store
+trims, collapses spaces, drops repeats and clamps (`setOnCallWords`, `clampCookedWeight`). Left alone,
+the field keeps showing "On call,  on call" or "999999" after "On call" or 50000 was stored, and it
+never feels set. Read the value back from the store (or the same clean function it calls) and write it
+into the draft. Leave it alone only where the text is not the stored value (a scale reading with
+cookware picked), and clear it where the field is write-only (a token).
+
 **A refusal the store can make is said under the field while it is typed, never as an alert after
 Save.** Show it with `FieldError` (`src/components/FieldError.tsx`), turn Done or Save off while it
 holds, and get the check from the same function the store refuses on (`src/utils/nameTaken.ts`,

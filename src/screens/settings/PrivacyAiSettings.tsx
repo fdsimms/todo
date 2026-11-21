@@ -121,9 +121,16 @@ export function PrivacyAiSettings() {
   }, []);
 
   // Only text that differs from the key the app holds is an edit; see keyEditToSave.
-  const commitKey = (draft: string, current: string, save: (key: string) => void) => {
+  const commitKey = (
+    draft: string,
+    current: string,
+    save: (key: string) => void,
+    setDraft: (text: string) => void,
+  ) => {
     const next = keyEditToSave(draft, current);
     if (next !== null) save(next);
+    // The key is stored trimmed, so a pasted space or newline is not left in the field.
+    setDraft(draft.trim());
   };
 
   useFocusEffect(
@@ -296,7 +303,7 @@ export function PrivacyAiSettings() {
             style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
             value={apiKeyDraft}
             onChangeText={setApiKeyDraft}
-            onBlur={() => commitKey(apiKeyDraft, useSettingsStore.getState().anthropicApiKey, setAnthropicApiKey)}
+            onBlur={() => commitKey(apiKeyDraft, useSettingsStore.getState().anthropicApiKey, setAnthropicApiKey, setApiKeyDraft)}
             placeholder="e.g. sk-ant-..."
             placeholderTextColor={colors.textTertiary}
             secureTextEntry
@@ -474,7 +481,7 @@ export function PrivacyAiSettings() {
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                   value={fdcDraft}
                   onChangeText={setFdcDraft}
-                  onBlur={() => commitKey(fdcDraft, useSettingsStore.getState().fdcApiKey, setFdcApiKey)}
+                  onBlur={() => commitKey(fdcDraft, useSettingsStore.getState().fdcApiKey, setFdcApiKey, setFdcDraft)}
                   placeholder="e.g. a1b2c3..."
                   placeholderTextColor={colors.textTertiary}
                   secureTextEntry
@@ -498,7 +505,7 @@ export function PrivacyAiSettings() {
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                   value={goUpcDraft}
                   onChangeText={setGoUpcDraft}
-                  onBlur={() => commitKey(goUpcDraft, useSettingsStore.getState().goUpcApiKey, setGoUpcApiKey)}
+                  onBlur={() => commitKey(goUpcDraft, useSettingsStore.getState().goUpcApiKey, setGoUpcApiKey, setGoUpcDraft)}
                   placeholder="e.g. a1b2c3..."
                   placeholderTextColor={colors.textTertiary}
                   secureTextEntry
