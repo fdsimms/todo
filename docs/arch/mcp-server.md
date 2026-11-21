@@ -1581,7 +1581,7 @@ half of it applied; then every write goes through the store's own setter, which 
 Settings stepper does, and a value the app stored differently from what was asked is named in the
 result. The entry in Activity is a record (subject `automation`) listing what changed, from and to.
 
-`healthTodayShown` ("Show Health readings on Today") and `limitsTodayShown` are on the list too:
+`healthTodayShown` ("Show Health readings on Today"), `limitsTodayShown` and `goalsTodayShown` are on the list too:
 plain switches for what the Biostats card at the top of Today draws. They replaced
 `healthCategory` and `limitsTodayCategory`, which named a category the rows filed under, so a
 write no longer needs to create or check one. The collapse (`biostatsCollapsed`) is appearance and

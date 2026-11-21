@@ -54,7 +54,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
  */
 const NOT_DECIDED: string[] = [
   'autoArchiveProjectsOnComplete', 'generatorEstimates', 'mealSlotStepEstimates', 'mealLogPrompt',
-  'travelOriginPlaceId', 'goalsTodayShown', 'stepGoal', 'journalCustomPrompts', 'moodContextSources',
+  'travelOriginPlaceId', 'stepGoal', 'journalCustomPrompts', 'moodContextSources',
   'moodEventTags', 'limitWarningAutoSlips', 'catalogAuditDismissed', 'weightUnit', 'foodLogPinnedNutrients',
   'shortNightNoteEnabled', 'shortNightMinutes', 'maxHeartRate', 'sleepGoalMinutes', 'bodyProfile',
   'weightGoal', 'proteinPerWeight', 'activeEnergyBoost', 'waterExerciseBoost', 'tag_registry',
@@ -62,7 +62,7 @@ const NOT_DECIDED: string[] = [
   'medication_archived', 'medication_registered', 'medication_settings', 'savedEvents', 'sunLocation',
 ];
 /** Lower it when you take one off `NOT_DECIDED`; never raise it. */
-const NOT_DECIDED_MAX = 33;
+const NOT_DECIDED_MAX = 32;
 
 const ALL_LISTED = [...Object.values(NOT_EXPOSED).flat(), ...NOT_DECIDED];
 

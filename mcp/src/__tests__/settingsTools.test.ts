@@ -111,4 +111,10 @@ describe('settings', () => {
     updateSettings(replica, { healthTodayShown: false });
     expect(getSettings(replica).settings.features.healthTodayShown.value).toBe(false);
   });
+
+  it('shows nutrient goals in the Biostats widget, or hides them', () => {
+    updateSettings(replica, { goalsTodayShown: true });
+    expect(replica.settingValues().goalsTodayShown).toBe(true);
+    expect(() => updateSettings(replica, { goalsTodayShown: 'yes' })).toThrow(/goalsTodayShown/);
+  });
 });
