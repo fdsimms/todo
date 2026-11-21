@@ -25,6 +25,13 @@ export interface LabelSubject {
    * instead of opening a camera of its own. Never asked for here.
    */
   photo?: RecipePhoto | null;
+  /**
+   * The barcode this label belongs to, when the scanner raised it for a code
+   * nothing knew. Saving the photographed figures links it to the product
+   * they were filed under, so the same code is known the next time it is
+   * scanned and the scanner's row stops reading "Not found".
+   */
+  gtin?: string | null;
 }
 
 /** A subject with only a name, for a caller that has no brand or variant to offer. */
