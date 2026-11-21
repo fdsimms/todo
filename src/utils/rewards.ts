@@ -452,6 +452,25 @@ export function latestLossFor(entries: readonly CoinEntry[], taskId: string): Co
   return latest;
 }
 
+/**
+ * What the ledger holds for one task, earnings minus losses. Read before and
+ * after an action, the difference is what that action paid or cost, streak
+ * bonus and bounty included, without recomputing the rules.
+ */
+export function netCoinsForTask(entries: readonly Pick<CoinEntry, 'kind' | 'amount' | 'taskId'>[], taskId: string): number {
+  let net = 0;
+  for (const e of entries) {
+    if (e.taskId !== taskId) continue;
+    net += e.kind === 'earn' ? e.amount : -e.amount;
+  }
+  return net;
+}
+
+/** "+3 coins", "-1 coin". */
+export function formatCoinChange(n: number): string {
+  return `${n > 0 ? '+' : '-'}${formatCoins(Math.abs(n))}`;
+}
+
 // ==== Pricing a reward by how often you want it ====
 //
 // A cost typed as a bare number is a guess, and a wrong guess is how this kind
