@@ -108,6 +108,25 @@ describe('timeouts', () => {
     await settled;
   });
 
+  // Expo's native fetch wraps an abort as a plain Error whose message is
+  // "fetch failed: FetchRequestCanceledException: ...", with no AbortError name.
+  it("reports Expo's canceled-fetch error as the server not responding", async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal!.addEventListener('abort', () =>
+            reject(new Error('fetch failed: FetchRequestCanceledException: Fetch request has been canceled'))
+          );
+        })
+    ) as unknown as typeof fetch;
+
+    const pulled = httpSyncTransport(config).pull(null);
+    const settled = expect(pulled).rejects.toThrow('The sync server did not respond.');
+    await jest.advanceTimersByTimeAsync(SYNC_REQUEST_TIMEOUT_MS);
+    await settled;
+  });
+
   it('gives a body longer than it gives the server to start answering', () => {
     // A 16 MB page on a slow phone connection; too short and the same page
     // times out on every retry.

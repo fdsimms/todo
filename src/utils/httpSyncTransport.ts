@@ -105,7 +105,10 @@ async function request<T>(
     timer = setTimeout(() => controller.abort(), SYNC_BODY_TIMEOUT_MS);
     return await read(response);
   } catch (e) {
-    if (e instanceof Error && e.name === 'AbortError') {
+    // Our own timer aborted the request. Expo's native fetch reports that as
+    // `fetch failed: FetchRequestCanceledException...`, never an `AbortError`,
+    // so the signal is the reliable test, not the error's name.
+    if (controller.signal.aborted || (e instanceof Error && e.name === 'AbortError')) {
       throw new Error('The sync server did not respond.');
     }
     throw e;
