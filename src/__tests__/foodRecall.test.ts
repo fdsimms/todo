@@ -7,6 +7,7 @@ import {
   estimateWholeGrams,
   describedGrams,
   descriptionClauses,
+  helpingAtTypedWeight,
   rankRecallCandidates,
   recallFoods,
   measuresByWeight,
@@ -695,5 +696,52 @@ describe('descriptionClauses', () => {
 
   it('returns nothing for a blank description', () => {
     expect(descriptionClauses('  ')).toEqual([]);
+  });
+});
+
+describe('helpingAtTypedWeight', () => {
+  const now = new Date(2026, 3, 3, 12);
+  const rice = (overrides: Partial<FoodLogEntry> = {}) => entry({
+    label: 'Steamed white rice',
+    quantity: '95 g',
+    grams: 95,
+    nutrition: {
+      basis: 'perServing',
+      servingGrams: 95,
+      servingText: '95 g',
+      amounts: { calorieKcal: 124 },
+      portions: [],
+      source: 'estimated',
+      sourceId: null,
+      recordedAt: '2026-04-02T19:00:00.000Z',
+    },
+    ...overrides,
+  });
+
+  it('scales an estimate that recorded a weight to the weight typed', () => {
+    const helping = helpingAtTypedWeight(rice(), '181g steamed', now)!;
+    expect(helping.nutrition.amounts.calorieKcal).toBeCloseTo(124 * 181 / 95, 0);
+  });
+
+  it('measures a weighable food at the weight typed', () => {
+    const helping = helpingAtTypedWeight(entry({ label: 'Milk' }), '488g milk', now)!;
+    expect(helping.grams).toBe(488);
+    expect(helping.nutrition.amounts.calorieKcal).toBeCloseTo(298, 0);
+  });
+
+  it('says nothing without a weight typed', () => {
+    expect(helpingAtTypedWeight(rice(), 'steamed', now)).toBeNull();
+  });
+
+  it('says nothing when the food has no weight to measure against', () => {
+    const noWeight = rice({
+      quantity: '1 bowl', grams: null,
+      nutrition: { ...rice().nutrition, servingGrams: null, servingText: '1 bowl' },
+    });
+    expect(helpingAtTypedWeight(noWeight, '181g steamed', now)).toBeNull();
+  });
+
+  it('says nothing when several foods are typed, since the weights cannot be told apart', () => {
+    expect(helpingAtTypedWeight(rice(), '181g steamed rice, 50g beans', now)).toBeNull();
   });
 });

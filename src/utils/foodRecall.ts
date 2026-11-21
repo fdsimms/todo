@@ -180,6 +180,48 @@ export function describedEstimateFactor(food: RecalledFood, clause: string): num
   return factor > 0 && factor <= MAX_ESTIMATE_MULTIPLE ? factor : null;
 }
 
+/** One logged entry as a recalled food, count of one. */
+export function recalledFoodOf(entry: FoodLogEntry): RecalledFood {
+  return {
+    key: groceryNameKey(entry.label),
+    label: entry.label.trim(),
+    quantity: entry.quantity,
+    grams: entry.grams,
+    nutrition: entry.nutrition,
+    sourcePanel: entry.sourcePanel ?? null,
+    slot: entry.slot,
+    recipeId: entry.recipeId,
+    itemId: entry.itemId,
+    productId: entry.productId,
+    count: 1,
+    lastAtISO: entry.atISO,
+  };
+}
+
+/**
+ * What an earlier helping logs when the search text names a weight ("181g
+ * steamed"): that weight of it, or null when the text names none or the food
+ * can't be measured at one.
+ *
+ * Reads the amount the way the Describe sheet's recall rows do
+ * (`recallAmountAsk`, `recalledHelping`), so the two lists can't disagree on
+ * what a typed weight means. Only a search naming one food counts: with a
+ * comma there are several weights and no way to tell which belongs to this row.
+ */
+export function helpingAtTypedWeight(entry: FoodLogEntry, query: string, now: Date): RecalledHelping | null {
+  if (descriptionClauses(query).length !== 1) return null;
+  const typed = describedGrams(query);
+  if (!typed) return null;
+  const food = recalledFoodOf(entry);
+  const ask = recallAmountAsk(food);
+  if (ask.kind === 'weight') return recalledHelping(food, { grams: parseFloat(typed) }, now);
+  if (ask.kind === 'count' || ask.kind === 'multiple') {
+    const factor = describedEstimateFactor(food, query);
+    return factor === null ? null : recalledHelping(food, { factor }, now);
+  }
+  return null;
+}
+
 /**
  * A typed description split into the separate foods it names, on the comma
  * the field's own placeholder already treats as a food boundary ("31g

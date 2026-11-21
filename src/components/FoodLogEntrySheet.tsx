@@ -154,6 +154,12 @@ import { CheckInFields } from './CheckInFields';
 import { allowCheckInNotification, startCheckIn } from '../utils/checkInRecording';
 import { defaultWaitMinutes } from '../utils/checkIns';
 import { BUTTON_LABEL } from '../copy/shared';
+import {
+  describedGrams,
+  descriptionClauses,
+  helpingAtTypedWeight,
+  type RecalledHelping,
+} from '../utils/foodRecall';
 
 /**
  * Writing down something eaten.
@@ -1913,6 +1919,22 @@ export function FoodLogEntrySheet({
     if (logged) afterSave(again.label);
   };
 
+  /** An earlier helping logged at the weight typed in the search (`helpingAtTypedWeight`). */
+  const logHelpingTyped = (entry: FoodLogEntry, helping: RecalledHelping) => {
+    const logged = logNew({
+      label: entry.label,
+      quantity: helping.quantity,
+      grams: helping.grams,
+      nutrition: helping.nutrition,
+      sourcePanel: helping.sourcePanel,
+      slot: chosenSlot ?? entry.slot,
+      recipeId: null,
+      itemId: null,
+      productId: null,
+    });
+    if (logged) afterSave(entry.label);
+  };
+
   /** An estimated helping logged again at the amount the card chose, as a multiple of its whole. */
   const logHelpingAtAmount = (entry: FoodLogEntry, patch: EstimateAmountPatch, slot: MealSlot | null) => {
     const logged = logNew({
@@ -2179,33 +2201,43 @@ export function FoodLogEntrySheet({
   const helpingsBlock = helpings.length > 0 ? (
     <View style={helpingsAfterResults ? styles.footerGap : undefined}>
       <Text style={[styles.label, styles.helpingsLabel]}>RECENTLY LOGGED</Text>
-      {helpings.map(entry => (
-        <View key={entry.id} style={[styles.row, styles.helpingRow]}>
-          {/* The body opens the amount first, like a row below. */}
-          <TouchableOpacity
-            style={styles.helpingBody}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => openHelping(entry)}
-            accessibilityRole="button"
-            accessibilityLabel={`Change amount of ${entry.label}, ${describeFoodLogEntry(entry)}`}
-          >
-            <View style={styles.rowText}>
-              <Text style={styles.rowTitle}>{entry.label}</Text>
-              <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
-            </View>
-          </TouchableOpacity>
-          {/* The plus logs it as it was, at once. */}
-          <TouchableOpacity
-            style={styles.helpingAdd}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => logHelpingAgain(entry)}
-            accessibilityRole="button"
-            accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
-          >
-            <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
-          </TouchableOpacity>
-        </View>
-      ))}
+      {helpings.map(entry => {
+        // A weight typed in the search ("181g steamed") is the amount the + logs.
+        const typed = helpingAtTypedWeight(entry, query, new Date());
+        const typedGrams = describedGrams(query);
+        const meta = describeFoodLogEntry(typed ? { ...entry, quantity: typed.quantity, nutrition: typed.nutrition } : entry);
+        const unusedWeightNote = !typed && typedGrams && descriptionClauses(query).length === 1
+          ? `Not ${typedGrams.replace(/g$/, ' g')}: this food has no recorded weight to measure it against.`
+          : null;
+        return (
+          <View key={entry.id} style={[styles.row, styles.helpingRow]}>
+            {/* The body opens the amount first, like a row below. */}
+            <TouchableOpacity
+              style={styles.helpingBody}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => openHelping(entry)}
+              accessibilityRole="button"
+              accessibilityLabel={`Change amount of ${entry.label}, ${meta}`}
+            >
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>{entry.label}</Text>
+                <Text style={styles.rowMeta}>{meta}</Text>
+                {unusedWeightNote && <Text style={styles.rowMeta}>{unusedWeightNote}</Text>}
+              </View>
+            </TouchableOpacity>
+            {/* The plus logs it as it was, or at the weight typed, at once. */}
+            <TouchableOpacity
+              style={styles.helpingAdd}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => (typed ? logHelpingTyped(entry, typed) : logHelpingAgain(entry))}
+              accessibilityRole="button"
+              accessibilityLabel={`Log ${entry.label} again, ${meta}`}
+            >
+              <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+            </TouchableOpacity>
+          </View>
+        );
+      })}
       {!helpingsAfterResults && results.length > 0 && (
         <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
       )}
