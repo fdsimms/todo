@@ -220,6 +220,17 @@ describe('useSavedMealsStore', () => {
       expect(written[0].taskId).toBe('t-1');
     });
 
+    it('links each entry to the planned meal it answers when told which one', () => {
+      const meal = useSavedMealsStore.getState().addFromEntries('Protein shake', [
+        makeEntry({ label: 'Protein powder' }),
+        makeEntry({ label: 'Oat milk' }),
+      ]);
+      const linked = useSavedMealsStore.getState().logMeal(meal as SavedMeal, 'breakfast', new Date(2026, 3, 5, 8), { mealPlanEntryId: 'plan-1' });
+      expect(linked.map(e => e.mealPlanEntryId)).toEqual(['plan-1', 'plan-1']);
+      const unlinked = useSavedMealsStore.getState().logMeal(meal as SavedMeal, 'breakfast', new Date(2026, 3, 6, 8));
+      expect(unlinked.map(e => e.mealPlanEntryId)).toEqual([null, null]);
+    });
+
     it('hands each item\'s kept panel to the entry it logs, so that entry can be corrected too', () => {
       const kept: FoodNutrition = { ...nutrition(165), basis: 'per100g', source: 'fdc', sourceId: '171077' };
       const whole: FoodNutrition = { ...nutrition(900), source: 'estimated' };
