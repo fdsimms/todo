@@ -1,6 +1,6 @@
-import type { ExerciseKind, RoutineSetTarget, WorkoutRoutineItem, WorkoutSet } from '../types';
+import type { ExerciseKind, ProgressionScheme, RoutineSetTarget, WorkoutRoutineItem, WorkoutSet } from '../types';
 import type { WeightUnit } from './weightLog';
-import { normalizeSupersets, withAlternate } from './workoutRoutine';
+import { PROGRESSION_LABELS, normalizeSupersets, withAlternate, withProgression } from './workoutRoutine';
 import { formatRestSeconds, formatWeightWithUnit } from './workoutData';
 import { sessionExercises, setFieldsFor } from './workoutSession';
 
@@ -26,6 +26,7 @@ export type RoutineChange =
   | { kind: 'reps'; id: string; exerciseId: string; from: RepRange; to: RepRange }
   | { kind: 'sets'; id: string; exerciseId: string; from: number; to: number; added: RoutineSetTarget[] }
   | { kind: 'rest'; id: string; exerciseId: string; from: number; to: number }
+  | { kind: 'progression'; id: string; exerciseId: string; from: ProgressionScheme | null; to: ProgressionScheme }
   | { kind: 'swap'; id: string; fromExerciseId: string; toExerciseId: string; targets: RoutineSetTarget[] }
   /**
    * The other way to take a swap: keep the routine's exercise and name the one
@@ -65,6 +66,8 @@ export interface RoutineDiffInput {
   restOverrides?: Readonly<Record<string, number>> | null;
   /** What an item with no rest of its own uses, so a rest equal to it isn't offered as a change. */
   defaultRestSeconds?: number;
+  /** Schemes the person set on exercises in this workout alone (`WorkoutSession.progressionOverrides`). */
+  progressionOverrides?: Readonly<Record<string, ProgressionScheme>> | null;
 }
 
 const isWork = (kind: string) => kind !== 'warmup';
@@ -190,6 +193,15 @@ export function routineChanges(input: RoutineDiffInput): RoutineChange[] {
     if (to !== from) out.push({ kind: 'rest', id: `rest:${item.exerciseId}`, exerciseId: item.exerciseId, from, to });
   }
 
+  // Progression: a scheme set for this workout alone, on an exercise the
+  // workout did and the routine has an item for. One the routine already has says nothing.
+  for (const item of items) {
+    const to = input.progressionOverrides?.[item.exerciseId];
+    if (to === undefined || !inSession.has(item.exerciseId)) continue;
+    const from = item.progression?.scheme ?? null;
+    if (to !== from) out.push({ kind: 'progression', id: `progression:${item.exerciseId}`, exerciseId: item.exerciseId, from, to });
+  }
+
   // Order: one change for the whole running order of what both have.
   const routineOrder = items.map(i => i.exerciseId).filter(x => inSession.has(x));
   const sessionOrder = session.map(e => e.exerciseId).filter(x => inRoutine.has(x));
@@ -209,7 +221,7 @@ export function applyRoutineChanges(
   const edit = (exerciseId: string, fn: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => {
     next = next.map(i => (i.exerciseId === exerciseId ? fn(i) : i));
   };
-  const rank = { swap: 0, alternate: 0, sets: 1, weight: 2, reps: 3, rest: 4, add: 5, remove: 6, order: 7 } as const;
+  const rank = { swap: 0, alternate: 0, sets: 1, weight: 2, reps: 3, rest: 4, progression: 4, add: 5, remove: 6, order: 7 } as const;
   for (const c of [...changes].sort((a, b) => rank[a.kind] - rank[b.kind])) {
     switch (c.kind) {
       case 'swap':
@@ -258,6 +270,9 @@ export function applyRoutineChanges(
         break;
       case 'rest':
         edit(c.exerciseId, i => ({ ...i, restSeconds: c.to }));
+        break;
+      case 'progression':
+        edit(c.exerciseId, i => withProgression(i, c.to));
         break;
       case 'add': {
         const item: WorkoutRoutineItem = { exerciseId: c.exerciseId, supersetKey: null, restSeconds: null, progression: null, targets: c.targets };
@@ -318,6 +333,11 @@ export function describeRoutineChange(
       return {
         title: `${nameOf(c.exerciseId)}: rest time`,
         detail: `From ${restWords(c.from)} to ${restWords(c.to)} between sets.`,
+      };
+    case 'progression':
+      return {
+        title: `${nameOf(c.exerciseId)}: progression`,
+        detail: `From ${c.from ? PROGRESSION_LABELS[c.from] : 'none'} to ${PROGRESSION_LABELS[c.to]}.`,
       };
     case 'swap':
       return { title: `Swap ${nameOf(c.fromExerciseId)} for ${nameOf(c.toExerciseId)}`, detail: 'Same place in the routine.' };

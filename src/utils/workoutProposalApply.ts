@@ -37,6 +37,7 @@ export function liveProposal(sessionId: string, exerciseId: string): ExercisePro
     gymBarKg: gymSetting?.barKg ?? null,
     gymIncrementKg: gymIncrementKg(gymSetting),
     gymDumbbells: gym?.dumbbells ?? null,
+    progressionOverrides: session.progressionOverrides,
   });
 }
 

@@ -74,6 +74,7 @@ import { loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { libraryProgram } from '../utils/workoutProgramLibrary';
 import { groupNames, renamedRegistry, resolveGroupName } from '../utils/routineGroups';
 import { slotUpdates } from '../utils/projectOrder';
+import { withProgression } from '../utils/workoutRoutine';
 import {
   currentProgramVersion,
   currentRoutineVersion,
@@ -82,6 +83,7 @@ import {
   programStructureChanged,
   programVersionTrained,
   programVersionsOf,
+  progressionHome,
   routineContentChanged,
   routineVersionTrained,
   routineVersionsOf,
@@ -699,6 +701,27 @@ interface WorkoutStore {
    * changed.
    */
   setSessionRest: (sessionId: string, exerciseId: string, seconds: number | null) => boolean;
+  /**
+   * Sets how one exercise moves on from inside the workout, where
+   * `progressionHome` says it is kept. On the routine
+   * (`WorkoutRoutineItem.progression`) for a workout on its current version:
+   * workout mode, the Lock Screen and the watch read a workout's suggestions
+   * from the routine version it is on (`sessionPlan`), so the routine is saved
+   * as `updateRoutine` does (amended in place until a workout has been
+   * finished on its version, a new version after) and the workout is moved
+   * onto whichever version that leaves. On the workout alone
+   * (`WorkoutSession.progressionOverrides`) for one with no routine, an older
+   * version or an exercise the routine lacks, which the finish summary then
+   * offers to the routine. Null clears the choice kept in either place.
+   * Nothing else about the plan changes, and no weight is written (a
+   * suggestion still waits for a tap of Use).
+   *
+   * Refuses with `finished` for a workout already ended, and `notFound` for
+   * one that is unknown.
+   */
+  setExerciseProgression: (
+    sessionId: string, exerciseId: string, scheme: ProgressionScheme | null,
+  ) => true | WorkoutRefusal;
   /**
    * Lays warm-up steps out as planned sets ahead of the exercise's other sets,
    * which move down to make room. Refuses a session, or an exercise not in it,
@@ -2686,6 +2709,36 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if ((seconds === null ? undefined : next[exerciseId]) === was) return false;
       const { restOverrides: _old, ...rest } = session;
       putSession(Object.keys(next).length > 0 ? { ...rest, restOverrides: next } : rest);
+      return true;
+    },
+
+    setExerciseProgression(sessionId, exerciseId, scheme) {
+      const session = get().sessions.find(s => s.id === sessionId);
+      if (!session) return 'notFound';
+      if (session.endedAt !== null) return 'finished';
+      const { [exerciseId]: _was, ...others } = session.progressionOverrides ?? {};
+      const { progressionOverrides: _old, ...rest } = session;
+      if (progressionHome(session, get().routines, get().routineVersions, exerciseId) === 'workout') {
+        const next = scheme === null ? others : { ...others, [exerciseId]: scheme };
+        putSession(Object.keys(next).length > 0 ? { ...rest, progressionOverrides: next } : rest);
+        return true;
+      }
+      const routine = get().routines.find(r => r.id === session.routineId)!;
+      const saved = get().updateRoutine(
+        routine.id,
+        { items: routine.items.map(i => (i.exerciseId === exerciseId ? withProgression(i, scheme) : i)) },
+        { source: 'workout' },
+      );
+      if (typeof saved === 'string') return saved;
+      // The routine holds it now, so a choice kept on the workout for this
+      // exercise would only shadow it. A new version was started when a workout
+      // had been finished on the old one: this workout moves onto it, the one
+      // change between the two being the progression just set.
+      const moved = saved.currentVersionId ?? session.routineVersionId;
+      putSession({
+        ...(Object.keys(others).length > 0 ? { ...rest, progressionOverrides: others } : rest),
+        ...(moved ? { routineVersionId: moved } : {}),
+      });
       return true;
     },
 

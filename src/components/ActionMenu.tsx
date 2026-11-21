@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
+import { HelpText } from './HelpText';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, interaction, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -12,6 +13,10 @@ export interface ActionMenuChoice {
   key: string;
   label: string;
   onPress: () => void;
+  /** A line under the label saying what picking it does. Hidden by Settings › Hide help text. */
+  detail?: string;
+  /** Ticks the row as the current value. Passing it at all (even false) reserves the tick's column, so the labels of one list line up. */
+  checked?: boolean;
 }
 
 export interface ActionMenuAction {
@@ -36,6 +41,8 @@ interface Props {
   actions: ActionMenuAction[];
   /** Where the "…" or the row was tapped, so the menu opens from it; null centers it. */
   anchor?: CardAnchor | null;
+  /** The key of an action with `choices` to open on, for a button that means that list rather than the menu. */
+  startOpen?: string | null;
   onClose: () => void;
 }
 
@@ -46,14 +53,16 @@ interface Props {
  * with `choices` swaps the card's content for that list rather than raising a
  * second dialog. Destructive actions sit in their own group at the bottom.
  */
-export function ActionMenu({ visible, title, message, actions, anchor, onClose }: Props) {
+export function ActionMenu({ visible, title, message, actions, anchor, startOpen, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
   const [openKey, setOpenKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (visible) setOpenKey(null);
+    if (visible) setOpenKey(startOpen ?? null);
+    // Read on opening only: a menu already open keeps the list the person is on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const submenu = openKey ? actions.find(a => a.key === openKey) : undefined;
@@ -122,8 +131,18 @@ export function ActionMenu({ visible, title, message, actions, anchor, onClose }
                 onPress={() => { haptics.tap(); card.close(choice.onPress); }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
+                accessibilityLabel={choice.label}
+                accessibilityState={choice.checked === undefined ? undefined : { selected: choice.checked }}
               >
-                <Text style={[styles.label, styles.choiceLabel]}>{choice.label}</Text>
+                {choice.checked !== undefined && (
+                  <View style={styles.tick}>
+                    {choice.checked && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+                  </View>
+                )}
+                <View style={styles.choiceBody}>
+                  <Text style={[styles.label, choice.checked === undefined && styles.choiceLabel]}>{choice.label}</Text>
+                  {choice.detail ? <HelpText style={styles.choiceDetail}>{choice.detail}</HelpText> : null}
+                </View>
               </TouchableOpacity>
             </React.Fragment>
           ))}
@@ -179,6 +198,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // A slot choice has no icon, so it lines up with the labels above it.
   choiceLabel: { paddingLeft: spacing.lg - spacing.xsm },
+  // A ticked list: the tick sits in the icon column, the description under its label.
+  tick: { width: 18, alignItems: 'center' },
+  choiceBody: { flex: 1, gap: spacing.xxs },
+  choiceDetail: { color: colors.textSecondary, fontSize: font.sm },
   labelDestructive: { color: colors.redText },
   chevron: { marginLeft: 'auto' },
   sep: {

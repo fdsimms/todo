@@ -1,0 +1,73 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+body { flex-wrap: wrap; width: 860px; gap: 20px; padding: 20px; }
+body.themeLight { background:#cfcbd6 } body.themeDark { background:#0b0813 }
+.frame { width: 390px; height: 600px; border-radius: 28px; overflow: hidden; position: relative; background: var(--bg); color: var(--text); font-size: 15px; }
+.cap { position:absolute; top:0; left:0; right:0; padding:8px 12px; font-size:11px; color: var(--text3); background: var(--bg); z-index: 5; }
+.pad { padding: 34px 16px 0; }
+.ex { background: var(--bg2); border-radius: 12px; overflow: hidden; }
+.exh { padding: 14px 16px 0; }
+.exname { display:flex; align-items:center; gap:8px; font-size: 22px; font-weight: 700; letter-spacing:-0.2px; }
+.exname .sp { flex:1 } .exname .ic { color: var(--text2); font-size: 18px; font-weight:400; }
+.photos { color: var(--accentText); font-weight: 600; font-size: 14px; margin-top: 10px; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; margin-top: 12px; }
+.suggest { margin: 12px 0 0; background: var(--bg3); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:8px; font-size: 14px; }
+.setHead, .setRow { display:grid; grid-template-columns: 34px 1fr 80px 64px 32px; align-items:center; gap: 8px; padding: 0 16px; }
+.setHead { font-size: 11px; font-weight:600; letter-spacing:0.8px; color: var(--text2); padding-top: 14px; padding-bottom: 6px; text-transform: uppercase; }
+.setRow { min-height: 54px; border-top: 0.5px solid var(--sep); }
+.setRow .n { font-weight:600; color: var(--text2); text-align:center; }
+.cell { background: var(--bg3); border-radius: 8px; text-align:center; padding: 9px 0; font-variant-numeric: tabular-nums; }
+.scrim { position:absolute; inset:0; background: rgba(23,19,28,0.35); z-index: 6; }
+.dark .scrim { background: rgba(10,6,20,0.5); }
+.pop { position:absolute; z-index:7; width:300px; right: 16px; top: 92px; background: var(--bg2); border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); overflow:hidden; }
+.pop .t { padding: 14px 16px 10px; font-weight:600; font-size: 15px; }
+.pop .r { display:flex; align-items:center; gap:12px; padding: 12px 16px; border-top: 0.5px solid var(--sep); min-height: 46px; }
+.pop .r .i { width: 18px; text-align:center; color: var(--accent); }
+.pop .r .grow { flex:1 }
+.pop .r.del { color: #D10B00; } .dark .pop .r.del { color:#FF594F } .pop .r.del .i { color: inherit }
+.pop .r.new { background: var(--accentSubtle); }
+.pop .r .d { color: var(--text2); font-size: 13px; margin-top: 2px; line-height: 1.3; }
+.pop .r.choice { align-items:flex-start; }
+.pop .r .ck { width:18px; color: var(--accentText); font-weight:700; }
+.hl { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 9999px; }
+.anno { position:absolute; left:16px; right:16px; bottom: 14px; z-index: 9; font-size: 12px; color: var(--text2); background: var(--bg3); border-radius: 10px; padding: 8px 10px; line-height:1.35 }
+</style></head><body>
+<script>
+const card = (opts={}) => `
+<div class="ex">
+  <div class="exh">
+    <div class="exname">Dumbbell bench press <span class="ic">›</span><span class="sp"></span><span class="ic">⌃</span><span class="ic">•••</span></div>
+    <div class="sec" style="margin-top:6px">Chest</div>
+    <div class="photos">Show form photos ›</div>
+    <div class="chips">
+      <span class="pill neutral">⏱ Rest 1:30</span><span class="pill neutral">✎ Add note</span><span class="pill neutral">⌖ Add gym note</span>
+      ${opts.chip ? `<span class="pill neutral ${opts.hl?'hl':''}">↗ Set progression</span>` : ''}
+    </div>
+    ${opts.suggest ? `<div class="suggest"><div><b style="font-weight:600">Today 3 × 12 at 55 lb.</b> Up 5 lb because every set last time reached 12.</div><div><span class="pill">Use 55 lb</span></div></div>` : ''}
+  </div>
+  <div class="setHead"><span style="text-align:center">Set</span><span>Previous</span><span>lb each</span><span>Reps</span><span></span></div>
+  <div class="setRow"><span class="n">1</span><span class="ter" style="font-size:16px">50 × 12</span><span class="cell">${opts.suggest?55:50}</span><span class="cell">12</span><span class="check"></span></div>
+  <div class="setRow"><span class="n">2</span><span class="ter" style="font-size:16px">50 × 12</span><span class="cell">${opts.suggest?55:50}</span><span class="cell">12</span><span class="check"></span></div>
+  <div class="setRow"><span class="n">3</span><span class="ter" style="font-size:16px">50 × 12</span><span class="cell">${opts.suggest?55:50}</span><span class="cell">12</span><span class="check"></span></div>
+</div>`;
+const menu = (rows, title, extra='') => `<div class="scrim"></div><div class="pop"><div class="t">${title}</div>${rows}</div>${extra}`;
+const row = (icon, label, cls='', chev='') => `<div class="r ${cls}"><span class="i">${icon}</span><span class="grow">${label}</span>${chev?`<span class="chev">${chev}</span>`:''}</div>`;
+const choice = (label, detail, on) => `<div class="r choice"><span class="ck">${on?'✓':''}</span><div class="grow"><div>${label}</div><div class="d">${detail}</div></div></div>`;
+const frames = [
+ ['1 · Nothing set: a quiet chip beside Rest and Add note, shown only while the exercise has no progression', `<div class="pad">${card({chip:true,hl:true})}</div>`],
+ ['2 · The "…" menu gets a Progression row (also the way to change one later)', `<div class="pad">${card({})}</div>` + menu(
+    row('↑','Move down') + row('⛓','Superset with…','','›') + row('⇄','Swap') + row('↗','Progression…','new','›') + row('🗑','Remove from workout','del'),
+    'Dumbbell bench press')],
+ ['3 · Tapping it swaps the menu for the four schemes in plain words (same back-row pattern as Superset with…)', `<div class="pad">${card({})}</div>` + menu(
+    `<div class="r"><span class="i">‹</span><span class="grow" style="color:var(--text)">Progression</span></div>` +
+    choice('Rep range','Aim for a range like 8 to 12. When every set reaches the top, add weight.',false) +
+    choice('Linear','Add a little weight each workout where you finish every rep.',false) +
+    choice('RPE','Rate how hard the top set felt, and the weight follows.',false),
+    'Dumbbell bench press')],
+ ['4 · Picked: the usual suggestion card appears at once, with its Use button. Nothing is applied until Use is tapped', `<div class="pad">${card({suggest:true})}</div>`],
+];
+const mk = theme => { const wrap=document.createDocumentFragment(); frames.forEach(([c,h])=>{ const d=document.createElement('div'); d.className='frame '+theme; d.innerHTML=`<div class="cap">${c}</div>`+h; wrap.appendChild(d); }); return wrap; };
+const t = new URLSearchParams(location.search).get('t')||'light';
+document.body.className = t==='dark'?'themeDark':'themeLight';
+document.body.appendChild(mk(t));
+</script></body></html>
