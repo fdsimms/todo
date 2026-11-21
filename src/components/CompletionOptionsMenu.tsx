@@ -32,6 +32,24 @@ interface Props {
   onClose: () => void;
 }
 
+interface MenuRow {
+  key: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  detail?: string;
+  feedback: () => void;
+  onPress: () => void;
+  /** Drawn in the miss colour. */
+  miss?: boolean;
+}
+
+// Row heights as the styles below lay them out at the default text size: padding, the label's
+// line, and a detail wrapped to two lines (the longest ones are). Deliberately generous, since
+// too small a number brings the scroll back and too large only moves the card a little.
+const ROW_PLAIN = spacing.md * 2 + lineHeight.lg;
+const ROW_WITH_DETAIL = ROW_PLAIN + spacing.xxs + lineHeight.sm * 2;
+const SEP = border.sm;
+
 /**
  * The popover a long press on a task's checkbox opens: the ways to close it
  * without having done it yourself. The expanded panel's Skip and Mark Missed
@@ -45,6 +63,43 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
   const missDetail = onSkip ? 'Records a miss and moves to the next date.' : 'Records a miss and closes the task.';
+
+  // The two miss rows sit together, so "Mark missed" and "Mark missed and end the chain" read as the pair they are.
+  const rows: MenuRow[] = [];
+  if (onTakeOff && takeOffCount) {
+    rows.push({ key: 'takeOff', icon: 'remove-circle-outline', label: 'Take one off', detail: `Goes from ${takeOffCount} to ${takeOffCount - 1}.`, feedback: haptics.impactMedium, onPress: onTakeOff });
+  }
+  if (onSkip) {
+    rows.push({ key: 'skip', icon: 'play-skip-forward-outline', label: 'Skip this time', detail: 'Moves to the next date. Nothing is recorded.', feedback: haptics.tap, onPress: onSkip });
+  }
+  if (onMiss) {
+    rows.push({ key: 'miss', icon: 'close-circle-outline', label: 'Mark missed', detail: missDetail, feedback: haptics.impactMedium, onPress: onMiss, miss: true });
+  }
+  if (onEndChain) {
+    rows.push({ key: 'endChain', icon: 'stop-circle-outline', label: 'Mark missed and end the chain', detail: 'Skips the rest of its steps for today.', feedback: haptics.impactMedium, onPress: onEndChain, miss: true });
+  }
+  if (onSomeoneElse) {
+    rows.push({ key: 'someoneElse', icon: 'people-outline', label: 'Someone else did it', detail: 'Shows as done in your history, with no coins. Your streak is unchanged.', feedback: haptics.tap, onPress: onSomeoneElse });
+  }
+  if (onNextStep) {
+    rows.push({ key: 'nextStep', icon: 'play-forward-outline', label: 'Skip to the next step', detail: 'This step isn’t completed.', feedback: haptics.tap, onPress: onNextStep });
+  }
+  if (onPrevStep) {
+    rows.push({ key: 'prevStep', icon: 'play-back-outline', label: 'Back a step', feedback: haptics.tap, onPress: onPrevStep });
+  }
+  if (onDuplicate) {
+    rows.push({ key: 'duplicate', icon: 'duplicate-outline', label: 'Duplicate', feedback: haptics.tap, onPress: onDuplicate });
+  }
+  if (onDiscuss) {
+    rows.push({ key: 'discuss', icon: 'chatbubble-ellipses-outline', label: 'Discuss with Claude', feedback: haptics.tap, onPress: onDiscuss });
+  }
+
+  // What the rows take with no cap, so a menu too tall for its side of the touch moves to the far
+  // edge instead of scrolling. A detail wraps to two lines at the popover's width.
+  const expectedHeight = rows.reduce(
+    (sum, row) => sum + (row.detail ? ROW_WITH_DETAIL : ROW_PLAIN) + SEP,
+    0,
+  );
 
   const choose = (feedback: () => void, action: () => void) => {
     feedback();
@@ -60,165 +115,28 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
       onRequestClose={() => card.close()}
       anchor={anchor}
       popoverWidth={300}
+      expectedHeight={expectedHeight}
       scrimLabel="Close menu"
     >
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-      {onTakeOff && takeOffCount ? (
-        <>
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => choose(haptics.impactMedium, onTakeOff)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`Take one off. Goes from ${takeOffCount} to ${takeOffCount - 1}.`}
-          >
-            <Ionicons name="remove-circle-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
-            <View style={styles.text}>
-              <Text style={styles.label}>Take one off</Text>
-              <Text style={styles.detail}>{`Goes from ${takeOffCount} to ${takeOffCount - 1}.`}</Text>
-            </View>
-          </TouchableOpacity>
-          <View style={styles.sep} />
-        </>
-      ) : null}
-      {onSkip && (
-        <>
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => choose(haptics.tap, onSkip)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Skip this time. Moves to the next date. Nothing is recorded."
-          >
-            <Ionicons name="play-skip-forward-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
-            <View style={styles.text}>
-              <Text style={styles.label}>Skip this time</Text>
-              <Text style={styles.detail}>Moves to the next date. Nothing is recorded.</Text>
-            </View>
-          </TouchableOpacity>
-          {(onMiss || onSomeoneElse) && <View style={styles.sep} />}
-        </>
-      )}
-      {onMiss && (
-        <>
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => choose(haptics.impactMedium, onMiss)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`Mark missed. ${missDetail}`}
-          >
-            <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.redText} style={styles.icon} />
-            <View style={styles.text}>
-              <Text style={[styles.label, styles.missLabel]}>Mark missed</Text>
-              <Text style={styles.detail}>{missDetail}</Text>
-            </View>
-          </TouchableOpacity>
-          {onSomeoneElse && <View style={styles.sep} />}
-        </>
-      )}
-      {onSomeoneElse && (
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => choose(haptics.tap, onSomeoneElse)}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel="Someone else did it. Shows as done in your history, with no coins. Your streak is unchanged."
-        >
-          <Ionicons name="people-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
-          <View style={styles.text}>
-            <Text style={styles.label}>Someone else did it</Text>
-            <Text style={styles.detail}>Shows as done in your history, with no coins. Your streak is unchanged.</Text>
-          </View>
-        </TouchableOpacity>
-      )}
-      {onNextStep && (
-        <>
-          <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => choose(haptics.tap, onNextStep)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Skip to the next step. This step isn’t completed."
-          >
-            <Ionicons name="play-forward-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
-            <View style={styles.text}>
-              <Text style={styles.label}>Skip to the next step</Text>
-              <Text style={styles.detail}>This step isn’t completed.</Text>
-            </View>
-          </TouchableOpacity>
-        </>
-      )}
-      {onPrevStep && (
-        <>
-          <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => choose(haptics.tap, onPrevStep)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Back a step"
-          >
-            <Ionicons name="play-back-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
-            <View style={styles.text}>
-              <Text style={styles.label}>Back a step</Text>
-            </View>
-          </TouchableOpacity>
-        </>
-      )}
-      {onEndChain && (
-        <>
-          <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => choose(haptics.impactMedium, onEndChain)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Mark missed and end the chain. Skips the rest of its steps for today."
-          >
-            <Ionicons name="stop-circle-outline" size={iconSize.md} color={colors.redText} style={styles.icon} />
-            <View style={styles.text}>
-              <Text style={[styles.label, styles.missLabel]}>Mark missed and end the chain</Text>
-              <Text style={styles.detail}>Skips the rest of its steps for today.</Text>
-            </View>
-          </TouchableOpacity>
-        </>
-      )}
-      {onDuplicate && (
-        <>
-          <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => choose(haptics.tap, onDuplicate)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Duplicate"
-          >
-            <Ionicons name="duplicate-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
-            <View style={styles.text}>
-              <Text style={styles.label}>Duplicate</Text>
-            </View>
-          </TouchableOpacity>
-        </>
-      )}
-      {onDiscuss && (
-        <>
-          <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => choose(haptics.tap, onDiscuss)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Discuss with Claude"
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
-            <View style={styles.text}>
-              <Text style={styles.label}>Discuss with Claude</Text>
-            </View>
-          </TouchableOpacity>
-        </>
-      )}
+        {rows.map((row, i) => (
+          <React.Fragment key={row.key}>
+            {i > 0 && <View style={styles.sep} />}
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => choose(row.feedback, row.onPress)}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={row.detail ? `${row.label}. ${row.detail}` : row.label}
+            >
+              <Ionicons name={row.icon} size={iconSize.md} color={row.miss ? colors.redText : colors.accent} style={styles.icon} />
+              <View style={styles.text}>
+                <Text style={[styles.label, row.miss && styles.missLabel]}>{row.label}</Text>
+                {row.detail ? <Text style={styles.detail}>{row.detail}</Text> : null}
+              </View>
+            </TouchableOpacity>
+          </React.Fragment>
+        ))}
       </ScrollView>
     </CardSheet>
   );

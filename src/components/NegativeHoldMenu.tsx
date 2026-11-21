@@ -100,6 +100,11 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
     });
   }
 
+  // What the rows take with no cap, so a menu too tall for its side of the touch moves to the far
+  // edge instead of scrolling. A detail wraps to three lines at the popover's width (generous on
+  // purpose: too small brings the scroll back, too large only moves the card a little).
+  const expectedHeight = rows.length * (spacing.md * 2 + lineHeight.lg + spacing.xxs + lineHeight.sm * 3 + border.sm);
+
   return (
     <CardSheet
       name="NegativeHoldMenu"
@@ -109,6 +114,7 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
       onRequestClose={() => card.close()}
       anchor={anchor}
       popoverWidth={300}
+      expectedHeight={expectedHeight}
       scrimLabel="Close menu"
     >
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
