@@ -545,7 +545,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rewardSavings.ts` — GoalPlan, MIN_SAVINGS_SHARE, MAX_SAVINGS_SHARE, DEFAULT_SAVINGS_SHARE, GOAL_DATE_PRESETS, cleanSavingsShare, parseGoalPlan, serializeGoalPlan, activeGoalPlan, splitsEntry, +11 more
 - `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, cleanIgnoreAfter, cleanIgnoreList, +30 more
 - `src/utils/rewardWishList.ts` — WISH_UNFILED, wishItemMatches, WishGroup, groupWishItems, wishListView
-- `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +70 more
+- `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +72 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, withWorkout, rotationMemberForWorkout, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, +33 more
