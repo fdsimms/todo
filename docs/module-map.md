@@ -763,6 +763,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +35 more
 - `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, ACCESSORY_EQUIPMENT, BENCH_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, EquipmentGroup, equipmentGroup, +44 more
 - `src/utils/workoutDraft.ts` — DescribeMode, DESCRIBE_MAX_LENGTH, MAX_DRAFT_EXERCISES, DraftSet, DraftExercise, WorkoutDraft, readWorkoutDraft, draftNames, newExerciseFor, RoutineDraft, +10 more
+- `src/utils/workoutGaps.ts` — GAP_ROUTINE_SESSIONS, GAP_WEEKS, GAP_MIN_USUAL, GAP_SHARE, GAP_MAX_MUSCLES, GapSource, MuscleGap, GapContext, muscleCredit, findGaps, +6 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
 - `src/utils/workoutLinkActions.ts` — applyWorkoutLink, skipRestFromLink
@@ -984,6 +985,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useWeighIn.ts` — useWeighIn, WeighIn
 - `src/hooks/useWhichToUse.ts` — useWhichToUse
 - `src/hooks/useWithoutLockedTasks.ts` — useWithoutLockedTasks
+- `src/hooks/useWorkoutGaps.ts` — useWorkoutGaps
 - `src/hooks/useWorkoutHeartRate.ts` — useWorkoutHeartRate
 - `src/hooks/useWorkoutLiveActivitySync.ts` — syncWorkoutLiveActivityNow, useWorkoutLiveActivitySync
 - `src/hooks/useWorkoutStats.ts` — WORKOUT_STATS_WEEKS, WorkoutStatsRecord, WorkoutStats, useWorkoutStats

@@ -24,6 +24,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { mostUsedExerciseIds } from '../utils/exerciseUsage';
+import type { GapSuggestion } from '../utils/workoutGaps';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { catalogExercise, describeExercise, exerciseName, searchExercises, type ExerciseSearchResult } from '../utils/exerciseCatalog';
 import {
@@ -42,6 +43,11 @@ interface Props {
   addedLabel?: string;
   /** Exercises to list first while nothing is typed, in order: what a swap offers in place of the one shown. */
   suggestedIds?: readonly string[];
+  /**
+   * Exercises for muscles the workout isn't hitting, each with the reason, listed first under "Fills a gap"
+   * while nothing is typed or filtered. A proposal like a swap's list: a tap picks one the usual way.
+   */
+  gaps?: readonly GapSuggestion[];
   /**
    * Turns the list into a multi-select: a tap stages the exercise instead of
    * picking it, and a footer button adds everything staged in one go, in the
@@ -83,7 +89,7 @@ const NAME_REFUSED: Record<string, string> = {
  * the chest. The field's own text is offered as the new exercise's name, the
  * way a `PillGroup`'s filter offers to create what it can't find.
  */
-export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], addedLabel = 'Added', suggestedIds, onPickMany }: Props) {
+export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], addedLabel = 'Added', suggestedIds, gaps, onPickMany }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
@@ -115,15 +121,27 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
     ];
   }, [visible, exercises, search.query, suggestedIds, filter.filters, narrowed]);
 
+  // "Fills a gap" tops the plain list only, like "Most used": nothing typed and no filter. A row it lists is taken out of the sections below.
+  const gapRows = useMemo(() => {
+    if (!gaps || gaps.length === 0 || choosingLike || narrowed || search.query.trim() !== '') return [];
+    const byId = new Map(results.map(r => [r.exercise.id, r]));
+    return gaps.flatMap(g => {
+      const item = byId.get(g.exerciseId);
+      return item && !added.has(g.exerciseId) ? [{ item, reason: g.reason }] : [];
+    });
+  }, [gaps, results, choosingLike, narrowed, search.query, added]);
+
   // "Most used" tops the plain list only: nothing typed, no filter, and no swap suggestions already leading it.
   const { popular, rest } = useMemo(() => {
-    if (choosingLike || hasSuggestions || narrowed || search.query.trim() !== '' || usedIds.length === 0) return { popular: [], rest: results };
+    const gapIds = new Set(gapRows.map(g => g.item.exercise.id));
+    const without = (list: ExerciseSearchResult[]) => (gapIds.size === 0 ? list : list.filter(r => !gapIds.has(r.exercise.id)));
+    if (choosingLike || hasSuggestions || narrowed || search.query.trim() !== '' || usedIds.length === 0) return { popular: [], rest: without(results) };
     const rank = new Map(usedIds.map((id, i) => [id, i]));
     return {
-      popular: results.filter(r => rank.has(r.exercise.id)).sort((a, b) => rank.get(a.exercise.id)! - rank.get(b.exercise.id)!),
-      rest: results.filter(r => !rank.has(r.exercise.id)),
+      popular: without(results.filter(r => rank.has(r.exercise.id))).sort((a, b) => rank.get(a.exercise.id)! - rank.get(b.exercise.id)!),
+      rest: without(results.filter(r => !rank.has(r.exercise.id))),
     };
-  }, [results, usedIds, choosingLike, hasSuggestions, narrowed, search.query]);
+  }, [results, usedIds, choosingLike, hasSuggestions, narrowed, search.query, gapRows]);
 
   // The multi-select's staged exercises in tap order, and the superset switch.
   const [staged, setStaged] = useState<string[]>([]);
@@ -252,7 +270,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
     close();
   };
 
-  const renderRow = useCallback(({ item }: { item: ExerciseSearchResult }) => {
+  const renderRow = useCallback(({ item, reason }: { item: ExerciseSearchResult; reason?: string }) => {
     const e = item.exercise;
     const isAdded = !choosingLike && added.has(e.id);
     const isStaged = !choosingLike && multi && staged.includes(e.id);
@@ -264,11 +282,12 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
         accessibilityState={{ disabled: isAdded, ...(multi && !choosingLike ? { selected: isStaged } : {}) }}
-        accessibilityLabel={`${e.name}, ${describeExercise(e)}${isAdded ? `, ${addedLabel.toLowerCase()}` : ''}`}
+        accessibilityLabel={`${e.name}, ${describeExercise(e)}${reason ? `, ${reason}` : ''}${isAdded ? `, ${addedLabel.toLowerCase()}` : ''}`}
       >
         <View style={styles.rowText}>
           <HighlightedText text={e.name} ranges={item.nameMatches} style={styles.rowName} highlightStyle={styles.rowNameHit} numberOfLines={2} />
           <Text style={styles.rowMeta} numberOfLines={1}>{describeExercise(e, item.viaOtherName)}</Text>
+          {reason !== undefined && <Text style={styles.rowReason} numberOfLines={2}>{reason}</Text>}
         </View>
         {isAdded && <Text style={styles.addedTag}>{addedLabel}</Text>}
         {multi && !choosingLike && !isAdded && <SelectionDot selected={isStaged} onPress={() => pick(e.id)} />}
@@ -405,11 +424,13 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               initialNumToRender={20}
-              ListHeaderComponent={popular.length > 0 ? (
+              ListHeaderComponent={gapRows.length > 0 || popular.length > 0 ? (
                 <View>
-                  <Text style={styles.sectionLabel}>Most used</Text>
+                  {gapRows.length > 0 && <Text style={styles.sectionLabel}>Fills a gap</Text>}
+                  {gapRows.map(g => <React.Fragment key={g.item.exercise.id}>{renderRow(g)}</React.Fragment>)}
+                  {popular.length > 0 && <Text style={styles.sectionLabel}>Most used</Text>}
                   {popular.map(item => <React.Fragment key={item.exercise.id}>{renderRow({ item })}</React.Fragment>)}
-                  {rest.length > 0 && <Text style={styles.sectionLabel}>All exercises</Text>}
+                  {rest.length > 0 && <Text style={styles.sectionLabel}>{hasSuggestions && popular.length === 0 ? 'Swap options' : 'All exercises'}</Text>}
                 </View>
               ) : null}
               ListEmptyComponent={results.length > 0 ? null : (
@@ -477,6 +498,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowName: { color: colors.text, fontSize: font.md },
   rowNameHit: { color: colors.accentText, fontWeight: fontWeight.semibold },
   rowMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  rowReason: { color: colors.accentText, fontSize: font.sm, marginTop: spacing.xxs },
   addedTag: { color: colors.textTertiary, fontSize: font.sm },
   footer: {
     paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.lg,

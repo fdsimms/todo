@@ -480,6 +480,17 @@ Three things on workout mode's exercise card and finish summary. Mocks were revi
 - **A swap moves only the unticked sets** (`swapSessionExercise`, `exerciseSwap.ts`). A ticked set is a record under the original exercise, so it stays there, and the new exercise sits right after it. The moved sets take the new exercise's own last weights, never the original's. A swap is for today: the routine is not touched.
 - **The routine is updated only by the person, one change at a time** (`routineUpdate.ts`). The diff is derived from the routine and the done sets when the summary opens and nothing is stored. Nothing starts ticked, each change carries what it needs so accepting one never depends on another, and Save applies the ticked ones in the same tap that saves the workout. What it compares: working weight (only where the target names one; an empty target means "as last time"), rep range (only when every set missed it the same way), set count, swaps (an exercise in the slot of one the workout skipped), additions, removals and the running order. What it never compares: warm-ups, sets never ticked, rest. A load taken from the progression suggestion is the plan working and is not offered back.
 
+
+## Gap suggestions, as built
+
+The picker's "Fills a gap" section, for Add exercise and Swap in workout mode (`workoutGaps.ts`, `useWorkoutGaps`, the `gaps` prop of `ExercisePickerSheet`). Mocked and approved in the PR.
+
+- **A proposal, never stored.** It is worked out from the live workout each time the picker opens, and a tap picks the exercise like any other row. Nothing is written until then.
+- **"Not hit" means less than half of what is usual** (`GAP_SHARE`), for a muscle with at least `GAP_MIN_USUAL` usual sets, so a stray helping set is not a habit. Credit is Stats' (primary 1, helping `SECONDARY_MUSCLE_WEIGHT`), warm-ups never count, and the live workout's planned sets count as hit, so the section doesn't ask for a muscle the routine already plans.
+- **Usual is the routine's last three finished sessions** when the workout started from a routine that has any (`routineSessionIds`), so a swap or a skipped exercise shows what it left behind. **With no routine history it is the mean of the previous four trained weeks** (`priorWeeks`), against this week's finished workouts plus this one; fewer than two trained weeks says nothing. Both are the same "usual against so far" test, so the rest of the code doesn't care which it got.
+- **One exercise per gap muscle, at most three muscles**, biggest shortfall first. An exercise the person has logged leads one they haven't, then one that also covers another gap, then the name. Weighted and bodyweight-rep lifts only, never what the workout has, never what the gym can't do (`equipmentAvailable`).
+- **A swap says what it gives up.** The swapped exercise's unticked sets are about to move, so they stop counting, and a suggestion that leaves one of its main muscles at nothing appends "Front delts would drop to 0" (`leaving`). Ticked sets stay and keep the muscle.
+- **The routine editor, the past-workout log and the other pickers pass no `gaps`**, since there is no live workout to measure.
 ## Routine groups and archive, as built
 
 The Routines tab can put routines under headings and put some away.
