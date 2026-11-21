@@ -72,6 +72,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, shareMarkdownFile, writePdfFile, sharePdfFile, discardBackupFile, pickBackupFile
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
 - `src/utils/beatSound.ts` — playBeatSound
+- `src/utils/biostatsWidget.ts` — BiostatsMark, BiostatsCollapsed, biostatsCollapsed, shownFromStored
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
 - `src/utils/blankPicker.ts` — isBlankExcluded, blankFits, kitchenEntryItemId, BlankCandidate, BlankChoices, USUAL_CANDIDATE_LIMIT, blankChoices, needsUsing, BlankSuggestion, blankSuggestions, +3 more
 - `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, supergroupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, +6 more
@@ -712,7 +713,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +5 more
 - `src/utils/travelModeWrite.ts` — setTravelModeForEvent, setArriveEarlyForEvent
-- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +65 more
+- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +70 more
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, DESTINATION_MAX_LENGTH, destinationFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, WeatherGearInputs, WeatherGearVerdict, weatherGearVerdict, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
@@ -778,7 +779,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart, myWorkoutStart
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine, routineMergePatch
 - `src/utils/workoutTick.ts` — TickRest, TickOutcome, restLabelFor, tickOutcome, TickValues, tickSet
-- `src/utils/workoutTimes.ts` — withClock, shiftDays, spanMinutes, sameMinute, workoutTimesProblem
+- `src/utils/workoutTimes.ts` — withClock, shiftDays, spanMinutes, sameMinute, workoutTimesProblem, liveStartProblem
 
 ## `src/store`
 
@@ -796,8 +797,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useBlockTimerStore.ts` — useBlockTimerStore
 - `src/store/useBulkBarPresenceStore.ts` — useBulkBarPresenceStore
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, vacationReturnCalendarIds, useCalendarStore, useCalendarSync
-- `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, renameGeneratedCategorySettings, getGeneratedCategory, setGeneratedCategory, clearGeneratedCategorySettings, ensureGeneratedTaskCategory, +1 more
+- `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, ensureCalendarEventCategory, renameGeneratedCategorySettings, getGeneratedCategory, setGeneratedCategory, clearGeneratedCategorySettings, ensureGeneratedTaskCategory, ensureGeneratedTaskCategories
 - `src/store/useCheckInStore.ts` — CheckInInput, useCheckInStore
+- `src/store/useCookModeStore.ts` — CookModeSetup, CookModeRequest, useCookModeStore
 - `src/store/useCookwareStore.ts` — CookwarePatch, useCookwareStore
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
 - `src/store/useDemoStore.ts` — clearUndoHistories, reloadAfterDataReplaced, useDemoStore
@@ -880,6 +882,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useClipboardImage.ts` — useClipboardImage
 - `src/hooks/useClockTimeToken.ts` — useClockTimeToken
 - `src/hooks/useCommitHandler.ts` — useCommitHandler
+- `src/hooks/useCookModeLink.ts` — useCookModeLink
 - `src/hooks/useCopyToClipboard.ts` — COPIED_TICK_MS, useCopyToClipboard
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
 - `src/hooks/useDeletedDoseUndo.ts` — useDeletedDoseUndo

@@ -1507,8 +1507,8 @@ argued out before it was built; read them before reopening one.
   to `travelEventPrefs` (`TravelEventPref`) by calendar event id, so a repeating event keeps its
   choice every week. EventKit has no public field for a travel mode or arrival buffer, so nothing
   is written to the calendar event. A pref overrides `travelMode` (`travelModeFor`) and shifts the
-  reminder by `arriveEarlyMinutes` on top of the lead or estimate (`leadWithArrival`, never below
-  zero). **`arriveEarlyMinutes` null means "follow `travelArriveEarlyMinutes`" (Settings, default 0), and 0 means "On time" for this event**; the sheet writes null until a person picks, so a changed default reaches every event that never chose (`arriveEarlyFor`). Estimates are filed under the mode they were asked for, so a pref asks again, and the same goes for a different starting point (`originPlaceId`: a saved place, `TRAVEL_ORIGIN_PHONE`, or null to follow Settings; `travelOriginForEvent` resolves it, and a removed place follows Settings rather than becoming the phone). The row shows
+  reminder by `arriveEarlyMinutes` on top of the lead or estimate (`leadWithArrival`; a late arrival can put
+  the reminder after the start). "Other…" in the Arrive picker opens a time wheel (`ArriveAtSheet`) and stores the pick as minutes from the start (`arriveMinutesForClock`), so a repeating event keeps the offset. **`arriveEarlyMinutes` null means "follow `travelArriveEarlyMinutes`" (Settings, default 0), and 0 means "On time" for this event**; the sheet writes null until a person picks, so a changed default reaches every event that never chose (`arriveEarlyFor`). Estimates are filed under the mode they were asked for, so a pref asks again, and the same goes for a different starting point (`originPlaceId`: a saved place, `TRAVEL_ORIGIN_PHONE`, or null to follow Settings; `travelOriginForEvent` resolves it, and a removed place follows Settings rather than becoming the phone). The row shows
   a held estimate as a chip (`travelRowNote`); with `travelEstimates` off there is none to show.
   **`travelPinBeforeTime` (Settings, Leave-by reminders; null is off) writes the row pinned when its leave-by time of day is before it** (`leaveIsBeforePinCutoff`). It is read only when the row is created, so a pin the person removes is not put back, and rows already there are left alone. Pinned rows ignore the due date, so an early leave-by task for tomorrow shows in Pinned Tasks the evening before.
   **`skip` turns the task off for one event** ("Don't add a leave-by task" in the Getting there picker). `eventIsTravelEligible`
@@ -1847,13 +1847,13 @@ particular the one this generator would be worst to get wrong.
   to read any. The rules sheet renders a notice card when the read is off, and
   turns it on from there — nobody is left with a toggle that visibly does
   nothing.
-- **Its category is its own** (`healthTaskCategory`), defaulting to "Health",
-  not the name `ensureHealthCategory` uses ("Biostats"). The Today reading's
-  section is information rows only, and no generated task files into it. The
-  two settings stay independently clearable. Reusing `healthCategory`
-  outright — the `calendarReview` move — was the tempting version and is wrong
-  here: "don't show my step count on Today" is not the same instruction as
-  "don't add health tasks", and one setting could not tell them apart.
+- **Its category is its own** (`healthTaskCategory`), defaulting to "Health".
+  The Today readings are not in a category at all (they draw in the Biostats
+  widget, switched by `healthTodayShown`), and no generated task files into
+  them. The two settings stay independent. Reusing one setting for both was the
+  tempting version and is wrong here: "don't show my step count on Today" is not
+  the same instruction as "don't add health tasks", and one setting could not
+  tell them apart.
 - **`writeGeneratedOptOut` has nothing to write**, for weather's and
   screenTime's reason: the source is a rule in settings, not a row a decline
   could be stamped on.

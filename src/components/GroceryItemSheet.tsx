@@ -470,13 +470,17 @@ function GroceryItemSheetBody({
     }
     setNameError(null);
     setNameCollisionId(null);
+    setName(trimmed);
     return true;
   };
+  // The store trims each of these, so the field shows the trimmed text.
   const commitQuantity = () => {
     if (quantity !== (item.quantity ?? '')) setQuantity(item.id, quantity);
+    setQuantityText(quantity.trim());
   };
   const commitNote = () => {
     if (note !== item.note) setNote(item.id, note);
+    setNoteText(note.trim());
   };
   // Scoped to one target rather than looping every buffered edit: unlike the
   // old Save, there's no longer a single moment that flushes the whole

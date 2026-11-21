@@ -1,7 +1,11 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
-import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName } from './navigationRef';
+import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName, WORKOUT_MODE_ROUTE, COOK_MODE_ROUTE } from './navigationRef';
+import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
+import { WorkoutModeScreen } from '../screens/WorkoutModeScreen';
+import { CookModeScreen } from '../screens/CookModeScreen';
+import { useCookModeStore } from '../store/useCookModeStore';
 import { navigateToSettingsEntry } from './openSettings';
 import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -108,6 +112,18 @@ import { useMoodStore } from '../store/useMoodStore';
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
 const ROOT_STACK_OPTIONS = { headerShown: false };
+// A card finishing its pop is the moment a sheet may be presented again (UIKit
+// drops one raised mid-transition). Workout mode's saved-workout question waits
+// for it: see `WorkoutModeHost`, and cook mode's end-screen offers wait the same way
+// (`useCookModeLink`). Any closing transition releases it, since the
+// question is only ever held for the page that was just left.
+const ROOT_STACK_LISTENERS = {
+  transitionEnd: (e: { data?: { closing?: boolean } }) => {
+    if (!e.data?.closing) return;
+    useWorkoutModeStore.getState().markAskReady();
+    useCookModeStore.getState().markRequestReady();
+  },
+};
 const EDGE_WIDTH = 20;
 // How long after a navigation its bookkeeping waits (see handleStateChange):
 // long enough to land after the destination's first frames rather than among
@@ -236,6 +252,11 @@ const PUSHED_ROUTES = new Set([
   'ExperimentDetail',
   // One medication's page, reached from Medications for the same reason.
   'MedicationDetail',
+  // Workout mode, a page rather than a sheet: opened by `useWorkoutModeStore`
+  // from a button, a task row or the floating bar, never from the menu.
+  WORKOUT_MODE_ROUTE,
+  // Cook mode, the same: opened from a recipe (or the cooking bar), never from the menu.
+  COOK_MODE_ROUTE,
 ]);
 
 function MorePlaceholder() {
@@ -424,9 +445,9 @@ const NAVIGATION_HOSTS = (
         still a sibling of the Navigator rather than a screen, so it stays
         mounted across every screen exactly as before. */}
     <LogMealEntrySheet />
-    {/* Workout mode, for the same reason: its sheets scroll with
-        useKeyboardInsetScroll, which needs a navigation object. Mounted
-        once so a task row on any screen opens the one sheet. */}
+    {/* What workout mode needs while its page isn't showing: the rest
+        buzz, dropping a finished workout's rest, and the question a linked
+        task asks once the page has gone. See WorkoutModeHost. */}
     <WorkoutModeHost />
     {/* The mission an alarm is owed (missions.ts), over whatever screen is
         up. Mounted once for the reason workout mode is. */}
@@ -746,7 +767,7 @@ export default function AppNavigator() {
   // render of this component, so the stack navigator went back over all of
   // its routes each time the menu opened or closed.
   const rootStack = useMemo(() => (
-    <RootStack.Navigator screenOptions={ROOT_STACK_OPTIONS}>
+    <RootStack.Navigator screenOptions={ROOT_STACK_OPTIONS} screenListeners={ROOT_STACK_LISTENERS}>
       <RootStack.Screen name="MainTabs">
         {() => (
           <MainTabs
@@ -827,6 +848,16 @@ export default function AppNavigator() {
       <RootStack.Screen
         name="PersonDetail"
         component={PersonDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name={COOK_MODE_ROUTE}
+        component={CookModeScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name={WORKOUT_MODE_ROUTE}
+        component={WorkoutModeScreen}
         options={{ presentation: 'card' }}
       />
     </RootStack.Navigator>

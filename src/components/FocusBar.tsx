@@ -28,7 +28,7 @@ import { useFabPresenceStore } from '../store/useFabPresenceStore';
 import { useFloatingBarStore } from '../store/useFloatingBarStore';
 import { useFocusedRouteStore } from '../store/useFocusedRouteStore';
 import { isCookTimerRunning } from '../utils/recipeTimer';
-import { resetToFocusSession } from '../navigation/navigationRef';
+import { resetToFocusSession, isFullPageMode } from '../navigation/navigationRef';
 
 interface Props {
   /** Reopens the session sheet. */
@@ -68,7 +68,7 @@ export function FocusFloatingBar() {
   // which re-rendered it and every overlay beside this one on each switch to or
   // from Today. Hidden until the navigator has said where it is, too, so a
   // launch onto Today never shows it for a frame.
-  const hidden = useFocusedRouteStore(s => s.route === null || s.route === 'Today');
+  const hidden = useFocusedRouteStore(s => s.route === null || s.route === 'Today' || isFullPageMode(s.route));
   const session = useFocusStore(s => s.session);
   const cooking = useRecipeStore(s => s.recipes.some(isCookTimerRunning));
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);

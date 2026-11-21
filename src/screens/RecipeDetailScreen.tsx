@@ -76,7 +76,8 @@ import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { RecipeTabBar, type RecipeTab } from '../components/RecipeTabBar';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
-import { CookModeSheet } from '../components/CookModeSheet';
+import { useCookModeStore, type CookModeSetup } from '../store/useCookModeStore';
+import { useCookModeLink } from '../hooks/useCookModeLink';
 import { savedCookSetup, saveCookSetup } from '../utils/cookPosition';
 import { runAfterTransition } from '../utils/afterPaint';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
@@ -135,7 +136,7 @@ import {
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { annotateSteps, stepIngredientLines, type StepSegment } from '../utils/stepIngredients';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
-import { describeCookedWeight } from '../utils/mealLog';
+import { clampCookedWeight, describeCookedWeight } from '../utils/mealLog';
 import { CookwareWeighIn } from '../components/CookwareWeighIn';
 import { useWeighIn } from '../hooks/useWeighIn';
 import { plannedEntryForRecipe } from '../utils/foodLog';
@@ -593,7 +594,26 @@ export function RecipeDetailScreen() {
   const [pendingPlanScale, setPendingPlanScale] = useState<number | null>(null);
   const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday, cookRecipeNow } = usePlanMeal();
   const [extractVisible, setExtractVisible] = useState(false);
-  const [cookModeVisible, setCookModeVisible] = useState(false);
+  // Cook mode is a page over this screen (`CookModeScreen`). It reads and
+  // changes the scale and picks held here through `useCookModeStore`;
+  // `useCookModeLink` keeps this screen's copy in step and answers the offers
+  // its end screen leaves (the callbacks run after the page has gone).
+  const { cooking: cookModeVisible } = useCookModeLink({
+    recipeId: route.params.recipeId,
+    onSetup: setup => {
+      setScale(setup.scale);
+      setChoices(setup.choices);
+      setOverrides(setup.overrides);
+    },
+    onCooked: () => { if (recipe) cookRecipeNow(recipe); },
+    onFood: () => handleLogToFoodLog(),
+  });
+  const openCookMode = (setup?: Partial<CookModeSetup>) => useCookModeStore.getState().open({
+    recipeId: route.params.recipeId,
+    scale, choices, overrides,
+    canLogFood: !!nutritionReading?.nutrition,
+    ...setup,
+  });
   /**
    * `openCookMode` (route.params) is CookingBar's
    * way back in — resetToRecipeDetail's second param, the
@@ -605,17 +625,17 @@ export function RecipeDetailScreen() {
    */
   const openCookModeStamp = route.params.openCookMode;
   const [handledCookModeStamp, setHandledCookModeStamp] = useState<number | undefined>(undefined);
-  // The sheet opens once the navigation that brought us here has settled. A
-  // modal presented while the stack push is still in flight is wiped away
-  // again by it, so the cook saw the sheet appear, slide off, and come back.
-  const [cookModeOpenPending, setCookModeOpenPending] = useState(false);
+  // The page opens once the navigation that brought us here has settled: a
+  // push issued while this screen's own push is still in flight is dropped.
+  const [cookModeOpenPending, setCookModeOpenPending] = useState<Partial<CookModeSetup> | null>(null);
   useEffect(() => {
     if (!cookModeOpenPending) return;
     const handle = runAfterTransition(() => {
-      setCookModeOpenPending(false);
-      setCookModeVisible(true);
+      setCookModeOpenPending(null);
+      openCookMode(cookModeOpenPending);
     });
     return () => handle.cancel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cookModeOpenPending]);
   useEffect(() => {
     if (openCookModeStamp === undefined || openCookModeStamp === handledCookModeStamp) return;
@@ -631,7 +651,15 @@ export function RecipeDetailScreen() {
       setChoices(saved.choices);
       setOverrides(saved.overrides);
     }
-    if (cookModeAvailable && !featureHidden('cookMode', simpleMode)) setCookModeOpenPending(true);
+    // The setup is named here rather than read from state: the reseed above has
+    // been asked for but not yet committed, so state still holds the old values.
+    if (cookModeAvailable && !featureHidden('cookMode', simpleMode)) {
+      setCookModeOpenPending(saved ?? {
+        scale: route.params.scale ?? 1,
+        choices: route.params.choices ?? [],
+        overrides: route.params.overrides ?? [],
+      });
+    }
   }, [openCookModeStamp, handledCookModeStamp, cookModeAvailable, simpleMode, route.params]);
   // Remembered only while cook mode is up, so the reseed above can't overwrite
   // it with the defaults before the return reads it back.
@@ -1092,7 +1120,11 @@ export function RecipeDetailScreen() {
       weighIn.clear();
       return;
     }
-    setCookedWeight(recipe.id, trimmed ? Number(trimmed.replace(',', '.')) : null);
+    const kept = clampCookedWeight(trimmed ? Number(trimmed.replace(',', '.')) : null);
+    setCookedWeight(recipe.id, kept);
+    // The row stays open after a blur, so it shows what the store kept (rounded,
+    // held to its range, or cleared) rather than what was typed.
+    setCookedWeightDraft(kept === null ? '' : String(kept));
   };
 
   // Save is the same commit as leaving the row. It is off only for a scale
@@ -3172,7 +3204,7 @@ export function RecipeDetailScreen() {
             <TouchableOpacity
               style={styles.secondary}
               activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setCookModeVisible(true); }}
+              onPress={() => { haptics.tap(); openCookMode(); }}
               accessibilityRole="button"
               accessibilityLabel={`Read ${recipe.name} one step at a time`}
             >
@@ -3320,11 +3352,6 @@ export function RecipeDetailScreen() {
         />
       </LazySheet>
 
-      {/* The scale travels in, the way it does into the add-to-list sheet — a
-          halved recipe has to read halved mid-step too. The either/or picks
-          are shared both ways: cook mode is where most of them actually get
-          made, and a pick made there has to still be the pick back here.
-          Neither is written to the recipe. */}
       {printRecipe && (
         <PrintIngredientsSheet
           visible={printVisible}
@@ -3332,23 +3359,6 @@ export function RecipeDetailScreen() {
           onClose={() => setPrintVisible(false)}
         />
       )}
-
-      <LazySheet open={cookModeVisible}>
-        <CookModeSheet
-          visible={cookModeVisible}
-          recipe={recipe}
-          recipesById={recipesById}
-          scale={scale}
-          onScaleChange={setScale}
-          choices={choices}
-          overrides={overrides}
-          onChoicesChange={setChoices}
-          onOverridesChange={setOverrides}
-          onClose={() => setCookModeVisible(false)}
-          onLogCooked={() => cookRecipeNow(recipe)}
-          onLogFood={nutritionReading?.nutrition ? handleLogToFoodLog : undefined}
-        />
-      </LazySheet>
 
       <LazySheet open={choiceComponent !== null}>
         <ComponentChoiceSheet

@@ -45,3 +45,14 @@ export function workoutTimesProblem(
   }
   return null;
 }
+
+/**
+ * Why a running workout can't be given this start, or null when it can. The
+ * finish is "now", so the only ways to go wrong are a start in the future and,
+ * for a workout that reaches Health, one more than a day back.
+ */
+export function liveStartProblem(start: Date, { now, healthLimited }: { now: Date; healthLimited: boolean }): string | null {
+  if (start.getTime() > now.getTime()) return 'A workout can’t start in the future.';
+  if (healthLimited && now.getTime() - start.getTime() > HEALTH_MAX_MS) return 'Apple Health takes a workout up to a day long.';
+  return null;
+}

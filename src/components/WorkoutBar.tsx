@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
+import { useFocusedRouteStore } from '../store/useFocusedRouteStore';
+import { isFullPageMode } from '../navigation/navigationRef';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -45,7 +47,8 @@ export function WorkoutBar() {
   const styles = makeStyles(colors);
   const enabled = useSettingsStore(s => s.workoutsEnabled);
   const live = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null) ?? null);
-  const modeOpen = useWorkoutModeStore(s => s.open);
+  // On a full-page mode (workout mode itself, cook mode) the bar has nothing to offer.
+  const modeOpen = useFocusedRouteStore(s => isFullPageMode(s.route));
   const bulkSelecting = useBulkBarPresenceStore(s => s.count > 0);
   const cookTimerRunning = useRecipeStore(s => s.recipes.some(isCookTimerRunning));
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);

@@ -9,6 +9,9 @@ import {
   arriveEarlyFor,
   describeArrival,
   leadWithArrival,
+  arriveMinutesForClock,
+  arriveClockFor,
+  clampArriveEarlyMinutes,
   parseTravelEventPrefs,
   travelModeFor,
   travelRowNote,
@@ -479,8 +482,8 @@ describe('per-event travel overrides', () => {
   it('parses defensively and drops an entry that overrides nothing', () => {
     expect(parseTravelEventPrefs('not json')).toEqual({});
     expect(parseTravelEventPrefs({ a: { mode: 'rocket', arriveEarlyMinutes: null } })).toEqual({});
-    expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 999 } })).toEqual({
-      a: { mode: null, arriveEarlyMinutes: 60, originPlaceId: null, skip: false },
+    expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 9999 } })).toEqual({
+      a: { mode: null, arriveEarlyMinutes: 240, originPlaceId: null, skip: false },
     });
   });
 
@@ -514,9 +517,38 @@ describe('per-event travel overrides', () => {
     expect(own.leaveAt).toBe(base.leaveAt);
   });
 
-  it('never lets a late arrival put the reminder after the start', () => {
+  it('lets a late arrival put the reminder after the start', () => {
     expect(leadWithArrival(30, 10)).toBe(40);
-    expect(leadWithArrival(5, -15)).toBe(0);
+    expect(leadWithArrival(5, -15)).toBe(-10);
+    expect(leadWithArrival(30, -180)).toBe(-150);
+  });
+
+  it('turns a clock time into minutes from the start, and back', () => {
+    const start = new Date(2026, 10, 20, 17, 0);
+    expect(arriveMinutesForClock(start, new Date(2026, 0, 1, 20, 0))).toBe(-180);
+    expect(arriveMinutesForClock(start, new Date(2026, 0, 1, 16, 45))).toBe(15);
+    expect(arriveMinutesForClock(start, new Date(2026, 0, 1, 17, 0))).toBe(0);
+    // More than 4 hours before the start reads as the next day.
+    expect(arriveMinutesForClock(start, new Date(2026, 0, 1, 1, 0))).toBe(-480);
+    expect(arriveClockFor(start, -180).getHours()).toBe(20);
+  });
+
+  it('keeps an arrival the presets lack, and shows it as picked with its clock time', () => {
+    const start = new Date(2026, 10, 20, 17, 0);
+    const fmt = (d: Date) => `${d.getHours()}:00`;
+    const opts = travelArrivePickerOptions(10, -180, start, fmt);
+    expect(opts.map(o => o.key)).toContain('-180');
+    expect(opts.find(o => o.key === '-180')?.label).toBe('20:00 (3 hr late)');
+    expect(travelArrivePickerOptions(10, 15, start, fmt)).toHaveLength(travelArrivePickerOptions(10, null, start, fmt).length);
+    expect(clampArriveEarlyMinutes(-180)).toBe(-180);
+    expect(describeArrival(-150)).toBe('2 hr 30 min late');
+  });
+
+  it('puts the leave-by after the start for a 3 hour late arrival', () => {
+    const late = parseTravelEventPrefs({ 'evt-1': { mode: null, arriveEarlyMinutes: -180 } });
+    const base = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {})[0];
+    const own = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {}, undefined, late)[0];
+    expect(Date.parse(own.leaveAt) - Date.parse(base.leaveAt)).toBe(180 * 60 * 1000);
   });
 
   it('moves the reminder earlier for an early arrival and later for a late one', () => {
@@ -749,7 +781,7 @@ describe('travelModePickerOptions', () => {
 
 describe('travelArrivePickerOptions', () => {
   it('names what the Settings default resolves to, then lists every preset', () => {
-    const opts = travelArrivePickerOptions(10);
+    const opts = travelArrivePickerOptions(10, null, null, () => '');
     expect(opts[0]).toEqual({ key: 'default', label: 'Settings default (10 min early)' });
     expect(opts.slice(1).map(o => o.key)).toEqual(['30', '15', '10', '5', '0', '-5', '-10', '-15']);
     expect(opts.find(o => o.key === '0')?.label).toBe('On time');

@@ -6,7 +6,7 @@ import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { setGeneratorEnabled } from '../../store/generatorSwitch';
 import { useCalendarStore } from '../../store/useCalendarStore';
-import { HEALTH_CATEGORY, useCategoryStore } from '../../store/useCategoryStore';
+import { useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { LIMIT_ROW_NAME, activeLimits, goalNutrientKeys } from '../../utils/nutritionTargets';
@@ -285,22 +285,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       if (next.has(kind)) next.delete(kind); else next.add(kind);
       return next;
     });
-  };
-  // Turning the Today rows on files them under the Health reading's own
-  // section when there is one, so the day's readings sit together, and
-  // otherwise under a category made for it. Same default the nutrition
-  // sheet's own toggle uses.
-  const toggleLimitsOnToday = (): void => {
-    if (s.limitsTodayCategory !== null) { s.setLimitsTodayCategory(null); return; }
-    const category = s.healthCategory ?? HEALTH_CATEGORY;
-    useCategoryStore.getState().addCategory(category);
-    s.setLimitsTodayCategory(category);
-  };
-  const toggleGoalsOnToday = () => {
-    if (s.goalsTodayCategory !== null) { s.setGoalsTodayCategory(null); return; }
-    const category = s.healthCategory ?? HEALTH_CATEGORY;
-    useCategoryStore.getState().addCategory(category);
-    s.setGoalsTodayCategory(category);
   };
   // Targets that are figures to reach: every target that isn't a limit, water aside.
   const goalNutrients = goalNutrientKeys(s.nutritionTargets, s.nutritionLimits);
@@ -1795,39 +1779,22 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
         <>
           {/* Not a generator: these are read-only rows computed from the food
               log, so they have no registry entry and no task defaults. They
-              answer to their own switch (limitsTodayCategory, null = off),
+              answer to their own switch (limitsTodayShown),
               independent of the "don't do" task above. */}
           <View style={sectionStyles.groupBreak} />
           <SettingsRow
             entryId="limitsToday"
             icon="nutrition-outline"
-            iconColor={s.limitsTodayCategory !== null ? colors.accent : undefined}
+            iconColor={s.limitsTodayShown ? colors.accent : undefined}
             label="Stay under limits on Today"
-            hint="Shows how much of each Stay under limit is used so far today."
-            toggle={s.limitsTodayCategory !== null}
-            onPress={toggleLimitsOnToday}
+            hint="Shows how much of each Stay under limit is used so far today, in the Biostats card at the top."
+            toggle={s.limitsTodayShown}
+            onPress={() => s.setLimitsTodayShown(!s.limitsTodayShown)}
           />
-          {s.limitsTodayCategory !== null && (
+          {s.limitsTodayShown && (
             <SettingsNested>
-              <SettingsRow
-                entryId="limitsTodayCategory"
-                label="Show them under"
-                value={categoryOptions.find(o => o.value === s.limitsTodayCategory)?.label ?? s.limitsTodayCategory}
-                tight
-              />
-              <View style={styles.pillGroupRow}>
-                <PillGroup
-                  noun="category"
-                  options={categoryPills(
-                    s.limitsTodayCategory,
-                    category => { if (category !== null) s.setLimitsTodayCategory(category); },
-                    label => `Stay under limits category: ${label}`,
-                  ).filter(o => !o.pinned)}
-                />
-              </View>
               {activeLimits(s.nutritionTargets, s.nutritionLimits).length > 0 && (
                 <>
-                  <View style={styles.sep} />
                   <SettingsRow
                     entryId="limitsTodayNutrients"
                     label="Nutrients shown"
@@ -1865,31 +1832,14 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               <SettingsRow
                 entryId="goalsToday"
                 icon="trending-up-outline"
-                iconColor={s.goalsTodayCategory !== null ? colors.accent : undefined}
+                iconColor={s.goalsTodayShown ? colors.accent : undefined}
                 label="Nutrient goals on Today"
-                hint="Shows how much of each nutrient goal is reached so far today."
-                toggle={s.goalsTodayCategory !== null}
-                onPress={toggleGoalsOnToday}
+                hint="Shows how much of each nutrient goal is reached so far today, in the Biostats card at the top."
+                toggle={s.goalsTodayShown}
+                onPress={() => s.setGoalsTodayShown(!s.goalsTodayShown)}
               />
-              {s.goalsTodayCategory !== null && (
+              {s.goalsTodayShown && (
                 <SettingsNested>
-                  <SettingsRow
-                    entryId="goalsTodayCategory"
-                    label="Show goals under"
-                    value={categoryOptions.find(o => o.value === s.goalsTodayCategory)?.label ?? s.goalsTodayCategory}
-                    tight
-                  />
-                  <View style={styles.pillGroupRow}>
-                    <PillGroup
-                      noun="category"
-                      options={categoryPills(
-                        s.goalsTodayCategory,
-                        category => { if (category !== null) s.setGoalsTodayCategory(category); },
-                        label => `Nutrient goals category: ${label}`,
-                      ).filter(o => !o.pinned)}
-                    />
-                  </View>
-                  <View style={styles.sep} />
                   <SettingsRow
                     entryId="goalsTodayNutrients"
                     label="Goals shown"

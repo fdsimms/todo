@@ -904,12 +904,11 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // run while the app is not allowed to read any. The rules sheet says so
   // rather than leaving somebody with a switch that visibly does nothing.
   //
-  // `categorized: true`, and deliberately not under the name `ensureHealthCategory`
-  // uses ("Biostats"): the reading's section is information rows only, and the
-  // tasks (this kind and the other health-adjacent generators below) file under
-  // "Health". Reusing `healthCategory` outright — the `calendarReview` move —
-  // would have coupled them, and "don't show my step count on Today" is not the
-  // same instruction as "don't add health tasks".
+  // `categorized: true`: the tasks (this kind and the other health-adjacent
+  // generators below) file under "Health". The Today readings are in no category
+  // (they draw in the Biostats widget, switched by `healthTodayShown`), and
+  // "don't show my step count on Today" is not the same instruction as "don't
+  // add health tasks", so the two stay separate settings.
   health: {
     kind: 'health',
     pausedOnVacation: false,

@@ -433,7 +433,7 @@ function GiveUpButton({ onGiveUp, styles }: {
  * Holds the screen awake while the counter is up: the phone lies untouched
  * for the whole set, and an auto-lock partway through would suspend the app
  * and stop the count. Its own component so the lock is tied to the Modal's
- * content (see CookModeSheet's ScreenAwake).
+ * content (see CookModeScreen's ScreenAwake).
  */
 function ScreenAwake() {
   useKeepAwake();

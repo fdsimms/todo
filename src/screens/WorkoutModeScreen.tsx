@@ -20,29 +20,31 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { SheetModal } from './SheetModal';
-import { SheetHeaderButton } from './SheetHeaderButton';
-import { WorkoutVolumePill } from './WorkoutVolumePill';
-import { ActionMenu } from './ActionMenu';
-import { CardSheet, type CardAnchor } from './CardSheet';
-import { RecordsCard } from './RecordsCard';
-import { CountStepper } from './CountStepper';
-import { CheckPop } from './CheckPop';
-import { InlineAction } from './InlineAction';
-import { ProgressBar } from './ProgressBar';
-import { EmptyNote } from './EmptyNote';
-import { TextField } from './TextField';
-import { HelpText } from './HelpText';
-import { ExercisePickerSheet } from './ExercisePickerSheet';
-import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
-import { ExerciseDetailSheet } from './ExerciseDetailSheet';
-import { ExercisePhotos } from './ExercisePhotos';
-import { PlateLine } from './PlateLine';
-import { SelectionDot } from './SelectionDot';
-import { SortableList } from './SortableList';
-import { WorkoutRecordsCard } from './WorkoutRecordsCard';
-import { WorkoutStatTiles } from './WorkoutStatTiles';
-import { WorkoutCompleteHero } from './WorkoutCompleteHero';
+import { SheetHeaderButton } from '../components/SheetHeaderButton';
+import { WorkoutVolumePill } from '../components/WorkoutVolumePill';
+import { ActionMenu } from '../components/ActionMenu';
+import { PressableScale } from '../components/PressableScale';
+import { CardSheet, type CardAnchor } from '../components/CardSheet';
+import { WorkoutTimesSheet } from '../components/WorkoutTimesSheet';
+import { RecordsCard } from '../components/RecordsCard';
+import { CountStepper } from '../components/CountStepper';
+import { CheckPop } from '../components/CheckPop';
+import { RecordPop } from '../components/RecordPop';
+import { InlineAction } from '../components/InlineAction';
+import { ProgressBar } from '../components/ProgressBar';
+import { EmptyNote } from '../components/EmptyNote';
+import { TextField } from '../components/TextField';
+import { HelpText } from '../components/HelpText';
+import { ExercisePickerSheet } from '../components/ExercisePickerSheet';
+import { DescribeWorkoutSheet } from '../components/DescribeWorkoutSheet';
+import { ExerciseDetailSheet } from '../components/ExerciseDetailSheet';
+import { ExercisePhotos } from '../components/ExercisePhotos';
+import { PlateLine } from '../components/PlateLine';
+import { SelectionDot } from '../components/SelectionDot';
+import { SortableList } from '../components/SortableList';
+import { WorkoutRecordsCard } from '../components/WorkoutRecordsCard';
+import { WorkoutStatTiles } from '../components/WorkoutStatTiles';
+import { WorkoutCompleteHero } from '../components/WorkoutCompleteHero';
 import type { ExerciseKind, ProgressionScheme, WorkoutSet, WorkoutSetKind } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -51,16 +53,16 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useRestTimer } from '../hooks/useRestTimer';
-import { ExerciseRestSheet } from './ExerciseRestSheet';
-import { ManualRestSheet } from './ManualRestSheet';
+import { ExerciseRestSheet } from '../components/ExerciseRestSheet';
+import { ManualRestSheet } from '../components/ManualRestSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, lineHeight, radius, spacing, type Colors } from '../theme';
 import { confirmDiscardWorkout } from '../utils/confirmDiscardWorkout';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { RotatingChevron } from './RotatingChevron';
+import { RotatingChevron } from '../components/RotatingChevron';
 import { formatTimeOfDay, getCurrentDayStart } from '../utils/dateUtils';
 import { formatStopwatch } from '../utils/effort';
 import { linkedTaskLine, rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
@@ -69,8 +71,8 @@ import { catalogExercise } from '../utils/exerciseCatalog';
 import { withCreatedExercises } from '../utils/describedExercises';
 import type { RoutineDraft } from '../utils/workoutDraft';
 import { swapCandidates, swappableSets } from '../utils/exerciseSwap';
-import { GymLine, GymNoteBox, GymUnavailableBanner } from './GymWorkoutParts';
-import { GymsSheet } from './GymsSheet';
+import { GymLine, GymNoteBox, GymUnavailableBanner } from '../components/GymWorkoutParts';
+import { GymsSheet } from '../components/GymsSheet';
 import { useGymStore } from '../store/useGymStore';
 import {
   describeLastLoad, exerciseIdsDoneAt, gymIncrementKg, gymSettingFor, gymSwapCandidates, unavailableExerciseIds, withGymBar,
@@ -169,6 +171,7 @@ function SetKindBadge({ kind }: { kind: WorkoutSetKind }) {
 
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
+import { sameMinute } from '../utils/workoutTimes';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** "today" is this workout's note on the exercise, "always" the exercise's own. */
@@ -178,22 +181,12 @@ const NOTE_HELP: Record<NoteKind, string> = {
   today: 'Only this workout. Shows as "Last time" next session.',
   always: 'Saved on the exercise and shown every time.',
 };
+const NO_COLLAPSED: ReadonlySet<string> = new Set();
+
 const NOTE_PLACEHOLDER: Record<NoteKind, string> = {
   today: 'e.g. Left shoulder felt tight',
   always: 'e.g. Use the dumbbell press if the bench is taken',
 };
-
-interface Props {
-  visible: boolean;
-  /** Closes the sheet. The session stays live unless it was finished or thrown away. */
-  onClose: () => void;
-  /**
-   * After a save, the task occurrence whose question workout mode left for
-   * its host to ask (the answer-first rule), so the host can queue it once
-   * this sheet is down. Null when there is nothing to ask.
-   */
-  onSaved: (askTaskId: string | null) => void;
-}
 
 /**
  * Workout mode, modelled on cook mode: the screen kept awake, one exercise at
@@ -205,7 +198,7 @@ interface Props {
  *   out chimes and counts up; it never moves anything on.
  * - **Rows are the sets.** Planned sets are rows with no `completedAt`; the
  *   expanded row (the first open one, unless another is tapped) takes the
- *   steppers, and every change is written as it is made, so closing the sheet
+ *   steppers, and every change is written as it is made, so leaving the page
  *   mid-set loses nothing.
  * - **Leaving is not ending.** "End" asks: close and keep it running, or
  *   discard it. Finish opens the summary, and Save there ends the session,
@@ -214,7 +207,7 @@ interface Props {
  * - **Weights are stored in kg** and stepped in `workoutUnit`, converted at
  *   the steppers and nowhere else.
  */
-export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
+export function WorkoutModeScreen() {
   // ==== store bindings and derived data ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -267,8 +260,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   );
 
   useEffect(() => {
-    if (visible && session && !cachedSets) useWorkoutStore.getState().loadSets(session.id);
-  }, [visible, session, cachedSets]);
+    if (session && !cachedSets) useWorkoutStore.getState().loadSets(session.id);
+  }, [session, cachedSets]);
 
   // ==== the gym: which one, and what it can't do ====
   const gym = session?.gymId ? gyms.find(g => g.id === session.gymId) ?? null : null;
@@ -294,7 +287,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [viewedId, setViewedId] = useState<string | null>(null);
   // The set whose type popover is open, and where it opens from (the set button's touch).
   const [openSetId, setOpenSetId] = useState<string | null>(null);
+  // The set whose record badge plays its entrance: the one just ticked into a record (RecordPop).
+  const [recordPopId, setRecordPopId] = useState<string | null>(null);
   const [setMenuAnchor, setSetMenuAnchor] = useState<CardAnchor | null>(null);
+  // The header's "•••" menu, which holds Discard so it never sits beside Finish.
+  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<CardAnchor | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [effort, setEffort] = useState<number | null>(null);
   const [sessionNotes, setSessionNotes] = useState('');
@@ -330,14 +327,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
   // Exercises folded down to their title and a one-line summary. Per exercise
-  // and kept for the whole session, through closing and reopening the sheet
-  // (the host keeps it mounted); it starts over for a different session.
-  // Only the chevron folds a card; finishing its last set leaves it open.
-  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(new Set());
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  // and kept for the whole session, through leaving this page and coming back
+  // (the page unmounts, so it lives in `useWorkoutModeStore`); it starts over
+  // for a different session. Only the chevron folds a card; finishing its last
+  // set leaves it open.
+  const collapsed = useWorkoutModeStore(s => s.collapsed);
+  const collapsedIds = session && collapsed?.sessionId === session.id ? collapsed.ids : NO_COLLAPSED;
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   useEffect(() => {
-    if (!visible) return;
     setViewedId(nextSet(sets)?.exerciseId ?? exercises[0]?.exerciseId ?? null);
     setOpenSetId(null);
     setFinishing(false);
@@ -354,12 +352,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setDetailOpen(false);
     // On open only: a tick re-derives the view through its own handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, session?.id]);
-
-  // Not in the open effect above: closing and reopening the sheet mid-workout
-  // re-expanded every card the person had folded.
-  useEffect(() => {
-    setCollapsedIds(new Set());
   }, [session?.id]);
 
   // A tick made outside the sheet (the Lock Screen's "Done set") turns the card
@@ -409,17 +401,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const toggleCollapsed = (exerciseId: string) => {
     haptics.tap();
     animateLayout();
-    setCollapsedIds(prev => {
-      const next = new Set(prev);
-      if (!next.delete(exerciseId)) next.add(exerciseId);
-      return next;
-    });
+    if (!session) return;
+    const next = new Set(collapsedIds);
+    if (!next.delete(exerciseId)) next.add(exerciseId);
+    useWorkoutModeStore.getState().setCollapsed(session.id, next);
   };
 
   const toggleSet = (set: WorkoutSet, exercise: SessionExercise) => {
     if (!session) return;
     if (set.completedAt !== null) {
       haptics.tap();
+      setRecordPopId(null);
       edit(set.id, { completedAt: null });
       return;
     }
@@ -442,7 +434,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       sessionsList,
       dayResetTime,
     );
-    if (records.has(set.id)) haptics.success();
+    if (records.has(set.id)) {
+      haptics.success();
+      setRecordPopId(set.id);
+    }
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
@@ -619,6 +614,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       onPress: () => chooseProgression(exerciseId, null),
     }];
   };
+  // The header clock's menu, and the card that moves the running workout's start.
+  const [clockMenu, setClockMenu] = useState<CardAnchor | null>(null);
+  const [startOpen, setStartOpen] = useState(false);
   // The trophy's card keeps the lines it was opened with, so it reads the same while it fades.
   const [recordCard, setRecordCard] = useState<{ lines: ReturnType<typeof recordLines>; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
@@ -686,6 +684,27 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     );
   };
 
+  // ==== the clock ====
+  // The elapsed time is "now minus the start", so changing it is changing the
+  // start. A finished workout's times are edited on its own page.
+  const changeStart = (next: Date) => {
+    if (!session || sameMinute(next, new Date(session.startedAt))) return;
+    useWorkoutStore.getState().updateSession(session.id, { startedAt: next.toISOString() });
+    haptics.success();
+  };
+  const restartClock = () => {
+    if (!session) return;
+    haptics.tap();
+    Alert.alert(
+      'Restart the timer?',
+      'The workout will show as started now. Sets you already logged stay in it.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Restart', style: 'destructive', onPress: () => { useWorkoutStore.getState().updateSession(session.id, { startedAt: new Date().toISOString() }); haptics.success(); } },
+      ],
+    );
+  };
+
   // ==== the exercise's two notes ====
   const savedNote = (exercise: SessionExercise, k: NoteKind) => (
     k === 'always' ? catalogExercise(exerciseRows, exercise.exerciseId)?.notes ?? '' : exerciseDayNote(exercise.sets)
@@ -747,10 +766,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // ==== leaving, finishing ====
   const close = () => {
     Keyboard.dismiss();
-    onClose();
+    useWorkoutModeStore.getState().hide();
   };
 
-  // Closing the sheet is not ending the workout: it keeps running and
+  // Leaving the page is not ending the workout: it keeps running and
   // `WorkoutBar` is the way back, so this asks nothing. Throwing it away is
   // the trash can beside it.
   const minimize = () => {
@@ -761,7 +780,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const plan = useMemo(() => finishPlan(sets), [sets]);
   // What saving does to the task the workout was started from: what its own
   // checkbox would do (`workoutTaskEffect`). A question is asked by the host
-  // once this sheet is down, so the store is told to leave that task alone.
+  // once this page is down, so the store is told to leave that task alone.
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const pickMember = rotationPickFor(linkedTask, session ?? {}, getCurrentDayStart(), weekStartsOn);
   const taskEffect = workoutTaskEffect(linkedTask, pickMember);
@@ -859,8 +878,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       store.updateRoutine(current.id, { items: applyRoutineChanges(current.items, picked) }, { version: 'new', source: 'workout' });
     }
     haptics.success();
+    // The question is raised once this page has finished leaving (the host
+    // waits for the pop to end), so it is handed over before the pop starts.
+    if (askFirst && linkedTask) useWorkoutModeStore.getState().askAfterClose(linkedTask.id);
     close();
-    onSaved(askFirst && linkedTask ? linkedTask.id : null);
   };
 
   const discardEmpty = () => {
@@ -875,58 +896,79 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const liveVolumeKg = liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps') || null;
   const liveBodyweightVolumeKg = sessionBodyweightVolumeKg(sets, exerciseRows, session?.bodyweightKg) || null;
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close} name="WorkoutModeSheet">
+    <>
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerIcon}
-            activeOpacity={interaction.activeOpacity}
+          <PressableScale
+            style={styles.headerCircle}
             onPress={minimize}
             accessibilityRole="button"
-            accessibilityLabel="Minimize workout"
+            accessibilityLabel="Back"
             accessibilityHint="The workout keeps running"
           >
-            <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
-          </TouchableOpacity>
-          <View style={styles.headerTitle} pointerEvents="none">
-            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
-          </View>
-          {!finishing && session ? (
+            <Ionicons name="chevron-back" size={iconSize.md} color={colors.accentText} />
+          </PressableScale>
+          {!finishing && session && (
             <View style={styles.headerRight}>
-              <TouchableOpacity
-                style={styles.headerIcon}
-                activeOpacity={interaction.activeOpacity}
+              <PressableScale
+                style={styles.headerCircle}
                 onPress={() => { haptics.tap(); Keyboard.dismiss(); setTimerOpen(true); }}
                 accessibilityRole="button"
                 accessibilityLabel={restsOff ? 'Timer, rest timers are off' : 'Start a timer'}
               >
-                <Ionicons name="timer-outline" size={iconSize.lg} color={restsOff ? colors.textTertiary : colors.accentText} />
+                <Ionicons name="timer-outline" size={iconSize.md} color={restsOff ? colors.textTertiary : colors.accentText} />
                 {restsOff && <View style={styles.headerIconSlash} pointerEvents="none" />}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.headerIcon}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => { Keyboard.dismiss(); confirmDiscardWorkout(close); }}
+              </PressableScale>
+              <PressableScale
+                style={styles.headerCircle}
+                onPress={e => { haptics.tap(); Keyboard.dismiss(); setHeaderMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); }}
                 accessibilityRole="button"
-                accessibilityLabel="Discard workout"
+                accessibilityLabel="More workout options"
               >
-                <Ionicons name="trash-outline" size={iconSize.lg} color={colors.redText} />
-              </TouchableOpacity>
-              <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
+                <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
+              </PressableScale>
+              <SheetHeaderButton filled label="Finish" onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
             </View>
-          ) : <View style={styles.headerSpacer} />}
+          )}
         </View>
-        {/* The name gets its own full-width line under the buttons, so a long
-            routine name isn't squeezed between the minimize button and Finish. */}
+        {/* The name gets its own full-width block under the buttons, so a long
+            routine name isn't squeezed between the minimize button and Finish.
+            It wraps to two lines rather than truncating: it is the one thing
+            here that says which workout this is. */}
         <View style={styles.titleBlock}>
-          <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-          {session && <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>}
+          <Text style={styles.title} numberOfLines={2}>{headerTitle}</Text>
+          {session && (
+            <View style={styles.metaRow}>
+              {finishing ? (
+                <View style={styles.clockChip}>
+                  <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
+                </View>
+              ) : (
+                <PressableScale
+                  style={styles.clockChip}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={e => {
+                    haptics.tap();
+                    Keyboard.dismiss();
+                    setClockMenu({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Change workout time"
+                  accessibilityHint="Change the start time or restart the timer"
+                >
+                  <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />
+                </PressableScale>
+              )}
+              <View style={styles.metaDot} />
+              <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>
+            </View>
+          )}
         </View>
 
         {/* Under the header, not in a footer: the keyboard is up while sets are
             typed, and anything at the bottom of the sheet is behind it. */}
-        {session && !finishing && <RestStrip sessionId={visible ? session.id : undefined} styles={styles} />}
+        {session && !finishing && <RestStrip sessionId={session.id} styles={styles} />}
         {session && !finishing && restsOff && (
           <View style={styles.restsOffBanner}>
             <Text style={styles.restsOffText}><Text style={styles.restsOffBold}>Rest timers off</Text> for this workout</Text>
@@ -1541,6 +1583,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
                         )}
                         {lines.length > 0 && (
+                          <RecordPop celebrate={recordPopId === set.id}>
                           <TouchableOpacity
                             style={styles.recordPill}
                             activeOpacity={interaction.activeOpacity}
@@ -1555,6 +1598,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
                           </TouchableOpacity>
+                          </RecordPop>
                         )}
                         {fields.map(f => (
                           <SetInput
@@ -1641,8 +1685,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           </View>
         ) : null}
       </View>
-      {/* Inside this Modal, not beside it: a second sheet presented from the
-          same view controller as this one never appears. */}
       {(() => {
         const menuExercise = exercises.find(e => e.sets.some(x => x.id === openSetId)) ?? null;
         const menuSet = menuExercise?.sets.find(x => x.id === openSetId) ?? null;
@@ -1695,6 +1737,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         lines={recordCard?.lines ?? []}
         anchor={recordCard?.anchor ?? null}
         onClose={() => setRecordCard(null)}
+      />
+      <ActionMenu
+        visible={headerMenuAnchor !== null}
+        title="Workout"
+        anchor={headerMenuAnchor}
+        onClose={() => setHeaderMenuAnchor(null)}
+        actions={[
+          { key: 'discard', label: 'Discard workout', icon: 'trash-outline', destructive: true, onPress: () => confirmDiscardWorkout(close) },
+        ]}
       />
       {(() => {
         const menuId = exerciseMenu?.exerciseId ?? null;
@@ -1761,8 +1812,28 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           />
         );
       })()}
+      <ActionMenu
+        visible={clockMenu !== null}
+        title="Workout time"
+        anchor={clockMenu}
+        onClose={() => setClockMenu(null)}
+        actions={[
+          { key: 'start', label: 'Change start time', icon: 'time-outline', onPress: () => setStartOpen(true) },
+          { key: 'restart', label: 'Restart timer', icon: 'refresh-outline', onPress: restartClock },
+        ]}
+      />
+      <WorkoutTimesSheet
+        visible={startOpen && session !== null}
+        live
+        start={session ? new Date(session.startedAt) : new Date(0)}
+        end={new Date(0)}
+        initial="start"
+        healthLimited={writesToHealth}
+        onConfirm={start => changeStart(start)}
+        onClose={() => setStartOpen(false)}
+      />
       <ManualRestSheet
-        visible={visible && timerOpen && session !== null}
+        visible={timerOpen && session !== null}
         initialSeconds={defaultRestSeconds}
         restsOn={!restsOff}
         onRestsOnChange={on => {
@@ -1783,7 +1854,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         onClose={() => setTimerOpen(false)}
       />
       <ExerciseRestSheet
-        visible={visible && restFor !== null && session !== null}
+        visible={restFor !== null && session !== null}
         exerciseName={restFor ? catalogExercise(exerciseRows, restFor)?.name ?? 'This exercise' : ''}
         seconds={session && restFor ? restSecondsFor(startedPlan, restFor, defaultRestSeconds, session.restOverrides) : 0}
         fallbackSeconds={restFor ? restSecondsFor(startedPlan, restFor, defaultRestSeconds) : 0}
@@ -1792,7 +1863,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         onClose={() => setRestFor(null)}
       />
       <ExercisePickerSheet
-        visible={visible && picking !== null}
+        visible={picking !== null}
         onClose={() => setPicking(null)}
         onPick={picking === 'swap' ? swapExercise : addExercise}
         onPickMany={picking === 'swap' ? undefined : addExercises}
@@ -1801,19 +1872,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId), alternateOf(viewed.exerciseId))) : undefined}
       />
       <DescribeWorkoutSheet
-        visible={visible && describing}
+        visible={describing}
         onClose={() => setDescribing(false)}
         mode="routine"
         into={{ target: 'workout', onAdd: addDescribed }}
       />
       <GymsSheet
-        visible={visible && gymPickerOpen}
+        visible={gymPickerOpen}
         onClose={() => setGymPickerOpen(false)}
         currentId={gym?.id ?? null}
         onPick={gymId => { if (session) useWorkoutStore.getState().updateSession(session.id, { gymId }); }}
       />
-      <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
-    </SheetModal>
+      <ExerciseDetailSheet visible={detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
+    </>
   );
 }
 
@@ -2126,9 +2197,7 @@ function RestStrip({ sessionId, styles }: {
 }
 
 /**
- * Holds the screen awake for exactly as long as it's mounted: inside the
- * Modal's content, so a sheet mounted hidden doesn't hold it (CookModeSheet's
- * reason).
+ * Holds the screen awake for exactly as long as the page is mounted.
  */
 function ScreenAwake() {
   useKeepAwake();
@@ -2139,21 +2208,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
-  // Laid over the whole row rather than sharing it, so the clock sits at the
-  // screen's center whatever the widths of the minimize button and the timer + Finish group.
-  headerTitle: { position: 'absolute', left: 0, right: 0, top: spacing.sm, bottom: spacing.xsm, alignItems: 'center', justifyContent: 'center' },
-  headerSpacer: { minWidth: 64 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerCircle: { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' },
   // The slash across the timer icon while rest timers are off.
-  headerIconSlash: { position: 'absolute', width: 26, height: 2, borderRadius: 1, backgroundColor: colors.orangeText, transform: [{ rotate: '-45deg' }] },
+  headerIconSlash: { position: 'absolute', width: 22, height: 2, borderRadius: 1, backgroundColor: colors.orangeText, transform: [{ rotate: '-45deg' }] },
   restsOffBanner: { marginHorizontal: spacing.md, marginBottom: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md, paddingLeft: spacing.md, paddingRight: spacing.sm, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   restsOffText: { flex: 1, minWidth: 0, color: colors.textSecondary, fontSize: font.sm },
   restsOffBold: { color: colors.orangeText, fontWeight: fontWeight.semibold },
-  titleBlock: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
-  title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
-  elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
-  subtitle: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
+  titleBlock: { paddingHorizontal: spacing.md + spacing.xs, paddingTop: spacing.sm, paddingBottom: spacing.smd },
+  title: { color: colors.text, fontSize: font.xl, lineHeight: lineHeight.xl, fontWeight: fontWeight.bold },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  clockChip: { backgroundColor: colors.bgTertiary, borderRadius: radius.full, paddingHorizontal: spacing.smd, paddingVertical: spacing.xs },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.textTertiary },
+  elapsed: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
+  subtitle: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
   scroll: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
   emptyWrap: { padding: spacing.md },
   position: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginHorizontal: spacing.xs, marginBottom: spacing.smd },

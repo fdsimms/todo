@@ -6,7 +6,7 @@
 //   ScreenAwake              the keep-awake helper, just below the component
 //   makeStyles               styles, at the bottom
 //
-// The design argument is in the doc comment on CookModeSheet itself: nothing
+// The design argument is in the doc comment on CookModeBody itself: nothing
 // here writes to the recipe, and the whole screen is built around hands that
 // are wet and a phone that's asleep.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -20,8 +20,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { SheetModal } from './SheetModal';
-import { CheckPop } from './CheckPop';
+import { CheckPop } from '../components/CheckPop';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -29,6 +28,9 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Recipe, RecipeOverride } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { recipeMap } from '../utils/recipeComponents';
+import { useCookModeStore } from '../store/useCookModeStore';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
@@ -39,19 +41,19 @@ import { askCookQuestion, describeAIError } from '../services/aiSuggestions';
 import {
   COOK_QUESTION_MAX_LENGTH, cookQuestionContext, suggestedCookQuestions,
 } from '../utils/cookQuestions';
-import { DetailHeader } from './DetailHeader';
-import { EmptyState } from './EmptyState';
-import { ProgressBar } from './ProgressBar';
-import { RecipeTimerRow } from './RecipeTimerRow';
-import { NumberPadAccessory } from './NumberPadAccessory';
-import { StepTimerRow } from './StepTimerRow';
-import { RepeatTimerSheet } from './RepeatTimerSheet';
-import { StepText } from './StepText';
-import { InlineAction } from './InlineAction';
-import { RecipeChoiceChips } from './RecipeChoiceChips';
-import { RecipeScaleChips } from './RecipeScaleChips';
-import { CardSheet } from './CardSheet';
-import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { DetailHeader } from '../components/DetailHeader';
+import { EmptyState } from '../components/EmptyState';
+import { ProgressBar } from '../components/ProgressBar';
+import { RecipeTimerRow } from '../components/RecipeTimerRow';
+import { NumberPadAccessory } from '../components/NumberPadAccessory';
+import { StepTimerRow } from '../components/StepTimerRow';
+import { RepeatTimerSheet } from '../components/RepeatTimerSheet';
+import { StepText } from '../components/StepText';
+import { InlineAction } from '../components/InlineAction';
+import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
+import { RecipeScaleChips } from '../components/RecipeScaleChips';
+import { CardSheet } from '../components/CardSheet';
+import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, checkboxRadius, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -73,7 +75,7 @@ import {
 import { ingredientHeadings } from '../utils/recipeSections';
 import { blankFillOf, describeBlankRule, recipeBlanksIn } from '../utils/recipeBlanks';
 import { getLogicalDayKey } from '../utils/dateUtils';
-import { BlankPickerSheet } from './BlankPickerSheet';
+import { BlankPickerSheet } from '../components/BlankPickerSheet';
 import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
@@ -81,16 +83,12 @@ import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertScaledQuantity, showContainerCount, STACKED_QTY_LENGTH } from '../utils/unitConvert';
 import { ovenSetupsFor } from '../utils/ovenTemp';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
-import { TextField } from './TextField';
+import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
-import { RotatingChevron } from './RotatingChevron';
-import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { RotatingChevron } from '../components/RotatingChevron';
 
-/** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
-const NO_ROWS: never[] = [];
 
 interface Props {
-  visible: boolean;
   recipe: Recipe;
   recipesById: ReadonlyMap<string, Recipe>;
   /**
@@ -129,8 +127,8 @@ interface Props {
   onClose: () => void;
   /**
    * The end screen's offer: the recipe screen's `cookRecipeNow`, which raises
-   * the post-cook sheet (rating, leftovers, what got used up). Called after
-   * this sheet has been told to close, so the two never sit visible at once.
+   * the post-cook sheet (rating, leftovers, what got used up). Only records the
+   * request; the recipe screen acts once this page has finished leaving.
    */
   onLogCooked: () => void;
   /**
@@ -159,10 +157,7 @@ const COOK_TEXT_SIZE_OPTIONS: SegmentOption<CookTextSize>[] = [
  * actually doing it, and the whole design follows from that:
  *
  * - **`useKeepAwake` for as long as this is up, and no longer.** It's called
- *   from inside the Modal's own content (see `ScreenAwake`) rather than at the
- *   top of this component, because this component stays mounted with
- *   `visible={false}` and a lock taken then would hold the screen awake for the
- *   rest of the session.
+ *   from `ScreenAwake`, which is mounted with this page and nowhere else.
  * - **One step, big.** `font.xxl` with a generous line height, so it reads from
  *   across a counter. A long step scrolls; the timer and the controls don't move
  *   when it does, because reaching for Pause shouldn't need aiming.
@@ -200,8 +195,8 @@ const COOK_TEXT_SIZE_OPTIONS: SegmentOption<CookTextSize>[] = [
  * ingredient lines, and a step whose wording the matcher can't place silently
  * keeps its own words.
  */
-export function CookModeSheet({
-  visible, recipe, recipesById, scale, onScaleChange, choices, overrides, onChoicesChange, onOverridesChange, onClose, onLogCooked, onLogFood,
+function CookModeBody({
+  recipe, recipesById, scale, onScaleChange, choices, overrides, onChoicesChange, onOverridesChange, onClose, onLogCooked, onLogFood,
 }: Props) {
   // ==== store bindings and derived data: the method, the ingredients ====
   const colors = useColors();
@@ -210,29 +205,24 @@ export function CookModeSheet({
   // The step view holds the question field, so it has to lift clear of the
   // keyboard — and `automaticallyAdjustKeyboardInsets` is never passed bare
   // here, for the reasons the hook's own doc comment gives.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const unitSystem = useSettingsStore(s => s.unitSystem);
-  const groceryItems = useGroceryWhileOpen(visible, s => s.items, NO_ROWS);
-  const itemProducts = useGroceryWhileOpen(visible, s => s.itemProducts, NO_ROWS);
+  const groceryItems = useGroceryStore(s => s.items);
+  const itemProducts = useGroceryStore(s => s.itemProducts);
   // What each line weighs, where its food's portion table can say
   // (lineWeight.ts) — the same caption the recipe page puts beside a pill.
   const weightLookups = useMemo(
     () => buildWeightLookups(groceryItems, itemProducts),
     [groceryItems, itemProducts],
   );
-  const itemSubs = useGroceryWhileOpen(visible, s => s.itemSubs, NO_ROWS);
+  const itemSubs = useGroceryStore(s => s.itemSubs);
 
-  // Only while this is actually up: the sheet stays mounted behind the recipe
-  // screen with `visible` false, and a timer bound there would keep a
-  // once-a-second interval — and a once-a-second re-render of a modal nobody
-  // can see — running for as long as a cook timer does. The hook takes an
-  // undefined recipe for exactly this.
-  const cookTimer = useRecipeTimer(visible ? recipe : undefined, 'Cook');
-  const prepTimer = useRecipeTimer(visible ? recipe : undefined, 'Prep');
-  // Same `visible ?` guard and for the same reason — a sheet mounted invisible
-  // must not hold a once-a-second interval open. Scoped to this recipe, so a
-  // timer left running on another dish stays on that dish's screen.
-  const stepTimers = useStepTimers(visible ? recipe.id : undefined);
+  // The page is mounted only while it is up, so these tick only then. Step
+  // timers are scoped to this recipe, so a timer left running on another dish
+  // stays on that dish's screen.
+  const cookTimer = useRecipeTimer(recipe, 'Cook');
+  const prepTimer = useRecipeTimer(recipe, 'Prep');
+  const stepTimers = useStepTimers(recipe.id);
 
   const standingSwaps = useMemo(
     () => standingSwapMap(itemSubs, groceryItems),
@@ -332,16 +322,15 @@ export function CookModeSheet({
   );
 
   // -1 is the mise en place screen, ahead of step 0 — screen state like the
-  // step position itself, reset the same way on close.
-  // Seeded with the real `hasIngredients`: the sheet first mounts already open
-  // (LazySheet), so the close-time reset below never runs before the first
-  // cooking, and a hard-coded false opened it on step 1 past the mise en place.
+  // step position itself, back at the start on every open unless a cook timer
+  // is running (`restingCookPosition`).
+  // Seeded with the real `hasIngredients`, so a recipe with something to gather
+  // opens on the mise en place rather than step 1.
   const [rawIndex, setRawIndex] = useState(
     () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, hasIngredients, steps.map(s => s.id)).rawIndex,
   );
   // Past the last step: the end screen, which offers the post-cook sheet
-  // rather than closing on the cook. Screen state like the position, and
-  // reset the same way on close.
+  // rather than closing on the cook. Screen state like the position.
   const [finished, setFinished] = useState(
     () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, hasIngredients).finished,
   );
@@ -353,8 +342,12 @@ export function CookModeSheet({
   // something out is not using it, so neither reads the other. Both are keyed by
   // node and line rather than index, so a pick that reshuffles the list doesn't
   // move a mark onto a different ingredient.
-  const [checkedLines, setCheckedLines] = useState<ReadonlySet<string>>(() => new Set());
-  const [gatheredLines, setGatheredLines] = useState<ReadonlySet<string>>(() => new Set());
+  const [checkedLines, setCheckedLines] = useState<ReadonlySet<string>>(
+    () => new Set(restingCookPosition(recipe.id, recipe.timerStartedAt !== null, hasIngredients).checked),
+  );
+  const [gatheredLines, setGatheredLines] = useState<ReadonlySet<string>>(
+    () => new Set(restingCookPosition(recipe.id, recipe.timerStartedAt !== null, hasIngredients).gathered),
+  );
   const toggleIn = (set: typeof setCheckedLines) => (key: string) => {
     haptics.tap();
     set(prev => {
@@ -397,39 +390,25 @@ export function CookModeSheet({
   const atEnd = finished && steps.length > 0;
   const step = index >= 0 && !atEnd ? steps[index] : null;
 
-  // ==== effects: resetting on close, clearing the ask panel per step ====
-  // Back to the top for the next open — the mise en place screen where there's
-  // something to gather, step 1 where there isn't. A cooking is one sitting,
-  // and handing someone step 6 of a dish they started yesterday is worse than
-  // handing them the start. Reset on the way *out* rather than on the way in,
-  // so the state is already clean before the first frame is drawn — resetting
-  // on open would paint the old step for a frame first.
-  // A running cook timer means the sitting is still going, so the place is
-  // kept instead (cookPosition.ts): closing the sheet, or returning from the
-  // cooking Live Activity, lands on the step the cook was on.
+  // ==== effects: remembering the place, clearing the ask panel per step ====
+  // A cooking is one sitting, and handing someone step 6 of a dish they
+  // started yesterday is worse than handing them the start, so the place is
+  // kept only while a cook timer is running (cookPosition.ts): leaving the
+  // page, or returning from the cooking Live Activity, lands on the step the
+  // cook was on, with the lines they had checked. The page unmounts on every
+  // exit, so what is kept is read back by the initial state above, not reset
+  // on the way out.
   const cookRunning = recipe.timerStartedAt !== null;
   useEffect(() => {
-    if (!visible) {
-      const rest = restingCookPosition(recipe.id, cookRunning, hasIngredients, steps.map(s => s.id));
-      setRawIndex(rest.rawIndex);
-      setFinished(rest.finished);
-      setIngredientsOpen(false);
-      setNotesOpen(false);
-      setFillingBlanks(false);
-      // A running cook timer keeps the place (see above), and the checks with it.
-      if (!cookRunning) {
-        setCheckedLines(new Set());
-        setGatheredLines(new Set());
-      }
-    }
-  }, [visible, hasIngredients, cookRunning, recipe.id, steps]);
-  useEffect(() => {
     if (!cookRunning) clearCookPosition(recipe.id);
-    else if (visible) {
+    else {
       const stepId = rawIndex >= 0 ? steps[rawIndex]?.id : undefined;
-      saveCookPosition(recipe.id, { rawIndex, finished, ...(stepId ? { stepId } : {}) });
+      saveCookPosition(recipe.id, {
+        rawIndex, finished, ...(stepId ? { stepId } : {}),
+        checked: [...checkedLines], gathered: [...gatheredLines],
+      });
     }
-  }, [visible, cookRunning, recipe.id, rawIndex, finished, steps]);
+  }, [cookRunning, recipe.id, rawIndex, finished, steps, checkedLines, gatheredLines]);
 
   // An answer belongs to the sentence it was given about, so moving off that
   // step takes it with it — including a half-typed question, which on the next
@@ -601,15 +580,12 @@ export function CookModeSheet({
     setRawIndex(Math.max(0, index - 1));
   };
 
-  // SheetModal holds the close until the keyboard is gone (see its doc
-  // comment), so this dismiss isn't what prevents the freeze; it only starts
-  // the keyboard moving a beat sooner.
   const close = () => {
     Keyboard.dismiss();
     onClose();
   };
 
-  // Leaving with the X keeps the cook timer running on purpose (stepping away
+  // Leaving the page keeps the cook timer running on purpose (stepping away
   // mid-cook is the ordinary case), so abandoning a cook is its own action:
   // it throws the timed cook away without logging it, then closes. Asks first
   // because what it discards is a time that was about to be logged. This
@@ -652,30 +628,28 @@ export function CookModeSheet({
     setRawIndex(index + 1);
   };
 
-  // Both offers close cook mode *and* raise a sheet mounted beside it (the
-  // recap and the food-log prompt live in AppNavigator). Closing first, in the
-  // same handler, is what keeps them from being two siblings visible at once:
-  // SheetModal holds the new one back until this one is gone.
+  // Both offers leave cook mode *and* raise a sheet on the recipe screen
+  // underneath, which waits for this page to finish leaving (`onLogCooked` and
+  // `onLogFood` only record the request; see `useCookModeStore`).
   const logCooked = () => {
     haptics.success();
-    close();
     onLogCooked();
+    close();
   };
   const logFood = onLogFood && (() => {
     haptics.tap();
-    close();
     onLogFood();
+    close();
   });
 
   // ==== render. Everything below is JSX ====
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
+    <>
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <DetailHeader
           title={recipe.name}
           onBack={close}
-          backIcon="close"
           backAccessibilityLabel="Leave cook mode"
           actions={
             <View style={styles.headerActions}>
@@ -1400,17 +1374,14 @@ export function CookModeSheet({
             </View>
           )}
         </View>
-        {/* For the cook timer's "or log a time" field. Its own rather than the
-            recipe screen's underneath: a Modal is a separate window, and an
-            accessory bar can only attach to a keyboard in the window it was
-            mounted in. */}
+        {/* For the cook timer's "or log a time" field. The recipe screen
+            underneath mounts one too; only the newest renders (see
+            NumberPadAccessory). */}
         <NumberPadAccessory />
       </View>
-      {/* Rendered inside this Modal, not beside it: a second sheet presented
-          from the same view controller never appears. */}
       {!!onOverridesChange && (
         <BlankPickerSheet
-          visible={fillingBlanks && visible}
+          visible={fillingBlanks}
           entry={fillSubject}
           recipe={recipe}
           recipesById={recipesById}
@@ -1418,11 +1389,10 @@ export function CookModeSheet({
           onClose={() => setFillingBlanks(false)}
         />
       )}
-      {/* Rendered inside this Modal so iOS can present it (two sibling Modals
-          can't both be up). Quantities in the panel and the step text follow
-          the new factor at once, since they read `scale` from the screen. */}
+      {/* Quantities in the panel and the step text follow the new factor at
+          once, since they read `scale` from the store. */}
       <RepeatTimerSheet
-        visible={repeatOffer !== null && visible}
+        visible={repeatOffer !== null}
         onClose={() => setRepeatOffer(null)}
         name="CookRepeatTimer"
         heading={repeatOffer ? `Every ${formatStepDuration(repeatOffer.seconds)}` : ''}
@@ -1433,7 +1403,7 @@ export function CookModeSheet({
         confirmLabel="Start"
         onConfirm={startRepeating}
       />
-      <CardSheet visible={textSizeOpen && visible} onClose={() => setTextSizeOpen(false)} name="CookTextSize" cardStyle={{ padding: spacing.md }}>
+      <CardSheet visible={textSizeOpen} onClose={() => setTextSizeOpen(false)} name="CookTextSize" cardStyle={{ padding: spacing.md }}>
         <SegmentedControl
           options={COOK_TEXT_SIZE_OPTIONS}
           value={cookTextSize}
@@ -1442,7 +1412,7 @@ export function CookModeSheet({
         />
       </CardSheet>
       {onScaleChange && (
-        <CardSheet visible={scaleOpen && visible} onClose={() => setScaleOpen(false)} name="CookScale" cardStyle={{ padding: spacing.md }}>
+        <CardSheet visible={scaleOpen} onClose={() => setScaleOpen(false)} name="CookScale" cardStyle={{ padding: spacing.md }}>
           <RecipeScaleChips
             value={scale}
             onChange={onScaleChange}
@@ -1452,17 +1422,54 @@ export function CookModeSheet({
           />
         </CardSheet>
       )}
-    </SheetModal>
+    </>
   );
 }
 
 /**
- * Holds the screen awake for exactly as long as it's mounted.
- *
- * Its own component so the lock is tied to the Modal's *content* rather than to
- * `CookModeSheet`, which stays mounted while `visible` is false — calling the
- * hook up there would keep the phone awake from the first time a recipe screen
- * rendered until the app was killed.
+ * Cook mode as a page: a root-stack card over the recipe screen (`CookMode`,
+ * opened by `useCookModeStore.open`). The recipe screen owns the scale and the
+ * either/or picks and keeps its own copy in step with the store's while this is
+ * up, so a pick made at the counter is still the pick back on the recipe. The
+ * two offers on the end screen are recorded as requests and answered by the
+ * recipe screen once this page has left. See `docs/arch/recipes.md`, "Cook mode".
+ */
+export function CookModeScreen() {
+  const route = useRoute<RouteProp<{ CookMode: { recipeId: string } }, 'CookMode'>>();
+  const recipeId = route.params.recipeId;
+  const recipes = useRecipeStore(s => s.recipes);
+  const recipesById = useMemo(() => recipeMap(recipes), [recipes]);
+  const recipe = recipesById.get(recipeId) ?? null;
+  const setup = useCookModeStore(s => (s.setup?.recipeId === recipeId ? s.setup : null));
+  // Gone with the page, so the recipe screen stops mirroring it and saving its
+  // setup (see `useCookModeLink`).
+  useEffect(() => () => useCookModeStore.setState({ setup: null }), []);
+  // The recipe was deleted (on another device, say) while this was up.
+  useEffect(() => {
+    if (!recipe) useCookModeStore.getState().close();
+  }, [recipe]);
+  if (!recipe || !setup) return null;
+  const store = useCookModeStore.getState();
+  return (
+    <CookModeBody
+      recipe={recipe}
+      recipesById={recipesById}
+      scale={setup.scale}
+      onScaleChange={scale => store.update({ scale })}
+      choices={setup.choices}
+      overrides={setup.overrides}
+      onChoicesChange={choices => store.update({ choices })}
+      onOverridesChange={overrides => store.update({ overrides })}
+      onClose={store.close}
+      onLogCooked={() => store.requestAfterClose(recipeId, 'cooked')}
+      onLogFood={setup.canLogFood ? () => store.requestAfterClose(recipeId, 'food') : undefined}
+    />
+  );
+}
+
+/**
+ * Holds the screen awake for exactly as long as it's mounted, which is as long
+ * as the page is up.
  */
 function ScreenAwake() {
   useKeepAwake();

@@ -620,7 +620,6 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'onCallSwapTaskCategory',
   'dreamLogTaskCategory',
   'eventTaskCategory',
-  'healthCategory',
   'healthTaskCategory',
   'journalLogTaskCategory',
   'journalLogTimeSegments',
@@ -704,14 +703,17 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Travels with the targets, and with the health record for the same reason.
   'nutritionLimits',
   'limitWarnPercent',
-  'limitsTodayCategory',
+  'limitsTodayShown',
   'limitsTodayHidden',
-  'goalsTodayCategory',
+  'goalsTodayShown',
   'goalsTodayHidden',
   // The steps row's goal on Today. A typed-in preference.
   'stepGoal',
-  // Which Health readings Today draws a row for.
+  // Whether the Biostats widget on Today draws Health's readings, which of
+  // them, and whether it is folded.
+  'healthTodayShown',
   'healthTodayHidden',
+  'biostatsCollapsed',
   // The journal's daily word goal. A typed-in preference, and a count of words
   // rather than anything written, so it needs no switch of its own.
   'journalWordGoal',

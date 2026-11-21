@@ -292,7 +292,6 @@ jest.mock('../store/useCategoryStore', () => ({
   // Called by initialize() to give the day's calendar events a section; a
   // no-op here, since this suite's category store is a mock with no rows.
   ensureCalendarEventCategory: jest.fn(),
-  ensureHealthCategory: jest.fn(),
   ensureGeneratedTaskCategories: jest.fn(),
   // Called by checkProjectReviewTasks before it writes its first task — that
   // generator ships on, so nobody flips the switch that would otherwise create
@@ -326,7 +325,7 @@ jest.mock('../store/useSettingsStore', () => ({
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-      calendarEventCategory: null, healthCategory: null, collapsedCategories: [], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
+      calendarEventCategory: null, collapsedCategories: [], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
       penaltyShieldEnabled: false, penaltyShieldUntil: null, setPenaltyShieldUntil: jest.fn(),
       // Read by offerMealLog, whose whole point is the meal-slot/log-nudge
       // completion tests further down this file — defaulting it off here
@@ -674,7 +673,7 @@ beforeEach(() => {
     dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-    calendarEventCategory: null, healthCategory: null, limitsTodayCategory: null, goalsTodayCategory: null,
+    calendarEventCategory: null,
     collapsedCategories: [], titleRules: [], weatherRules: [], screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
     nutritionTargets: {}, waterExerciseBoost: null,
     setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
@@ -11671,9 +11670,9 @@ describe('renameCategory', () => {
   const settings = () => ({
     dayResetTime: '00:00',
     newTaskDefaults: { category: null as string | null },
-    calendarEventCategory: null as string | null, healthCategory: null as string | null,
+    calendarEventCategory: null as string | null,
     collapsedCategories: [] as string[], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
-    setCalendarEventCategory: jest.fn(), setHealthCategory: jest.fn(), setNewTaskDefaults: jest.fn(),
+    setCalendarEventCategory: jest.fn(), setNewTaskDefaults: jest.fn(),
     setTitleRules: jest.fn(), setReminderCaptures: jest.fn(), setWeatherRules: jest.fn(), setScreenTimeRules: jest.fn(), setHealthRules: jest.fn(), setEventRules: jest.fn(), setCollapsedCategories: jest.fn(),
   });
   beforeEach(() => {
@@ -11763,7 +11762,6 @@ describe('renameCategory', () => {
     useProjectStore.setState({ projects: [{ id: 'p1', defaultTaskCategory: 'Work' } as never] });
     const s = {
       ...settings(),
-      healthCategory: 'Work',
       newTaskDefaults: { category: 'Work' },
       titleRules: [{ id: 'r', category: 'Work' }],
       reminderCaptures: [{ id: 'c', filing: { kind: 'category', category: 'Work' } }],
@@ -11775,7 +11773,6 @@ describe('renameCategory', () => {
     expect(s.setEventRules).toHaveBeenCalledWith([{ id: 'e', category: 'Job' }]);
 
     expect(useProjectStore.getState().projects[0].defaultTaskCategory).toBe('Job');
-    expect(s.setHealthCategory).toHaveBeenCalledWith('Job');
     expect(s.setNewTaskDefaults).toHaveBeenCalledWith({ category: 'Job' });
     expect(s.setTitleRules).toHaveBeenCalledWith([{ id: 'r', category: 'Job' }]);
     expect(s.setReminderCaptures).toHaveBeenCalledWith([{ id: 'c', filing: { kind: 'category', category: 'Job' } }]);
@@ -14986,7 +14983,6 @@ describe('deleteCategory', () => {
     });
     const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
     const fns = {
-      setHealthCategory: jest.fn(), setLimitsTodayCategory: jest.fn(), setGoalsTodayCategory: jest.fn(),
       setNewTaskDefaults: jest.fn(), setWeatherRules: jest.fn(), setTitleRules: jest.fn(),
       setScreenTimeRules: jest.fn(), setBlockOfferRules: jest.fn(), setHealthRules: jest.fn(), setEventRules: jest.fn(),
       setCalendarEventCategory: jest.fn(), setCollapsedCategories: jest.fn(),
@@ -14995,7 +14991,7 @@ describe('deleteCategory', () => {
     useSettingsStore.getState.mockReturnValue({
       dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults: { category: 'Work', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
-      calendarEventCategory: null, healthCategory: 'Work', limitsTodayCategory: 'Home', goalsTodayCategory: null,
+      calendarEventCategory: null,
       collapsedCategories: [], titleRules: [], weatherRules, screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
       ...fns,
     });
@@ -15011,14 +15007,11 @@ describe('deleteCategory', () => {
     expect(row().seriesDefaults).toEqual({ category: null, tags: ['x'] });
     expect(row().followUpTaskDraft?.category).toBeNull();
     expect(useProjectStore.getState().projects.map(p => p.defaultTaskCategory)).toEqual([null, 'Home']);
-    expect(fns.setHealthCategory).toHaveBeenCalledWith(null);
-    expect(fns.setLimitsTodayCategory).not.toHaveBeenCalled();
     expect(fns.setNewTaskDefaults).toHaveBeenCalledWith({ category: null });
     expect(fns.setWeatherRules).toHaveBeenCalledWith([{ id: 'w1' }, { id: 'w2', category: 'Home' }]);
 
     useTaskStore.getState().lastAction?.undo();
 
-    expect(fns.setHealthCategory).toHaveBeenLastCalledWith('Work');
     expect(fns.setNewTaskDefaults).toHaveBeenLastCalledWith({ category: 'Work' });
     expect(fns.setWeatherRules).toHaveBeenLastCalledWith(weatherRules);
     expect(useProjectStore.getState().projects.map(p => p.defaultTaskCategory)).toEqual(['Work', 'Home']);

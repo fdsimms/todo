@@ -336,6 +336,11 @@ export function healthContextRows(
       category: opts.category,
       now: false,
       calendarTag: null,
+      reading: {
+        label: 'Steps',
+        figure: steps.toLocaleString(),
+        ...(opts.stepGoal ? { of: opts.stepGoal.toLocaleString() } : {}),
+      },
       // Only against a goal the person typed in; there is none to borrow.
       ...(opts.stepGoal
         ? { visual: { type: 'bar' as const, fraction: clampFraction(steps / opts.stepGoal) } }
@@ -357,6 +362,11 @@ export function healthContextRows(
       category: opts.category,
       now: false,
       calendarTag: null,
+      reading: {
+        label: 'Active calories',
+        figure: Math.round(activeEnergyKcal).toLocaleString(),
+        ...(moveGoal !== null && moveGoal !== undefined ? { of: Math.round(moveGoal).toLocaleString() } : {}),
+      },
       ...(moveGoal !== null && moveGoal !== undefined
         ? { visual: { type: 'bar' as const, fraction: clampFraction(activeEnergyKcal / moveGoal), hue: 'move' as const } }
         : {}),
@@ -394,8 +404,8 @@ export function healthContextRows(
  * with nothing to tick and nowhere for a tap to go. A limit whose Stay under task
  * is on the list is left out (`covered`), since the task draws the same bar. Unlike a step count it is
  * drawn at zero, since "16g left" before breakfast is the budget the day starts
- * with, which is the point of showing it. The category is the person's
- * (`limitsTodayCategory`), which is also the off switch.
+ * with, which is the point of showing it. Drawn in the Biostats widget
+ * (`limitsTodayShown` is its switch).
  */
 export function limitContextRows(
   totals: Partial<Record<NutrientKey, number>>,
@@ -421,6 +431,7 @@ export function limitContextRows(
       category: opts.category,
       now: false,
       calendarTag: null,
+      reading: { label: name, figure: rounded.toLocaleString(), of: `${shownTarget.value.toLocaleString()}${shownTarget.suffix}` },
       ...(status === 'within' ? {} : { tone: status }),
       // Full once at or past the limit, so a day over reads as a solid red bar.
       visual: { type: 'bar' as const, fraction: target > 0 ? clampFraction(total / target) : total > 0 ? 1 : 0 },
@@ -435,8 +446,8 @@ export function limitContextRows(
  * The sibling of `limitContextRows`, for the targets that are not Stay under.
  * **No tone and no red**: whether passing a target is good is not something the
  * app is told (see `targetStatus`), so the bar fills and nothing says "over".
- * Water is left out because it already has its own task and unit. The category
- * is the person's (`goalsTodayCategory`), which is also the off switch.
+ * Water is left out because it already has its own task and unit. Drawn in the
+ * Biostats widget (`goalsTodayShown` is its switch).
  */
 export function goalContextRows(
   totals: Partial<Record<NutrientKey, number>>,
@@ -450,8 +461,14 @@ export function goalContextRows(
     .map(key => {
       const total = totals[key] ?? 0;
       const name = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+      const shownTarget = displayFigure(key, targets[key]!);
       return {
         id: `goal-${key}`,
+        reading: {
+          label: name,
+          figure: displayFigure(key, total).value.toLocaleString(),
+          of: `${shownTarget.value.toLocaleString()}${shownTarget.suffix}`,
+        },
         sourceId: '',
         nutrientKey: key,
         kind: 'health' as const,

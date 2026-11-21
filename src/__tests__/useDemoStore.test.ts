@@ -5468,7 +5468,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const settings = useSettingsStore.getState();
     expect(settings.nutritionLimits).toEqual(['satFatG']);
     expect(settings.nutritionTargets.satFatG).toBeGreaterThan(0);
-    expect(settings.limitsTodayCategory).toBe('Biostats');
+    expect(settings.limitsTodayShown).toBe(true);
+    expect(settings.goalsTodayShown).toBe(true);
+    // Real step counts must not reach a demo: Health stays off in the seed.
+    expect(settings.healthTodayShown).toBe(false);
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'limitWarning');
     expect(task?.category).toBe('Health');
     expect(task?.generatedSourceId).toBe('satFatG');

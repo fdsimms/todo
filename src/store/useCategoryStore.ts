@@ -220,13 +220,6 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
 export const CALENDAR_EVENTS_CATEGORY = 'Calendar Events';
 
 /**
- * Same, for the Apple Health reading. Not "Health": the generators that write
- * health tasks file under that name (see `GENERATED_KIND_SPECS`), and a section
- * holding both read as a readout with tasks mixed into it.
- */
-export const HEALTH_CATEGORY = 'Biostats';
-
-/**
  * Give something the app files into a category one to file into (#1571).
  *
  * The shared half of `ensureCalendarEventCategory` and
@@ -278,43 +271,6 @@ export function ensureCalendarEventCategory(opts: { force?: boolean } = {}): voi
     settings.setCalendarEventCategory,
     !!opts.force,
   );
-}
-
-/**
- * Make sure today's Health reading has a section to land in.
- *
- * `ensureCalendarEventCategory` one shelf over, with the same two callers and
- * the same reasons: turning the read on (`force`, so the section appears with
- * the reading rather than a launch later), and app startup, which is how an
- * install that already had the read on gets one without a migration.
- *
- * The `force: false` path is what makes a cleared category stick. `healthCategory`
- * is also the row's off switch (see its note in `useSettingsStore`), so a
- * startup pass that refilled it would hand back a row somebody had just turned
- * off — which is exactly what `ensureCategoryFor`'s "has this setting ever been
- * written" check is there to prevent.
- */
-export function ensureHealthCategory(opts: { force?: boolean } = {}): void {
-  const settings = useSettingsStore.getState();
-  if (!settings.healthReadEnabled) return;
-  const before = settings.healthCategory;
-  ensureCategoryFor(
-    'healthCategory',
-    HEALTH_CATEGORY,
-    before,
-    settings.setHealthCategory,
-    !!opts.force,
-  );
-  // A fresh section starts folded: it is a readout, and a folded one still says
-  // its figures in its header (`contextSectionSummaries`). Only on the call that
-  // assigns it, so an install that already had the section, or somebody who has
-  // since opened it, is never folded again, and expanding it afterwards is
-  // remembered like any other category's collapse.
-  const after = useSettingsStore.getState();
-  if (before === null && after.healthCategory === HEALTH_CATEGORY
-    && !after.collapsedCategories.includes(HEALTH_CATEGORY)) {
-    after.setCollapsedCategories([...after.collapsedCategories, HEALTH_CATEGORY]);
-  }
 }
 
 /**
