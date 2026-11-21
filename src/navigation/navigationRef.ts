@@ -9,6 +9,16 @@ export const navigationRef = createNavigationContainerRef<any>();
 
 /** The root-stack card workout mode is (`WorkoutModeScreen`); see `useWorkoutModeStore`. */
 export const WORKOUT_MODE_ROUTE = 'WorkoutMode';
+/** The root-stack card cook mode is (`CookModeScreen`); see `useCookModeStore`. */
+export const COOK_MODE_ROUTE = 'CookMode';
+
+/**
+ * Whether a route is a full-page mode that the app's floating bars (workout,
+ * cooking, focus) step aside for: the sheets these replaced covered them.
+ */
+export function isFullPageMode(route: string | null): boolean {
+  return route === WORKOUT_MODE_ROUTE || route === COOK_MODE_ROUTE;
+}
 
 // A deep link or Home Screen quick action can arrive before the navigator has
 // mounted — a cold launch from tapping the Today widget's own "+" resolves
@@ -164,7 +174,7 @@ export function resetToWorkouts(): void {
 //
 // `openCookMode` is the second half, tapped from CookingBar (a running cook
 // timer's own floating return-to-it bar):
-// land on the recipe *and* pop CookModeSheet open, the same stamped-param
+// land on the recipe *and* push cook mode's page, the same stamped-param
 // handoff resetToGroceries's openFinish uses, and for the same reason — the
 // sheet compares against the last value it handled, so tapping the bar twice
 // in a row (open cook mode, back out to Today, tap it again) still fires.

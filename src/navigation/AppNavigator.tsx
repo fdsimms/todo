@@ -1,9 +1,11 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
-import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName, WORKOUT_MODE_ROUTE } from './navigationRef';
+import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName, WORKOUT_MODE_ROUTE, COOK_MODE_ROUTE } from './navigationRef';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { WorkoutModeScreen } from '../screens/WorkoutModeScreen';
+import { CookModeScreen } from '../screens/CookModeScreen';
+import { useCookModeStore } from '../store/useCookModeStore';
 import { navigateToSettingsEntry } from './openSettings';
 import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -112,11 +114,14 @@ const RootStack = createNativeStackNavigator();
 const ROOT_STACK_OPTIONS = { headerShown: false };
 // A card finishing its pop is the moment a sheet may be presented again (UIKit
 // drops one raised mid-transition). Workout mode's saved-workout question waits
-// for it: see `WorkoutModeHost`. Any closing transition releases it, since the
+// for it: see `WorkoutModeHost`, and cook mode's end-screen offers wait the same way
+// (`useCookModeLink`). Any closing transition releases it, since the
 // question is only ever held for the page that was just left.
 const ROOT_STACK_LISTENERS = {
   transitionEnd: (e: { data?: { closing?: boolean } }) => {
-    if (e.data?.closing) useWorkoutModeStore.getState().markAskReady();
+    if (!e.data?.closing) return;
+    useWorkoutModeStore.getState().markAskReady();
+    useCookModeStore.getState().markRequestReady();
   },
 };
 const EDGE_WIDTH = 20;
@@ -250,6 +255,8 @@ const PUSHED_ROUTES = new Set([
   // Workout mode, a page rather than a sheet: opened by `useWorkoutModeStore`
   // from a button, a task row or the floating bar, never from the menu.
   WORKOUT_MODE_ROUTE,
+  // Cook mode, the same: opened from a recipe (or the cooking bar), never from the menu.
+  COOK_MODE_ROUTE,
 ]);
 
 function MorePlaceholder() {
@@ -841,6 +848,11 @@ export default function AppNavigator() {
       <RootStack.Screen
         name="PersonDetail"
         component={PersonDetailScreen}
+        options={{ presentation: 'card' }}
+      />
+      <RootStack.Screen
+        name={COOK_MODE_ROUTE}
+        component={CookModeScreen}
         options={{ presentation: 'card' }}
       />
       <RootStack.Screen

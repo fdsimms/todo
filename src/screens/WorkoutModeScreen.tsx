@@ -2138,9 +2138,7 @@ function RestStrip({ sessionId, styles }: {
 }
 
 /**
- * Holds the screen awake for exactly as long as it's mounted: inside the
- * Modal's content, so a sheet mounted hidden doesn't hold it (CookModeSheet's
- * reason).
+ * Holds the screen awake for exactly as long as the page is mounted.
  */
 function ScreenAwake() {
   useKeepAwake();

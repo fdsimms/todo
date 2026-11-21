@@ -51,6 +51,16 @@ describe('cookPosition', () => {
   });
 });
 
+describe('cookPosition: the checked lines', () => {
+  afterEach(() => clearCookPosition('r1'));
+
+  it('comes back with the place while the cook timer runs, and not otherwise', () => {
+    saveCookPosition('r1', { rawIndex: 2, finished: false, checked: ['r1:a'], gathered: ['r1:a', 'r1:b'] });
+    expect(restingCookPosition('r1', true, true)).toEqual({ rawIndex: 2, finished: false, checked: ['r1:a'], gathered: ['r1:a', 'r1:b'] });
+    expect(restingCookPosition('r1', false, true)).toEqual({ rawIndex: -1, finished: false });
+  });
+});
+
 describe('cookPosition: surviving the app being killed', () => {
   afterEach(() => {
     jest.useRealTimers();
