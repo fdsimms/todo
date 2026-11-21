@@ -45,7 +45,7 @@ import { SortableList } from '../components/SortableList';
 import { WorkoutRecordsCard } from '../components/WorkoutRecordsCard';
 import { WorkoutStatTiles } from '../components/WorkoutStatTiles';
 import { WorkoutCompleteHero } from '../components/WorkoutCompleteHero';
-import type { ExerciseKind, WorkoutSet, WorkoutSetKind } from '../types';
+import type { ExerciseKind, ProgressionScheme, WorkoutSet, WorkoutSetKind } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useDemoStore } from '../store/useDemoStore';
@@ -83,12 +83,13 @@ import { parseSetCell, typedTickValues } from '../utils/workoutCell';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, rivalOf, routineChanges } from '../utils/routineUpdate';
-import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
+import { currentRoutineVersion, finishVersionText, progressionHome, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
 import { sessionBodyweightVolumeKg } from '../utils/bodyweightLoad';
 import { recordLines } from '../utils/workoutRecordText';
-import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
+import { proposalActionLabel, proposalApplied, proposalHeadline, schemeFor, schemesOffered, workingSetLogged, type Proposal } from '../utils/workoutProgression';
+import { PROGRESSION_EXPLAINERS, PROGRESSION_LABELS } from '../utils/workoutRoutine';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
 import {
@@ -570,7 +571,61 @@ export function WorkoutModeScreen() {
   const [timerOpen, setTimerOpen] = useState(false);
   // This workout's rest timers are turned off (`restsAreOff`): no rest starts, and the Rest chips are hidden.
   const restsOff = restsAreOff(session?.restOverrides);
-  const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
+  // `open` names a list inside the menu to start on (the Set progression chip opens the schemes directly); no anchor centers the card.
+  const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor | null; open?: string } | null>(null);
+  // ==== progression: how an exercise moves on, set from inside the workout ====
+  // Any weight and reps exercise of a live workout can have one set. Where it is
+  // kept is the store's call (`progressionHome`): on the routine when this
+  // workout is on its current version, else on the workout alone.
+  const canSetProgression = (exerciseId: string) =>
+    !!session && session.endedAt === null
+    && (catalogExercise(exerciseRows, exerciseId)?.kind ?? 'weight_reps') === 'weight_reps';
+  const itemOf = (exerciseId: string) => startedPlan?.items.find(i => i.exerciseId === exerciseId) ?? null;
+  // The scheme moving the exercise on in this workout, whoever set it.
+  const schemeOfExercise = (exerciseId: string) =>
+    session?.progressionOverrides?.[exerciseId] ?? schemeFor(itemOf(exerciseId), program);
+  const chooseProgression = (exerciseId: string, scheme: ProgressionScheme | null) => {
+    if (!session) return;
+    const done = useWorkoutStore.getState().setExerciseProgression(session.id, exerciseId, scheme);
+    if (done === true) { haptics.success(); return; }
+    Alert.alert(
+      'Couldn’t set the progression',
+      'This workout has already finished. Set it from the routine’s editor instead.',
+    );
+  };
+  // The schemes as the exercise's "…" menu lists them. A scheme already chosen
+  // for the exercise is ticked and does nothing when tapped. The last row takes
+  // the exercise's own choice back, and shows only while there is one.
+  const progressionChoices = (exerciseId: string) => {
+    if (!session) return [];
+    const store = useWorkoutStore.getState();
+    const onRoutine = progressionHome(session, store.routines, store.routineVersions, exerciseId) === 'routine';
+    const item = itemOf(exerciseId);
+    const override = session.progressionOverrides?.[exerciseId] ?? null;
+    const own = override ?? item?.progression?.scheme ?? null;
+    // What applies once this workout's own choice is taken back.
+    const without = schemeFor(item, program);
+    const choices = schemesOffered(item, program !== null, own)
+      .map(s => ({
+        key: s,
+        label: PROGRESSION_LABELS[s],
+        detail: PROGRESSION_EXPLAINERS[s],
+        checked: own === s,
+        onPress: () => { if (own !== s) chooseProgression(exerciseId, s); },
+      }));
+    const clearable = onRoutine ? item?.progression != null : override !== null;
+    if (!clearable) return choices;
+    const fallback = onRoutine ? (program?.scheme ?? null) : without;
+    return [...choices, {
+      key: 'none',
+      label: !onRoutine && without ? `Back to ${PROGRESSION_LABELS[without]}` : 'None',
+      detail: fallback
+        ? (onRoutine ? 'Use the program’s choice.' : 'Undo the choice made in this workout.')
+        : 'No weight suggestions for this exercise.',
+      checked: false,
+      onPress: () => chooseProgression(exerciseId, null),
+    }];
+  };
   // The header clock's menu, and the card that moves the running workout's start.
   const [clockMenu, setClockMenu] = useState<CardAnchor | null>(null);
   const [startOpen, setStartOpen] = useState(false);
@@ -759,6 +814,7 @@ export function WorkoutModeScreen() {
         // A load taken from the suggestion is the plan working, not a change to it.
         suggestedKg: id => liveProposal(session.id, id)?.proposal.sets.find(x => x.kind !== 'warmup')?.weightKg ?? null,
         restOverrides: session.restOverrides,
+        progressionOverrides: session.progressionOverrides,
         defaultRestSeconds,
       });
     },
@@ -1255,6 +1311,7 @@ export function WorkoutModeScreen() {
                 gymIncrementKg: gymIncrementKg(gymSetting),
                 gymDumbbells: gym?.dumbbells ?? null,
                 dumbbellEntry,
+                progressionOverrides: session.progressionOverrides,
               }) : null;
               const proposal = shownProposal?.proposal ?? null;
 
@@ -1364,6 +1421,15 @@ export function WorkoutModeScreen() {
                         variant="neutral"
                         onPress={() => openNote(viewed, !todayNote ? 'today' : 'always')}
                         accessibilityLabel={`Add a note on ${viewedInfo?.name ?? 'this exercise'}`}
+                      />
+                    )}
+                    {canSetProgression(viewed.exerciseId) && schemeOfExercise(viewed.exerciseId) === null && (
+                      <InlineAction
+                        icon="trending-up-outline"
+                        label="Set progression"
+                        variant="neutral"
+                        onPress={() => { haptics.tap(); setExerciseMenu({ exerciseId: viewed.exerciseId, anchor: null, open: 'progression' }); }}
+                        accessibilityLabel={`Set how ${viewedInfo?.name ?? 'this exercise'} moves on, so workout mode suggests the next weight`}
                       />
                     )}
                     {gym && gymNoteEdit !== viewed.exerciseId && (
@@ -1706,6 +1772,7 @@ export function WorkoutModeScreen() {
             visible={exerciseMenu !== null}
             title={menuId ? nameOf(menuId) : ''}
             anchor={exerciseMenu?.anchor ?? null}
+            startOpen={exerciseMenu?.open ?? null}
             onClose={() => setExerciseMenu(null)}
             actions={menuId && menuExercise ? [
               ...(group.length > 1 ? (['up', 'down'] as const)
@@ -1741,6 +1808,12 @@ export function WorkoutModeScreen() {
                 label: 'Swap',
                 icon: 'swap-horizontal' as const,
                 onPress: () => { setViewedId(menuId); setPicking('swap'); },
+              }] : []),
+              ...(canSetProgression(menuId) ? [{
+                key: 'progression',
+                label: 'Progression…',
+                icon: 'trending-up-outline' as const,
+                choices: progressionChoices(menuId),
               }] : []),
               {
                 key: 'remove',

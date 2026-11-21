@@ -216,3 +216,29 @@ describe('applyRoutineChanges', () => {
     expect(grown[0].targets).toHaveLength(2);
   });
 });
+
+describe('a progression set for this workout alone', () => {
+  const withScheme = [item('bench', BENCH, { progression: { scheme: 'linear', incrementKg: 2.5 } }), routine[1]];
+
+  it('is offered for an exercise the workout did, from what the routine has to what was chosen', () => {
+    const got = routineChanges({ items: routine, sets: asPlanned, kindOf, progressionOverrides: { bench: 'double' }, defaultRestSeconds: 90 });
+    expect(got).toEqual([{ kind: 'progression', id: 'progression:bench', exerciseId: 'bench', from: null, to: 'double' }]);
+    expect(describeRoutineChange(got[0], name, 'kg')).toEqual({ title: 'BENCH: progression', detail: 'From none to Rep range.' });
+    const again = routineChanges({ items: withScheme, sets: asPlanned, kindOf, progressionOverrides: { bench: 'rpe' }, defaultRestSeconds: 90 });
+    expect(describeRoutineChange(again[0], name, 'kg').detail).toBe('From Linear to RPE.');
+  });
+
+  it('says nothing for the scheme the routine already has, or an exercise the workout did not do', () => {
+    expect(routineChanges({ items: withScheme, sets: asPlanned, kindOf, progressionOverrides: { bench: 'linear' }, defaultRestSeconds: 90 })).toEqual([]);
+    const benchOnly = asPlanned.filter(s => s.exerciseId === 'bench');
+    expect(routineChanges({ items: routine, sets: benchOnly, kindOf, progressionOverrides: { fly: 'double' }, defaultRestSeconds: 90 })
+      .filter(c => c.kind === 'progression')).toEqual([]);
+  });
+
+  it('writes the scheme onto the item when accepted, keeping its increment', () => {
+    const change: RoutineChange = { kind: 'progression', id: 'progression:bench', exerciseId: 'bench', from: 'linear', to: 'rpe' };
+    const next = applyRoutineChanges(withScheme, [change]);
+    expect(next[0].progression).toEqual({ scheme: 'rpe', incrementKg: 2.5 });
+    expect(next[1]).toEqual(withScheme[1]);
+  });
+});

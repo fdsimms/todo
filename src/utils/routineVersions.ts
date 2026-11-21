@@ -84,6 +84,28 @@ export function sessionPlan(
   return version ?? routine;
 }
 
+/**
+ * Where a progression chosen in the middle of a workout is kept. On the
+ * routine, when the workout is on the routine's current version and the
+ * routine has the exercise: the choice is a standing rule, and a workout's
+ * suggestions are read from its version (`sessionPlan`), so the store moves the
+ * workout onto the version the save leaves. On the workout alone otherwise (no
+ * routine, an older version, an exercise added mid-workout), where the
+ * routine can't take it without rewriting what the workout is planned by.
+ */
+export function progressionHome(
+  session: Pick<WorkoutSession, 'routineId' | 'routineVersionId' | 'startedAt'>,
+  routines: readonly WorkoutRoutine[],
+  versions: readonly WorkoutRoutineVersion[],
+  exerciseId: string,
+): 'routine' | 'workout' {
+  const routine = session.routineId ? routines.find(r => r.id === session.routineId) : undefined;
+  if (!routine) return 'workout';
+  const own = routineVersionsOf(routine, versions);
+  if (sessionVersionId(session, own) !== currentRoutineVersion(routine, own).id) return 'workout';
+  return routine.items.some(i => i.exerciseId === exerciseId) ? 'routine' : 'workout';
+}
+
 /** The version the routine is on: the one it names, or its newest when it names none this device has. */
 export function currentRoutineVersion(
   routine: WorkoutRoutine,

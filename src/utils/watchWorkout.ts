@@ -3,6 +3,7 @@ import type {
   Exercise,
   ExerciseKind,
   PlateInventory,
+  ProgressionScheme,
   RestTimer,
   Task,
   WorkoutProgram,
@@ -345,6 +346,8 @@ interface ExerciseContext {
   plateInventory: PlateInventory;
   defaultRestSeconds: number;
   restOverrides?: Readonly<Record<string, number>> | null;
+  /** The workout's own scheme per exercise (`WorkoutSession.progressionOverrides`). */
+  progressionOverrides?: Readonly<Record<string, ProgressionScheme>> | null;
   /**
    * The plan rests and suggestions are read from when it isn't `routine`: the
    * version of it a live workout was started on (`sessionPlan`).
@@ -374,6 +377,7 @@ export function watchSuggestion(exerciseId: string, ctx: ExerciseContext, exerci
     plateInventory: ctx.plateInventory,
     unit: ctx.unit,
     dumbbellEntry: ctx.dumbbellEntry,
+    progressionOverrides: ctx.progressionOverrides,
   });
   if (!p || p.proposal.sets.length === 0) return undefined;
   const scale = scaleOf(ctx.exercises, exerciseId, ctx.dumbbellEntry);
@@ -557,7 +561,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
     retractWorkouts: requests.retract.map(r => r.id),
     dropSessions: requests.drop.map(d => d.id),
   };
-  const contextFor = (routine: WorkoutRoutine | null, programId: string | null, exceptSessionId: string | null, restOverrides: Readonly<Record<string, number>> | null = null): ExerciseContext => ({
+  const contextFor = (routine: WorkoutRoutine | null, programId: string | null, exceptSessionId: string | null, restOverrides: Readonly<Record<string, number>> | null = null, progressionOverrides: Readonly<Record<string, ProgressionScheme>> | null = null): ExerciseContext => ({
     exercises: input.exercises,
     unit: input.unit,
     dumbbellEntry: input.dumbbellEntry,
@@ -568,6 +572,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
     plateInventory: input.plateInventory,
     defaultRestSeconds: input.defaultRestSeconds,
     restOverrides,
+    progressionOverrides,
     historyFor: input.historyFor,
     exceptSessionId,
   });
@@ -583,7 +588,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
         sessionId: session.id,
         title: session.title,
         startedAt: session.startedAt,
-        exercises: exercisesOf(shown, sets, { ...contextFor(routine, session.programId, session.id, session.restOverrides), plan }),
+        exercises: exercisesOf(shown, sets, { ...contextFor(routine, session.programId, session.id, session.restOverrides, session.progressionOverrides), plan }),
         sets: shown,
         moreSets: rows.length - shown.length,
         rest: liveRest(rest, session.id),

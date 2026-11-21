@@ -59,7 +59,7 @@ import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, formatRestS
 import { NEW_EXERCISE_PREFIX } from '../utils/workoutCsv';
 import type { RoutineDraft } from '../utils/workoutDraft';
 import {
-  PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutineItem, itemShape, joinPrevious,
+  PROGRESSION_EXPLAINERS, PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutineItem, itemShape, joinPrevious,
   droppedIntoSuperset, leaveSuperset, newRoutineItem, normalizeSupersets, settleOpenSlots, supersetRoles,
   withAlternate, withProgression, withWarmupMode,
   type SupersetRole, type SupersetRowView,
@@ -106,12 +106,8 @@ const PROGRESSION_INTRO =
   'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.';
 
 // Behind the "?" beside the label: the four names mean nothing to most people.
-const PROGRESSION_GLOSSARY = [
-  ['Rep range', 'You aim for a range, like 8 to 12 reps. Once every set reaches the top, add weight and start at the bottom again.'],
-  ['Linear', 'Add a little weight each workout where you finish all your reps. Common for beginners.'],
-  ['% of max', 'Each set’s weight is a percentage of your heaviest lift, which you set in the program.'],
-  ['RPE', 'After a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.'],
-] as const;
+const PROGRESSION_GLOSSARY = (['double', 'linear', 'percent', 'rpe'] as const)
+  .map(s => [PROGRESSION_LABELS[s], PROGRESSION_EXPLAINERS[s]] as const);
 
 type EditorTab = 'edit' | 'progress' | 'history';
 const TAB_OPTIONS: SegmentOption<EditorTab>[] = [
