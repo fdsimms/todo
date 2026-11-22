@@ -990,6 +990,7 @@ export function CalendarScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Calendar"
+        compact
         actions={withScreenSettings([
           // Re-reads the system calendar now, for an event just changed in
           // another app. Absent when nothing is being read (or in a demo).
