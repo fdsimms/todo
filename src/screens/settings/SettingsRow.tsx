@@ -176,6 +176,9 @@ export function SettingsRow({
     !!tight && styles.rowTight,
     !!tight && showHint && styles.rowTightHinted,
     !!children && styles.rowStacked,
+    // A disabled row has to look it: "Sync now" stayed fully lit while syncing
+    // and kept getting tapped. 0.4 matches InlineAction and SheetHeaderButton.
+    !!disabled && { opacity: 0.4 },
     // Last, so it paints over the row's own transparent background rather than
     // under it. Static `transparent` for every row that isn't the focused one,
     // so this costs an unfocused row nothing but a style entry.
