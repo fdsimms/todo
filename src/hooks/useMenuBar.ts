@@ -36,10 +36,11 @@ function runMenuCommand(id: string): void {
 export function useMenuBar(): void {
   const menuOptions = useNavMenuOptions();
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const items = useMemo(
     () => (menuBarAvailable ? buildMenuItems(visibleMenuRows(menuOptions), hiddenActions()) : []),
-    // simpleMode is what hiddenActions reads.
-    [menuOptions, simpleMode],
+    // simpleMode and kitchenEnabled are what hiddenActions reads.
+    [menuOptions, simpleMode, kitchenEnabled],
   );
 
   useEffect(() => {

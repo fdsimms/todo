@@ -106,6 +106,7 @@ describe('table definitions', () => {
       'dailyAgendaEnabled',   // shared, every reminder would fire twice
       'hapticsEnabled',       // a Mac has no haptics
       'mirroringMode',        // how one phone is being driven
+      'textSize',             // sized for one screen, a desk monitor is not a phone
       'grocery_trip_shop_id', // what one device is doing right now
       'tabRoutes',            // an iPad's sidebar and a phone's tab bar differ
       'todayWideLayout',      // how one window lays Today out

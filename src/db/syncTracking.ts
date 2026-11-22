@@ -833,7 +833,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   `beatLastDayKey`, `timerLiveActivity`,
  *   `tripLiveActivity`, `leaveLiveActivity`, `leaveWindowMinutes`, `focusLiveActivity`,
  *   `workoutLiveActivity`, `fabHand`, `mapsApp`,
- *   `mirroringMode` — capabilities and
+ *   `mirroringMode`, `textSize` — capabilities and
  *   ergonomics of one device. A Mac has no haptics and no thumb reach, and
  *   which maps apps are installed differs from phone to phone. Whether a phone
  *   is driven through iPhone Mirroring is a fact about that phone.

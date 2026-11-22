@@ -10,6 +10,7 @@ import { useFontPreviewsLoaded } from '../../theme/AppFont';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { haptics } from '../../utils/haptics';
+import { TEXT_SIZE_STEPS } from '../../utils/textSize';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
@@ -27,6 +28,7 @@ const TODAY_WIDE_LAYOUT_OPTIONS: SegmentOption<TodayWideLayout>[] = [
   { value: 'board', label: 'Board', icon: 'grid-outline' },
   { value: 'list', label: 'List', icon: 'list-outline' },
 ];
+const TEXT_SIZE_OPTIONS: SegmentOption<number>[] = TEXT_SIZE_STEPS.map(s => ({ value: s.value, label: s.label }));
 
 const FAB_HAND_OPTIONS: SegmentOption<FabHand>[] = [
   { value: 'right', label: 'Right', icon: 'hand-right-outline' },
@@ -38,6 +40,8 @@ export function AppearanceSettings() {
   const setThemeMode = useSettingsStore(s => s.setThemeMode);
   const fabHand = useSettingsStore(s => s.fabHand);
   const setFabHand = useSettingsStore(s => s.setFabHand);
+  const textSize = useSettingsStore(s => s.textSize);
+  const setTextSize = useSettingsStore(s => s.setTextSize);
   const appFont = useSettingsStore(s => s.appFont);
   const setAppFont = useSettingsStore(s => s.setAppFont);
   const appFontRandomize = useSettingsStore(s => s.appFontRandomize);
@@ -109,6 +113,20 @@ export function AppearanceSettings() {
           selected={fabHand}
           onSelect={setFabHand}
           accessibilityLabelFor={o => `Add button on the ${o.label.toLowerCase()}`}
+        />
+      </SettingsSection>
+
+      {/* entryId on the section: the control here is the segmented control, as for Theme. */}
+      <SettingsSection
+        label="Text size"
+        entryId="textSize"
+        footer="Applies on top of the iPhone or iPad text size in Settings, and on this device only. On a Mac, ⌘+ and ⌘- change it and ⌘0 resets it."
+      >
+        <SettingsSegments
+          options={TEXT_SIZE_OPTIONS}
+          selected={textSize}
+          onSelect={setTextSize}
+          accessibilityLabelFor={o => `${o.label} text size`}
         />
       </SettingsSection>
 

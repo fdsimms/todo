@@ -225,7 +225,7 @@ client. What it can have is below, all of it in
 the native half was written against Apple's declarations and can only be checked by a build.
 
 - **The menu bar** (`TodoMenuBar.swift`, `useMenuBar`). File › New Task ⌘N, Edit › Search… ⌘F,
-  View › Today, Later, Unscheduled and Inbox (⌘1 to ⌘4), a Go menu that is the side menu with hubs
+  View › Today, Later, Unscheduled and Inbox (⌘1 to ⌘4), then Increase, Decrease and Default Text Size (⌘+, ⌘-, ⌘0; the sink also answers ⌘=, the same key without Shift), a Go menu that is the side menu with hubs
   as submenus, Settings… ⌘, in the app menu and Help › Keyboard Shortcuts ⌘/. It uses
   `UIMainMenuSystem` (iOS 26), set once at launch from an app delegate subscriber because Apple
   asks for exactly that; later changes only rebuild. It exists on a Mac and on an iPad, never a
@@ -309,8 +309,21 @@ the native half was written against Apple's declarations and can only be checked
 
 | Phase | What | Notes |
 |---|---|---|
-| 4 | Desktop input: `mirroringMode`, on by default on a Mac | **Mostly built, under the iPhone Mirroring setting** (`useSettingsStore.mirroringMode`, Settings › Appearance). On, every swipeable row shows its swipe actions as buttons (`SwipeActionButtons`), the undo bar offers every action, Return accepts a title suggestion, and the hardware-keyboard shortcuts are on (`keyShortcuts.ts`: `n`, `/`, `⌘N`, `⌘F`, `⌘Z`, Escape, `1` to `4` for the Today views). A swipe is only ever select (left) or reschedule (right), never destructive. **A Mac gets it on without asking**: `useSettingsStore.initialize()` turns it on when the stored setting is absent (`shouldDefaultMirroringOn`) and `deviceIsMac()` says so. It is decided inside `initialize()` because that runs again after every sync that applied rows, entering or leaving demo mode and a restore; it used to be set once by a hook after launch, and the first of those read the absent value back as off, so hover, ⌘Z and Escape went quiet on a Mac after its first sync. The flag is `src/utils/deviceKind.ts`, set once at launch from `isRunningOnMac` (`todo-key-commands`, `ProcessInfo.isiOSAppOnMac`), because the store is also loaded by the MCP server in plain Node, where importing a native module throws. Nothing is written, so a Mac follows the device until someone turns it off, and the stored `false` then wins. A Mac with it off still gets the chords a Mac window answers to (`onMac` in `keyShortcuts.ts`: ⌘Z, ⇧⌘Z, Escape, ⌘Return, ⌘/). iPhone Mirroring itself still needs the toggle, since the app runs on the phone there. Hover is phase 5. |
+| 4 | Desktop input: `mirroringMode`, on by default on a Mac | **Mostly built, under the iPhone Mirroring setting** (`useSettingsStore.mirroringMode`, Settings › Appearance). On, every swipeable row shows its swipe actions as buttons (`SwipeActionButtons`), the undo bar offers every action, Return accepts a title suggestion, and the hardware-keyboard shortcuts are on (`keyShortcuts.ts`: `n`, `/`, `⌘N`, `⌘F`, `⌘T` (search too, a habit from browsers), `⌘Z`, Escape and `⌘[` (back), `1` to `4` for the Today views, and `⌥⌘1` to `⌥⌘6` in the Go menu for Tasks, Projects, Groceries, Recipes, Meal plan and Pantry, fixed to the screen rather than its menu position: `GO_SHORTCUTS` in `keyShortcuts.ts`). A swipe is only ever select (left) or reschedule (right), never destructive. **A Mac gets it on without asking**: `useSettingsStore.initialize()` turns it on when the stored setting is absent (`shouldDefaultMirroringOn`) and `deviceIsMac()` says so. It is decided inside `initialize()` because that runs again after every sync that applied rows, entering or leaving demo mode and a restore; it used to be set once by a hook after launch, and the first of those read the absent value back as off, so hover, ⌘Z and Escape went quiet on a Mac after its first sync. The flag is `src/utils/deviceKind.ts`, set once at launch from `isRunningOnMac` (`todo-key-commands`, `ProcessInfo.isiOSAppOnMac`), because the store is also loaded by the MCP server in plain Node, where importing a native module throws. Nothing is written, so a Mac follows the device until someone turns it off, and the stored `false` then wins. A Mac with it off still gets the chords a Mac window answers to (`onMac` in `keyShortcuts.ts`: ⌘Z, ⇧⌘Z, Escape, ⌘Return, ⌘/). iPhone Mirroring itself still needs the toggle, since the app runs on the phone there. Hover is phase 5. |
 
 Not available on a Mac: HealthKit, Screen Time,
 widgets, the Watch app, Live Activities and NFC. The logic layer already guards each behind a
 `Platform.OS` or lazy-require check, but nothing has exercised all of them absent at once on a Mac.
+
+## Text size (the app's own)
+
+A Mac has no system text size to follow, so the app carries one: `useSettingsStore.textSize`, one of
+four steps (`src/utils/textSize.ts`, Settings › Appearance › Text size), device-local (absent from
+`SYNCED_SETTING_KEYS`, since a size picked for a monitor is wrong on a phone). It is applied in the
+`Text`/`TextInput` wrapper in `AppFont.tsx` (`withAppTextSize`), which scales `fontSize` and
+`lineHeight` and folds the app's size into each text's `maxFontSizeMultiplier` so the system's size
+and the app's stay under the text's own cap together (`sizeForCap`): a badge stays at its cap and a
+`fixed` text does not move. At the default step it costs a `Text` nothing. `useTextScale` multiplies
+the app's size in, so a column or pinned row that scales with text follows it. A `Text` with no
+`fontSize` of its own is not scaled (a nested one inherits its parent's). ⌘+, ⌘=, ⌘- and ⌘0 step it
+(`textLarger`, `textSmaller`, `textReset` in `keyShortcuts.ts`). They are `always` chords, on for any hardware keyboard whatever mirroring mode says, so an iPad with no menu bar has them through the key sink. None of it has run on a Mac or iPad.

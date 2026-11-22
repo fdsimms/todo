@@ -12,17 +12,19 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { isAppLocked } from '../store/useAppLockStore';
-import { KEY_SHORTCUTS, describeShortcuts, shortcutById, type KeyShortcut, type ShortcutAction } from '../utils/keyShortcuts';
+import { KEY_SHORTCUTS, describeShortcuts, goRouteFor, shortcutById, type KeyShortcut, type ShortcutAction } from '../utils/keyShortcuts';
 import { buildMenuItems, shortcutsWithMenuBar, sinkShortcuts } from '../utils/macMenu';
 import { latestRedoHistory, latestUndoHistory } from '../utils/undoHistory';
 import { anySheetOpen } from '../utils/sheetModal';
 import { runCommit, runEscape, runScreenKey, type ScreenKey } from '../utils/keyActions';
 import { runningOnMac } from '../utils/runningOnMac';
+import { stepTextSize, DEFAULT_TEXT_SIZE } from '../utils/textSize';
 import { haptics } from '../utils/haptics';
 import { featureHidden } from '../utils/simpleMode';
 import {
   openQuickAddFromKeyboard,
   openQuickSearchFromKeyboard,
+  navigateToTab,
   openSettingsFromKeyboard,
   showTodayViewModeFromKeyboard,
 } from '../navigation/navigationRef';
@@ -44,7 +46,11 @@ function undoHistories() {
 }
 
 export function hiddenActions(): ShortcutAction[] {
-  return featureHidden('unscheduledLens', useSettingsStore.getState().simpleMode) ? ['viewUnscheduled'] : [];
+  const { simpleMode, kitchenEnabled } = useSettingsStore.getState();
+  const hidden: ShortcutAction[] = featureHidden('unscheduledLens', simpleMode) ? ['viewUnscheduled'] : [];
+  // The kitchen screens are gone from the menu bar and the side menu with it, so their chords are too.
+  if (!kitchenEnabled) hidden.push('goGroceries', 'goRecipes', 'goMealPlan', 'goPantry');
+  return hidden;
 }
 
 /** Whether a text field has focus, so a key that acts on a row should leave the field to it. */
@@ -101,6 +107,23 @@ export function runShortcut(shortcut: KeyShortcut): void {
       settings.setSidebarCollapsed(!settings.sidebarCollapsed);
       return;
     }
+    case 'goTasks':
+    case 'goProjects':
+    case 'goGroceries':
+    case 'goRecipes':
+    case 'goMealPlan':
+    case 'goPantry': {
+      const route = goRouteFor(shortcut.action);
+      if (route) navigateToTab(route);
+      return;
+    }
+    case 'textLarger':
+    case 'textSmaller': {
+      const { textSize, setTextSize } = useSettingsStore.getState();
+      setTextSize(stepTextSize(textSize, shortcut.action === 'textLarger' ? 1 : -1));
+      return;
+    }
+    case 'textReset': useSettingsStore.getState().setTextSize(DEFAULT_TEXT_SIZE); return;
     case 'showShortcuts': {
       // With a menu bar the menu's own chords (⌘, and ⌘1 to ⌘4) work too.
       const listed = isMenuBarAvailable() ? shortcutsWithMenuBar() : KEY_SHORTCUTS;
@@ -121,10 +144,15 @@ export function useKeyShortcuts(): void {
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
 
   useEffect(() => {
-    // Mirroring mode turns the whole list on. A Mac with it off keeps the chords a
+    // Mirroring mode turns the whole list on. `always` chords (the text size) stay on for any
+    // keyboard. A Mac with it off keeps the chords a
     // Mac window answers to whatever it says (⌘Z, Escape, ⌘Return), since turning it
     // off is how someone says no to the single keys, not to undo.
-    const wanted = mirroringMode ? KEY_SHORTCUTS : runningOnMac() ? KEY_SHORTCUTS.filter(s => s.onMac) : [];
+    const wanted = mirroringMode
+      ? KEY_SHORTCUTS
+      : runningOnMac()
+        ? KEY_SHORTCUTS.filter(s => s.onMac)
+        : KEY_SHORTCUTS.filter(s => s.always);
     if (wanted.length === 0) return;
     // With a menu bar, its items carry their own chords (⌘N, ⌘F, ⌘/), and a
     // chord with two handlers is one press run twice, so the sink leaves them

@@ -22,6 +22,7 @@
  */
 import { MENU_ROUTES, NAV_EXTRA_DESTINATIONS, menuLabelFor, type NavMenuRow } from './navHubs';
 import {
+  GO_SHORTCUTS,
   KEY_SHORTCUTS,
   MENU_SHORTCUTS,
   chordKey,
@@ -71,8 +72,18 @@ function shortcutItem(id: string, title: string, menu: MenuPlacement): MenuItemS
   return { id: `shortcut:${id}`, title, menu, submenu: '', input: shortcut.input, modifiers: [...shortcut.modifiers] };
 }
 
-function goItem(route: string, label: string, submenu = ''): MenuItemSpec {
-  return { id: `go:${route}`, title: menuTitleCase(label), menu: 'go', submenu, input: '', modifiers: [] };
+function goItem(route: string, label: string, submenu = '', hiddenActions: readonly ShortcutAction[] = []): MenuItemSpec {
+  // A screen with a chord of its own carries it; the item still reports `go:` and navigates the same way.
+  const go = GO_SHORTCUTS.find(g => g.route === route);
+  const chord = go && !hiddenActions.includes(go.action) ? shortcutById(go.shortcutId) : null;
+  return {
+    id: `go:${route}`,
+    title: menuTitleCase(label),
+    menu: 'go',
+    submenu,
+    input: chord?.input ?? '',
+    modifiers: chord ? [...chord.modifiers] : [],
+  };
 }
 
 const VIEW_ITEMS: readonly { id: string; title: string; action: ShortcutAction }[] = [
@@ -98,13 +109,18 @@ export function buildMenuItems(rows: readonly NavMenuRow[], hiddenActions: reado
     items.push(shortcutItem(view.id, view.title, 'view'));
   }
   items.push(shortcutItem('menuToggleSidebar', 'Toggle Sidebar', 'view'));
+  items.push(
+    shortcutItem('textLarger', 'Increase Text Size', 'view'),
+    shortcutItem('textSmaller', 'Decrease Text Size', 'view'),
+    shortcutItem('textReset', 'Default Text Size', 'view'),
+  );
   for (const row of rows) {
     if (row.kind === 'screen') {
-      items.push(goItem(row.destination.route, row.destination.label));
+      items.push(goItem(row.destination.route, row.destination.label, '', hiddenActions));
       continue;
     }
     const submenu = menuTitleCase(row.hub.label);
-    for (const member of row.hub.members) items.push(goItem(member.route, member.label, submenu));
+    for (const member of row.hub.members) items.push(goItem(member.route, member.label, submenu, hiddenActions));
   }
   items.push(shortcutItem('showShortcuts', 'Keyboard Shortcuts', 'help'));
   return items;

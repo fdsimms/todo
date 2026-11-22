@@ -44,6 +44,15 @@ export type ShortcutAction =
   | 'viewInbox'
   | 'showShortcuts'
   | 'openSettings'
+  | 'goTasks'
+  | 'goProjects'
+  | 'goGroceries'
+  | 'goRecipes'
+  | 'goMealPlan'
+  | 'goPantry'
+  | 'textLarger'
+  | 'textSmaller'
+  | 'textReset'
   | 'toggleSidebar';
 
 export interface KeyShortcut {
@@ -64,6 +73,11 @@ export interface KeyShortcut {
    * answer to whatever that setting says.
    */
   onMac?: boolean;
+  /**
+   * Stays on for any hardware keyboard, an iPad's included, whatever mirroring mode says.
+   * For a chord that changes the app itself rather than driving its list: the text size.
+   */
+  always?: boolean;
 }
 
 export const KEY_SHORTCUTS: readonly KeyShortcut[] = [
@@ -71,6 +85,8 @@ export const KEY_SHORTCUTS: readonly KeyShortcut[] = [
   { id: 'newTaskCommand', action: 'newTask', input: 'n', modifiers: ['command'], screenOnly: true },
   { id: 'search', action: 'search', input: '/', modifiers: [], screenOnly: true },
   { id: 'searchCommand', action: 'search', input: 'f', modifiers: ['command'], screenOnly: true },
+  // ⌘T is the habit from browsers and editors, where it opens something new; here it opens search.
+  { id: 'searchCommandT', action: 'search', input: 't', modifiers: ['command'], screenOnly: true, onMac: true },
   { id: 'undo', action: 'undo', input: 'z', modifiers: ['command'], screenOnly: false, onMac: true },
   { id: 'redo', action: 'redo', input: 'z', modifiers: ['command', 'shift'], screenOnly: false, onMac: true },
   { id: 'closeSheet', action: 'closeSheet', input: 'escape', modifiers: [], screenOnly: false, onMac: true },
@@ -89,6 +105,15 @@ export const KEY_SHORTCUTS: readonly KeyShortcut[] = [
   { id: 'viewUnscheduled', action: 'viewUnscheduled', input: '3', modifiers: [], screenOnly: true },
   { id: 'viewInbox', action: 'viewInbox', input: '4', modifiers: [], screenOnly: true },
   { id: 'showShortcuts', action: 'showShortcuts', input: '/', modifiers: ['command'], screenOnly: false, onMac: true },
+  // ⌘[ is "back" on a Mac. It does what Escape does: closes the sheet on top, or steps back out of a page.
+  { id: 'backCommand', action: 'closeSheet', input: '[', modifiers: ['command'], screenOnly: false, onMac: true },
+  // The app's own text size (`textSize.ts`), which a Mac has no system setting for. ⌘+ is the one the
+  // menu carries; ⌘= is the same key without Shift, which is how most keyboards type it, so the sink
+  // keeps it. Neither belongs to a screen: the size applies to whatever is open, sheets included.
+  { id: 'textLarger', action: 'textLarger', input: '+', modifiers: ['command'], screenOnly: false, onMac: true, always: true },
+  { id: 'textLargerEquals', action: 'textLarger', input: '=', modifiers: ['command'], screenOnly: false, onMac: true, always: true },
+  { id: 'textSmaller', action: 'textSmaller', input: '-', modifiers: ['command'], screenOnly: false, onMac: true, always: true },
+  { id: 'textReset', action: 'textReset', input: '0', modifiers: ['command'], screenOnly: false, onMac: true, always: true },
 ];
 
 /**
@@ -103,9 +128,33 @@ export const MENU_SHORTCUTS: readonly KeyShortcut[] = [
   { id: 'menuViewLater', action: 'viewLater', input: '2', modifiers: ['command'], screenOnly: true },
   { id: 'menuViewUnscheduled', action: 'viewUnscheduled', input: '3', modifiers: ['command'], screenOnly: true },
   { id: 'menuViewInbox', action: 'viewInbox', input: '4', modifiers: ['command'], screenOnly: true },
+  // The Go menu's screens people jump between most. ⌥⌘ plus a digit, since ⌘1 to ⌘4 are the Today views,
+  // and fixed to the screen rather than to its position in the side menu, so ⌥⌘3 stays Recipes
+  // whatever else the app has switched off.
+  { id: 'menuGoTasks', action: 'goTasks', input: '1', modifiers: ['option', 'command'], screenOnly: true },
+  { id: 'menuGoProjects', action: 'goProjects', input: '2', modifiers: ['option', 'command'], screenOnly: true },
+  { id: 'menuGoGroceries', action: 'goGroceries', input: '3', modifiers: ['option', 'command'], screenOnly: true },
+  { id: 'menuGoRecipes', action: 'goRecipes', input: '4', modifiers: ['option', 'command'], screenOnly: true },
+  { id: 'menuGoMealPlan', action: 'goMealPlan', input: '5', modifiers: ['option', 'command'], screenOnly: true },
+  { id: 'menuGoPantry', action: 'goPantry', input: '6', modifiers: ['option', 'command'], screenOnly: true },
   // A Mac app's own chord for its sidebar. Not screen-only: folding the menu while a sheet is up harms nothing.
   { id: 'menuToggleSidebar', action: 'toggleSidebar', input: 's', modifiers: ['control', 'command'], screenOnly: false },
 ];
+
+/** The route each Go chord opens, and the shortcut that opens it. */
+export const GO_SHORTCUTS: readonly { route: string; shortcutId: string; action: ShortcutAction }[] = [
+  { route: 'Today', shortcutId: 'menuGoTasks', action: 'goTasks' },
+  { route: 'Projects', shortcutId: 'menuGoProjects', action: 'goProjects' },
+  { route: 'Groceries', shortcutId: 'menuGoGroceries', action: 'goGroceries' },
+  { route: 'Recipes', shortcutId: 'menuGoRecipes', action: 'goRecipes' },
+  { route: 'MealPlan', shortcutId: 'menuGoMealPlan', action: 'goMealPlan' },
+  { route: 'Kitchen', shortcutId: 'menuGoPantry', action: 'goPantry' },
+];
+
+/** The screen a Go action opens, or null for any other action. */
+export function goRouteFor(action: ShortcutAction): string | null {
+  return GO_SHORTCUTS.find(g => g.action === action)?.route ?? null;
+}
 
 /** The shortcut an id names, menu-only ones included, or null for one this build doesn't know. */
 export function shortcutById(id: string): KeyShortcut | null {
@@ -162,6 +211,15 @@ const ACTION_LABELS: Record<ShortcutAction, string> = {
   viewInbox: 'Inbox',
   showShortcuts: 'Show this list',
   openSettings: 'Settings',
+  goTasks: 'Go to Tasks',
+  goProjects: 'Go to Projects',
+  goGroceries: 'Go to Groceries',
+  goRecipes: 'Go to Recipes',
+  goMealPlan: 'Go to Meal plan',
+  goPantry: 'Go to Pantry',
+  textLarger: 'Larger text',
+  textSmaller: 'Smaller text',
+  textReset: 'Default text size',
   toggleSidebar: 'Collapse or expand the sidebar',
 };
 

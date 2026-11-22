@@ -59,6 +59,7 @@ import {
   clampProduceNudgeGoal,
 } from '../utils/produceNudgeTasks';
 import { DEFAULT_PRODUCE_FLOOR, clampProduceFloor } from '../utils/produceFloorTasks';
+import { DEFAULT_TEXT_SIZE, parseTextSize } from '../utils/textSize';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, SpeedBumpRule, BlockOfferRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
@@ -379,6 +380,11 @@ interface SettingsStore {
   quietHoursStart: string | null; // "HH:MM"
   quietHoursEnd: string | null;   // "HH:MM"
   themeMode: ThemeMode;
+  /**
+   * The app's own text size, a multiplier over the system's (`textSize.ts`). Device-local: a size
+   * picked for a Mac window is wrong on a phone.
+   */
+  textSize: number;
   appFont: AppFont; // typeface for the whole app — see src/theme/fonts.ts
   // Pick a new appFont from appFontPool at random every cold start, instead of
   // keeping whatever was last selected. See pickRandomAppFont in
@@ -2380,6 +2386,7 @@ interface SettingsStore {
   /** Set both at once, or (null, null) to turn quiet hours off. */
   setQuietHours: (start: string | null, end: string | null) => void;
   setThemeMode: (mode: ThemeMode) => void;
+  setTextSize: (size: number) => void;
   setAppFont: (fontId: AppFont) => void;
   setAppFontRandomize: (on: boolean) => void;
   setAppFontPool: (pool: AppFont[]) => void;
@@ -2836,6 +2843,7 @@ const DEFAULT_SETTINGS = {
   activeHoursStart: '08:00',
   activeHoursEnd: '22:00',
   themeMode: 'dark' as ThemeMode,
+  textSize: DEFAULT_TEXT_SIZE,
   appFont: DEFAULT_APP_FONT,
   appFontRandomize: false,
   use24HourTime: false,
@@ -3270,6 +3278,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   quietHoursStart: null,
   quietHoursEnd: null,
   themeMode: 'dark',
+  textSize: DEFAULT_TEXT_SIZE,
   appFont: DEFAULT_APP_FONT,
   appFontRandomize: false,
   appFontPool: [],
@@ -3667,6 +3676,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const quietHoursStart = dbGetSetting('quietHoursStart') || null;
     const quietHoursEnd = dbGetSetting('quietHoursEnd') || null;
     const themeMode = (dbGetSetting('themeMode') as ThemeMode | null) ?? 'dark';
+    const textSize = parseTextSize(dbGetSetting('textSize'));
     const storedFont = dbGetSetting('appFont');
     const appFontRandomize = dbGetSetting('appFontRandomize') === 'true';
     const appFontPool = parseAppFontPool(dbGetSetting('appFontPool'));
@@ -4712,6 +4722,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       supplyReorderTaskCategory,
       supplyReorderTasks,
       tabRoutes,
+      textSize,
       themeMode,
       timerLiveActivity,
       tipsEnabled,
@@ -4870,6 +4881,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setThemeMode(mode: ThemeMode) {
     dbSetSetting('themeMode', mode);
     set({ themeMode: mode });
+  },
+
+  setTextSize(size: number) {
+    const next = parseTextSize(size);
+    dbSetSetting('textSize', String(next));
+    set({ textSize: next });
   },
 
   setAppFont(fontId: AppFont) {

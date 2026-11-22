@@ -306,7 +306,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/keyActions.ts` — registerEscapeHandler, runEscape, registerCommit, runCommit, ScreenKey, ScreenKeyHandlers, registerScreenKeys, runScreenKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
-- `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, MENU_SHORTCUTS, shortcutById, chordKey, shortcutKeys, describeShortcuts
+- `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, MENU_SHORTCUTS, GO_SHORTCUTS, goRouteFor, shortcutById, chordKey, shortcutKeys, +1 more
 - `src/utils/keyboardDone.ts` — DONE_ACCESSORY_ID, DoneBarKind, doneBarKind, setFloatingDoneFocus, floatingDoneWanted, subscribeFloatingDone, resetFloatingDone
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, PORTION_LABEL, KitchenEntry, KitchenSection, +5 more
@@ -699,6 +699,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/textScale.ts` — clampTextScale, scaledTextBox
 - `src/utils/textSelection.ts` — TextSelection, clampSelection, caretAtEnd, spliceAtSelection
 - `src/utils/textSimilar.ts` — MIN_SIMILAR_LENGTH, withinOneEdit, isSingleTransposition
+- `src/utils/textSize.ts` — TextSizeStep, TEXT_SIZE_STEPS, DEFAULT_TEXT_SIZE, parseTextSize, stepTextSize, sizeForCap, scaleTextStyle
 - `src/utils/timeBlock.ts` — TimeBlockFields, TimeBlockContext, canTimeBlock, proposeTimeBlockStart, timeBlockFieldsFor, timeBlockUpdateFor
 - `src/utils/timer.ts` — TimerState, isTimedTask, isTimerRunning, timerElapsed, timerRemaining, timerProgress, isTimerReady
 - `src/utils/timerSegments.ts` — TimerSegment, SegmentPhase, SegmentSource, segmentMinutesOf, timerSegments, apportionedMinutes, activeSegmentIndex, activeSegment, segmentPhase, segmentRemaining
