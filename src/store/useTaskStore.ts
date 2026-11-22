@@ -9330,6 +9330,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             kind: 'moodLog',
             sourceId,
             wanted: true,
+            // A finished check-in for this slot blocks a second one. The mood
+            // log is off iCloud, so another device can't see that it was
+            // answered, but the completed row syncs and says so.
+            blocksOnFinished: true,
             // The title never varies, so nothing to chase.
             drift: () => null,
             draft: () => ({
@@ -9433,6 +9437,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         kind: generatedKind,
         sourceId,
         wanted: true,
+        // Same as the mood check-in: the entries stay off iCloud, the
+        // completed row is what another device can see.
+        blocksOnFinished: true,
         drift: () => null,
         draft: () => ({
           title,

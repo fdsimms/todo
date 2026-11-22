@@ -8072,6 +8072,22 @@ describe('checkMoodTasks', () => {
       });
     });
 
+    it('writes nothing when another device already finished today\'s check-in', () => {
+      // The mood log stays off iCloud, so this device has no entry, but the
+      // finished row synced over. Its day mark is device-local and still unset.
+      useTaskStore.getState().checkMoodTasks();
+      const [first] = tasksOfKind('moodLog');
+      useTaskStore.setState({
+        tasks: useTaskStore.getState().tasks.map(t => (t.id === first.id ? { ...t, completed: true } : t)),
+      });
+      useSettingsStore.getState.mockReturnValue(settings());
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+      expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'moodLog')).toHaveLength(1);
+    });
+
     it('writes nothing when the day has already been logged', () => {
       setLogs([entry(TODAY, 4)]);
 
@@ -8387,6 +8403,21 @@ describe('checkJournalTasks', () => {
     expect(task.category).toBe('Personal');
     expect(task.linkUrl).toBe('dundundun://journal?log=1');
     expect(task.timeSegments).toEqual([]);
+  });
+
+  it('writes nothing when another device already finished today\'s reminder', () => {
+    // Entries stay off iCloud, so this device has none, but the finished row synced over.
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
+    useTaskStore.getState().checkJournalTasks();
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+    useTaskStore.setState({ tasks: useTaskStore.getState().tasks.map(t => ({ ...t, completed: true })) });
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
+
+    useTaskStore.getState().checkJournalTasks();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+    expect(tasksOfKind('journalLog')).toHaveLength(0);
+    expect(tasksOfKind('dreamLog')).toHaveLength(0);
   });
 
   it('writes nothing when today already has a journal entry, and a dream does not count', () => {
