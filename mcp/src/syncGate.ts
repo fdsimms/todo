@@ -25,8 +25,12 @@ export interface SyncGate {
   /**
    * After a write: queue a run behind any in flight. Joining that run instead
    * would miss the write, since it read the database before the write existed.
+   * Waits at most `writeWaitMs`. Resolves true when the push finished in time,
+   * false when it is still running: the write is already in the replica either
+   * way, and the push carries on, so the caller answers instead of holding the
+   * request open until a client gives up on it.
    */
-  afterWrite(): Promise<void>;
+  afterWrite(): Promise<boolean>;
 }
 
 /**
@@ -37,13 +41,22 @@ export interface SyncGate {
  */
 export const READ_WAIT_MS = 20_000;
 
+/**
+ * How long a write waits for its push before answering. Under the 30s a
+ * connector allows for a whole call, which the sync before the write (up to
+ * READ_WAIT_MS) and a preview can already have spent some of.
+ */
+export const WRITE_WAIT_MS = 10_000;
+
 export function createSyncGate(
   sync: () => Promise<unknown>,
   throttleMs: number,
   now: () => number = Date.now,
   onError: (e: unknown) => void = () => {},
   readWaitMs: number = READ_WAIT_MS,
-  onSlow: () => void = () => {}
+  onSlow: () => void = () => {},
+  writeWaitMs: number = WRITE_WAIT_MS,
+  onSlowPush: () => void = () => {}
 ): SyncGate {
   let lastStartedAt: number | null = null;
   let inFlight: Promise<void> | null = null;
@@ -84,6 +97,20 @@ export function createSyncGate(
       if (lastStartedAt !== null && now() - lastStartedAt <= throttleMs) return Promise.resolve();
       return atMost(queue());
     },
-    afterWrite: queue,
+    async afterWrite() {
+      const run = queue();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const gaveUp = new Promise<false>(resolve => {
+        timer = setTimeout(() => {
+          onSlowPush();
+          resolve(false);
+        }, writeWaitMs);
+      });
+      try {
+        return await Promise.race([run.then(() => true as const), gaveUp]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
   };
 }
