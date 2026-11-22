@@ -290,4 +290,4 @@ and the app's stay under the text's own cap together (`sizeForCap`): a badge sta
 `fixed` text does not move. At the default step it costs a `Text` nothing. `useTextScale` multiplies
 the app's size in, so a column or pinned row that scales with text follows it. A `Text` with no
 `fontSize` of its own is not scaled (a nested one inherits its parent's). ⌘+, ⌘=, ⌘- and ⌘0 step it
-(`textLarger`, `textSmaller`, `textReset` in `keyShortcuts.ts`). None of it has run on a Mac or iPad.
+(`textLarger`, `textSmaller`, `textReset` in `keyShortcuts.ts`). They are `always` chords, on for any hardware keyboard whatever mirroring mode says, so an iPad with no menu bar has them through the key sink. None of it has run on a Mac or iPad.

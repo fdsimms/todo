@@ -51,6 +51,12 @@ describe('KEY_SHORTCUTS', () => {
     expect(chord('textReset')).toEqual(['⌘0']);
   });
 
+  it('keeps the text size chords on for any keyboard, and nothing else', () => {
+    const always = KEY_SHORTCUTS.filter(s => s.always);
+    expect(always.map(s => s.action).sort()).toEqual(['textLarger', 'textLarger', 'textReset', 'textSmaller']);
+    for (const s of always) expect(s.modifiers).toContain('command');
+  });
+
   it('keeps the chords a Mac window is expected to answer to on whatever mirroring mode says', () => {
     const onMac = KEY_SHORTCUTS.filter(s => s.onMac).map(s => s.action);
     expect(onMac).toEqual(expect.arrayContaining(['undo', 'redo', 'closeSheet', 'commit']));

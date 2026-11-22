@@ -124,10 +124,15 @@ export function useKeyShortcuts(): void {
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
 
   useEffect(() => {
-    // Mirroring mode turns the whole list on. A Mac with it off keeps the chords a
+    // Mirroring mode turns the whole list on. `always` chords (the text size) stay on for any
+    // keyboard. A Mac with it off keeps the chords a
     // Mac window answers to whatever it says (⌘Z, Escape, ⌘Return), since turning it
     // off is how someone says no to the single keys, not to undo.
-    const wanted = mirroringMode ? KEY_SHORTCUTS : runningOnMac() ? KEY_SHORTCUTS.filter(s => s.onMac) : [];
+    const wanted = mirroringMode
+      ? KEY_SHORTCUTS
+      : runningOnMac()
+        ? KEY_SHORTCUTS.filter(s => s.onMac)
+        : KEY_SHORTCUTS.filter(s => s.always);
     if (wanted.length === 0) return;
     // With a menu bar, its items carry their own chords (⌘N, ⌘F, ⌘/), and a
     // chord with two handlers is one press run twice, so the sink leaves them
