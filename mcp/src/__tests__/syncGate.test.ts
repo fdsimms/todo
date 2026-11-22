@@ -151,3 +151,22 @@ describe('afterWrite', () => {
     expect(sync).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('afterWrite bound', () => {
+  it('resolves true when the push finishes in time', async () => {
+    const sync = jest.fn(async () => {});
+    expect(await createSyncGate(sync, 10_000, () => 0, undefined, 20_000, undefined, 50).afterWrite()).toBe(true);
+  });
+
+  // The bug: a push that never finished held the write's reply open until the
+  // client dropped the connection, which read as a failed write.
+  it('resolves false while the push is still running, and the run carries on', async () => {
+    const s = controllableSync();
+    const slow = jest.fn();
+    const gate = createSyncGate(s.sync, 10_000, () => 0, undefined, 20_000, undefined, 20, slow);
+    expect(await gate.afterWrite()).toBe(false);
+    expect(slow).toHaveBeenCalledTimes(1);
+    expect(s.sync).toHaveBeenCalledTimes(1);
+    await s.finishNext();
+  });
+});
