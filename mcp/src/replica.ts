@@ -3652,6 +3652,32 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const notesModule = () => require('../../src/utils/agentNotes') as typeof import('../../src/utils/agentNotes');
 
   const tasks = (): Task[] => (taskCache ??= db.dbGetAllTasks());
+
+  /**
+   * Put the cached task list back after a write that touched only the named
+   * rows, with those rows read again from the database.
+   *
+   * `refresh()` empties the cache, and the next reader then rebuilds it from
+   * every row. In a batch edit that is one full reload per row (about 2.8s each
+   * at 5,500 tasks, so 54 rows ran past the client's 60s limit); this makes it
+   * one per request. Left empty instead when a named row is gone or its place in
+   * the list moved (`sortOrder`, `createdAt`), since a patched copy would then
+   * be in a different order than a reload.
+   */
+  const keepTasksAfterWrite = (before: readonly Task[], ids: readonly string[]): void => {
+    const wanted = [...new Set(ids)];
+    const fresh = db.dbGetTasksByIds(wanted);
+    if (fresh.length !== wanted.length) return;
+    const byId = new Map(fresh.map(t => [t.id, t]));
+    let moved = false;
+    const next = before.map(t => {
+      const row = byId.get(t.id);
+      if (!row) return t;
+      if (row.sortOrder !== t.sortOrder || row.createdAt !== t.createdAt) moved = true;
+      return row;
+    });
+    if (!moved) taskCache = next;
+  };
   // The reward store reads a wish list goal's item through this, as the app's task store does.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   (require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore')).registerGoalSourceLookup(id => tasks().find(t => t.id === id));
@@ -8265,6 +8291,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         }
       }
       refresh();
+      keepTasksAfterWrite(all, [updated.id, ...siblings.map(s => s.id), ...(followUpRule ? [followUpRule.after.id] : [])]);
       return { task: updated, alsoUpdated: siblings.length, ...(followUpRule ? { followUpRule } : {}) };
     },
 

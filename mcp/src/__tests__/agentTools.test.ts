@@ -8,6 +8,7 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { batchUpdateTasks, planDay, quickAdd, rebalanceWeek } from '../agentTools';
+import { setTaskDates } from '../taskTools';
 
 let mockRaw: ShimDatabase;
 
@@ -94,6 +95,57 @@ describe('batchUpdateTasks', () => {
       ],
     });
     expect(result.rows[1].problem).toMatch(/twice/);
+  });
+
+  // A write empties the replica's task cache, and the next read rebuilds it from
+  // every row. A batch used to hit that once per row: at 5,500 tasks, 54 edits
+  // took 156s and ran past the client's 60s limit.
+  describe('reading the task table', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = () => require('../../../src/db/database') as typeof import('../../../src/db/database');
+
+    it('does it at most once for a whole batch, not once per row', () => {
+      const rows = Array.from({ length: 12 }, (_, i) => replica.createTask({ title: `Task ${i}` }));
+      replica.tasks();
+      const loads = jest.spyOn(db(), 'dbGetAllTasks');
+      try {
+        const done = batchUpdateTasks(replica, {
+          apply: true,
+          changes: rows.map(r => ({ id: r.id, action: 'update' as const, fields: { notes: 'priced' } })),
+        });
+        expect(done.applied).toBe(true);
+        expect(loads.mock.calls.length).toBeLessThanOrEqual(1);
+      } finally {
+        loads.mockRestore();
+      }
+    });
+
+    it('leaves the cached list exactly as a fresh read would, in the same order', () => {
+      const a = replica.createTask({ title: 'A' });
+      const b = replica.createTask({ title: 'B' });
+      replica.createTask({ title: 'C' });
+      replica.tasks();
+      batchUpdateTasks(replica, {
+        apply: true,
+        changes: [
+          { id: b.id, action: 'update', fields: { notes: 'second', tags: ['x'] } },
+          { id: a.id, action: 'update', fields: { priority: 3, notes: 'first' } },
+        ],
+      });
+      expect(replica.tasks()).toEqual(db().dbGetAllTasks());
+      expect(replica.taskById(b.id)!.notes).toBe('second');
+      expect(replica.taskById(a.id)!.priority).toBe(3);
+    });
+
+    it('keeps the later dates of a series in step when one edit fans out to them', () => {
+      const made = replica.createTask({ title: 'Walk the dog' });
+      setTaskDates(replica, made.id, ['2099-01-10', '2099-01-15', '2099-01-20']);
+      replica.tasks();
+      const first = replica.tasks().filter(t => t.seriesId).sort((x, y) => (x.dueDate! < y.dueDate! ? -1 : 1))[0];
+      batchUpdateTasks(replica, { apply: true, changes: [{ id: first.id, action: 'update', fields: { notes: 'bring a bag' } }] });
+      expect(replica.tasks()).toEqual(db().dbGetAllTasks());
+      expect(replica.tasks().filter(t => t.seriesId).every(t => t.notes === 'bring a bag')).toBe(true);
+    });
   });
 });
 
