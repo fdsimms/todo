@@ -189,7 +189,7 @@ client. What it can have is below, all of it in
 the native half was written against Apple's declarations and can only be checked by a build.
 
 - **The menu bar** (`TodoMenuBar.swift`, `useMenuBar`). File › New Task ⌘N, Edit › Search… ⌘F,
-  View › Today, Later, Unscheduled and Inbox (⌘1 to ⌘4), a Go menu that is the side menu with hubs
+  View › Today, Later, Unscheduled and Inbox (⌘1 to ⌘4), then Increase, Decrease and Default Text Size (⌘+, ⌘-, ⌘0; the sink also answers ⌘=, the same key without Shift), a Go menu that is the side menu with hubs
   as submenus, Settings… ⌘, in the app menu and Help › Keyboard Shortcuts ⌘/. It uses
   `UIMainMenuSystem` (iOS 26), set once at launch from an app delegate subscriber because Apple
   asks for exactly that; later changes only rebuild. It exists on a Mac and on an iPad, never a
@@ -278,3 +278,16 @@ the native half was written against Apple's declarations and can only be checked
 Not available on a Mac: HealthKit, Screen Time,
 widgets, the Watch app, Live Activities and NFC. The logic layer already guards each behind a
 `Platform.OS` or lazy-require check, but nothing has exercised all of them absent at once on a Mac.
+
+## Text size (the app's own)
+
+A Mac has no system text size to follow, so the app carries one: `useSettingsStore.textSize`, one of
+four steps (`src/utils/textSize.ts`, Settings › Appearance › Text size), device-local (absent from
+`SYNCED_SETTING_KEYS`, since a size picked for a monitor is wrong on a phone). It is applied in the
+`Text`/`TextInput` wrapper in `AppFont.tsx` (`withAppTextSize`), which scales `fontSize` and
+`lineHeight` and folds the app's size into each text's `maxFontSizeMultiplier` so the system's size
+and the app's stay under the text's own cap together (`sizeForCap`): a badge stays at its cap and a
+`fixed` text does not move. At the default step it costs a `Text` nothing. `useTextScale` multiplies
+the app's size in, so a column or pinned row that scales with text follows it. A `Text` with no
+`fontSize` of its own is not scaled (a nested one inherits its parent's). ⌘+, ⌘=, ⌘- and ⌘0 step it
+(`textLarger`, `textSmaller`, `textReset` in `keyShortcuts.ts`). None of it has run on a Mac or iPad.

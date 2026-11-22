@@ -18,6 +18,7 @@ import { latestRedoHistory, latestUndoHistory } from '../utils/undoHistory';
 import { anySheetOpen } from '../utils/sheetModal';
 import { runCommit, runEscape, runScreenKey, type ScreenKey } from '../utils/keyActions';
 import { runningOnMac } from '../utils/runningOnMac';
+import { stepTextSize, DEFAULT_TEXT_SIZE } from '../utils/textSize';
 import { haptics } from '../utils/haptics';
 import { featureHidden } from '../utils/simpleMode';
 import {
@@ -96,6 +97,13 @@ export function runShortcut(shortcut: KeyShortcut): void {
     case 'viewUnscheduled': showTodayViewModeFromKeyboard('unscheduled'); return;
     case 'viewInbox': showTodayViewModeFromKeyboard('inbox'); return;
     case 'openSettings': openSettingsFromKeyboard(); return;
+    case 'textLarger':
+    case 'textSmaller': {
+      const { textSize, setTextSize } = useSettingsStore.getState();
+      setTextSize(stepTextSize(textSize, shortcut.action === 'textLarger' ? 1 : -1));
+      return;
+    }
+    case 'textReset': useSettingsStore.getState().setTextSize(DEFAULT_TEXT_SIZE); return;
     case 'showShortcuts': {
       // With a menu bar the menu's own chords (⌘, and ⌘1 to ⌘4) work too.
       const listed = isMenuBarAvailable() ? shortcutsWithMenuBar() : KEY_SHORTCUTS;

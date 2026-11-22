@@ -1624,6 +1624,28 @@ describe('shakeToUndoEnabled', () => {
   });
 });
 
+describe('textSize', () => {
+  it('defaults to 1, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().textSize).toBe(1);
+  });
+
+  it('reads a stored step and ignores a value that is not one', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'textSize' ? '1.3' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().textSize).toBe(1.3);
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'textSize' ? '7' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().textSize).toBe(1);
+  });
+
+  it('round-trips through setTextSize', () => {
+    useSettingsStore.getState().setTextSize(1.5);
+    expect(dbSetSetting).toHaveBeenCalledWith('textSize', '1.5');
+    expect(useSettingsStore.getState().textSize).toBe(1.5);
+  });
+});
+
 describe('mirroringMode', () => {
   // Off by default: it changes how rows and the UndoBar look, so an install
   // upgrading into it must see nothing new until someone turns it on.

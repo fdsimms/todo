@@ -12,6 +12,7 @@ import {
   requestCapture,
   subscribeFlagMode,
 } from '../utils/copyFlagMode';
+import { scaleTextStyle, sizeForCap } from '../utils/textSize';
 import { BRAND_FONT_ASSETS, FONT_ASSETS, PREVIEW_FONT_ASSETS } from './fontAssets';
 
 /**
@@ -24,6 +25,13 @@ import { BRAND_FONT_ASSETS, FONT_ASSETS, PREVIEW_FONT_ASSETS } from './fontAsset
  * font.
  */
 const AppFontContext = createContext<AppFont>('system');
+
+/**
+ * The app's own text size (`textSize.ts`), a context for the reason the font is:
+ * every `Text` has to re-render when it changes. 1 is the default and costs a
+ * `Text` nothing; any other value makes each one flatten its style once.
+ */
+const TextSizeContext = createContext<number>(1);
 
 /**
  * Faces registered with `Font.loadAsync` so far. Module scope, not state,
@@ -59,6 +67,28 @@ function withCopyFlagging(props: AppFontProps): AppFontProps {
       requestCapture(text);
     },
     style: isTextFlagged(text) ? [props.style, { textDecorationLine: 'underline' }] : props.style,
+  };
+}
+
+/**
+ * `props` drawn at the app's text size (`sizeForCap` has the arithmetic): its
+ * `fontSize` and `lineHeight` scaled, and the cap it already carries adjusted so
+ * the system's size and the app's stay under it together. A text that names no
+ * `fontSize` is left alone, since a nested `Text` inherits its parent's size and
+ * giving it one would break that; one with `allowFontScaling={false}` is a size
+ * somebody pinned on purpose.
+ */
+function withAppTextSize(props: AppFontProps, appTextSize: number): AppFontProps {
+  if (props.allowFontScaling === false) return props;
+  const flat = StyleSheet.flatten(props.style as TextStyle) ?? {};
+  if (typeof flat.fontSize !== 'number') return props;
+  const cap = typeof props.maxFontSizeMultiplier === 'number' ? props.maxFontSizeMultiplier : textScale.max;
+  const { fontSizeScale, maxFontSizeMultiplier } = sizeForCap(appTextSize, cap);
+  if (fontSizeScale === 1) return props;
+  return {
+    ...props,
+    maxFontSizeMultiplier,
+    style: [props.style, scaleTextStyle(flat, fontSizeScale)],
   };
 }
 
@@ -100,7 +130,9 @@ function applyFontPatch() {
       // The Dynamic Type cap (see textScale), set here so every Text and
       // TextInput in the app gets it, react-navigation's included. Ahead of the
       // spread, so a call site that names its own cap (a badge) keeps it.
-      const props: AppFontProps = { maxFontSizeMultiplier: textScale.max, ...incoming };
+      let props: AppFontProps = { maxFontSizeMultiplier: textScale.max, ...incoming };
+      const appTextSize = useContext(TextSizeContext);
+      if (appTextSize !== 1) props = withAppTextSize(props, appTextSize);
       // Nobody picked a font (or it hasn't loaded yet): pass straight through,
       // so the default costs no flatten and no extra style array per text node.
       if (fontId === 'system') return <Base {...props} />;
@@ -249,7 +281,13 @@ export function AppFontProvider({ children }: { children: React.ReactNode }) {
   // than rendering against a family that doesn't exist yet.
   const active = loadedFonts.has(appFont) ? appFont : 'system';
 
-  return <AppFontContext.Provider value={active}>{children}</AppFontContext.Provider>;
+  const textSize = useSettingsStore(s => s.textSize);
+
+  return (
+    <AppFontContext.Provider value={active}>
+      <TextSizeContext.Provider value={textSize}>{children}</TextSizeContext.Provider>
+    </AppFontContext.Provider>
+  );
 }
 
 /**

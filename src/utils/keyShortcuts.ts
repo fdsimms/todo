@@ -43,7 +43,10 @@ export type ShortcutAction =
   | 'viewUnscheduled'
   | 'viewInbox'
   | 'showShortcuts'
-  | 'openSettings';
+  | 'openSettings'
+  | 'textLarger'
+  | 'textSmaller'
+  | 'textReset';
 
 export interface KeyShortcut {
   /** Sent to native and back, so it must be unique. */
@@ -88,6 +91,13 @@ export const KEY_SHORTCUTS: readonly KeyShortcut[] = [
   { id: 'viewUnscheduled', action: 'viewUnscheduled', input: '3', modifiers: [], screenOnly: true },
   { id: 'viewInbox', action: 'viewInbox', input: '4', modifiers: [], screenOnly: true },
   { id: 'showShortcuts', action: 'showShortcuts', input: '/', modifiers: ['command'], screenOnly: false, onMac: true },
+  // The app's own text size (`textSize.ts`), which a Mac has no system setting for. ⌘+ is the one the
+  // menu carries; ⌘= is the same key without Shift, which is how most keyboards type it, so the sink
+  // keeps it. Neither belongs to a screen: the size applies to whatever is open, sheets included.
+  { id: 'textLarger', action: 'textLarger', input: '+', modifiers: ['command'], screenOnly: false, onMac: true },
+  { id: 'textLargerEquals', action: 'textLarger', input: '=', modifiers: ['command'], screenOnly: false, onMac: true },
+  { id: 'textSmaller', action: 'textSmaller', input: '-', modifiers: ['command'], screenOnly: false, onMac: true },
+  { id: 'textReset', action: 'textReset', input: '0', modifiers: ['command'], screenOnly: false, onMac: true },
 ];
 
 /**
@@ -159,6 +169,9 @@ const ACTION_LABELS: Record<ShortcutAction, string> = {
   viewInbox: 'Inbox',
   showShortcuts: 'Show this list',
   openSettings: 'Settings',
+  textLarger: 'Larger text',
+  textSmaller: 'Smaller text',
+  textReset: 'Default text size',
 };
 
 /**
