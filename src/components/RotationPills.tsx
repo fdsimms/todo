@@ -29,9 +29,9 @@ interface Props {
  * only its name and count, for the person who already knows what they did.
  *
  * **A member that is already done stays tappable**, for the reason the picker
- * gives: doing it twice is a real thing to record, and logging it again does
- * not re-count the week. It reads as done (a check, a quiet fill) rather than
- * as disabled.
+ * gives: doing it twice is a real thing to record, and logging it again
+ * counts toward the week's target like any other pick. It reads as done (a
+ * check, a quiet fill) rather than as disabled.
  *
  * **A member that names a workout starts it instead of logging**, and says so
  * with a play mark. Finishing the session logs the member (`workoutTaskEffect`),

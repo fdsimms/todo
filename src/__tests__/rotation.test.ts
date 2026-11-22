@@ -5,7 +5,6 @@ import {
   parseRotationItems,
   parseRotationLastDone,
   parseRotationLog,
-  rotationCoversNew,
   rotationDaysLeft,
   rotationDoneCount,
   rotationLastPick,
@@ -168,20 +167,22 @@ describe('activeRotationLog', () => {
 });
 
 describe('coverage', () => {
-  it('counts distinct members, so a repeat does not advance the week', () => {
+  it('counts a repeat toward the week, while the member itself stays covered once', () => {
     const task = loggedThisWeek([
       { itemId: 'es', at: MON.toISOString() },
       { itemId: 'es', at: WED.toISOString() },
     ], WED);
-    expect(rotationDoneCount(task, WED, 1)).toBe(1);
+    expect(rotationDoneCount(task, WED, 1)).toBe(2);
     expect(rotationRemaining(task, WED, 1).map(i => i.id)).toEqual(['fr', 'de', 'ja', 'pt']);
   });
 
-  it('rotationCoversNew is false for a repeat and for an unknown member', () => {
-    const task = loggedThisWeek([{ itemId: 'es', at: MON.toISOString() }], WED);
-    expect(rotationCoversNew(task, 'es', WED, 1)).toBe(false);
-    expect(rotationCoversNew(task, 'fr', WED, 1)).toBe(true);
-    expect(rotationCoversNew(task, 'nope', WED, 1)).toBe(false);
+  it('shows a repeat on the pill, even for a member done once a week', () => {
+    const task = loggedThisWeek([
+      { itemId: 'es', at: MON.toISOString() },
+      { itemId: 'es', at: WED.toISOString() },
+    ], WED);
+    const es = rotationPills(task, WED, 1)[0];
+    expect(es).toMatchObject({ done: true, over: true, progress: '2/1' });
   });
 
   it('keeps the set in the author\'s order rather than floating what is left', () => {
@@ -418,25 +419,18 @@ describe('per-member counts', () => {
     expect(rotationRemaining(task, WED, 1)).toEqual([]);
   });
 
-  it('counts a pick as progress only while the member is under its count', () => {
-    expect(rotationCoversNew(workouts(['run', 'run']), 'run', WED, 1)).toBe(true);
-    expect(rotationCoversNew(workouts(['run', 'run', 'run']), 'run', WED, 1)).toBe(false);
-    expect(rotationCoversNew(workouts([]), 'bike', WED, 1)).toBe(true);
-    expect(rotationCoversNew(workouts(['bike']), 'bike', WED, 1)).toBe(false);
-  });
-
-  it('does not let a fourth run count toward the week', () => {
+  it('lets a fourth run count toward the week', () => {
     const task = workouts(['run', 'run', 'run', 'run']);
-    expect(rotationDoneCount(task, WED, 1)).toBe(3);
-    expect(rotationUnitsLeft(task, WED, 1)).toBe(1);
+    expect(rotationDoneCount(task, WED, 1)).toBe(4);
+    expect(rotationUnitsLeft(task, WED, 1)).toBe(0);
   });
 
   it('reads the count after a pick off the ledger, so a drifted count cannot hide the closing pick', () => {
     // Run 3/3 and one bike ride: the set is covered whatever count the row stored.
     const task = workouts(['run', 'run', 'run']);
     expect(rotationCountAfterPick(task, 'bike', new Date(WED), WED, 1)).toBe(4);
-    // A repeat of a covered member adds nothing, and an unknown member is refused.
-    expect(rotationCountAfterPick(task, 'run', new Date(WED), WED, 1)).toBe(3);
+    // A repeat of a covered member counts too, and an unknown member is refused.
+    expect(rotationCountAfterPick(task, 'run', new Date(WED), WED, 1)).toBe(4);
     expect(rotationCountAfterPick(task, 'nope', new Date(WED), WED, 1)).toBeNull();
   });
 
@@ -451,7 +445,7 @@ describe('per-member counts', () => {
       { itemId: 'run', at: WED.toISOString() },
       { itemId: 'bike', at: WED.toISOString() },
       { itemId: 'bike', at: SAT.toISOString() },
-    ])).toEqual({ covered: 3, total: 4 });
+    ])).toEqual({ covered: 4, total: 4 });
   });
 });
 

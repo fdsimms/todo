@@ -53,10 +53,10 @@ interface Props {
  *   whose whole point is coverage would move the meter while leaving every
  *   member outstanding, which is a week that reads as done and isn't.
  * - **A member already down this period is still tappable.** It sits under its
- *   own heading, dimmed and ticked, and picking it logs the listen without
- *   re-counting the week (see `rotationCoversNew`). Listening to Spanish twice
- *   is a real thing to do, and a picker that refuses to record it is the app
- *   arguing with you about what you did.
+ *   own heading, dimmed and ticked, and picking it logs the listen and counts
+ *   it toward the week's target (`rotationDoneCount` counts every pick).
+ *   Listening to Spanish twice is a real thing to do, and a picker that refuses
+ *   to record it is the app arguing with you about what you did.
  * - **The secondary line says when, and stops.** No "you keep skipping this",
  *   no ordering by neglect — the set stays in the user's own order. That line
  *   is `docs/arch/people.md`'s and `docs/arch/mood-log.md`'s, and a feature
