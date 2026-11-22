@@ -467,14 +467,31 @@ function StatusChip({
  * whole width.
  */
 function FieldInput({
-  styles, label, style, ...input
+  styles, label, style, onLowercase, ...input
 }: {
   styles: ReturnType<typeof makeStyles>;
   label: string;
+  /** Shows a "lowercase" pill beside the label; called with the lowercased text. */
+  onLowercase?: (text: string) => void;
 } & React.ComponentProps<typeof TextField>) {
+  const text = typeof input.value === 'string' ? input.value : '';
+  const lowered = text.toLowerCase();
   return (
     <View>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.fieldLabelRow}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {!!onLowercase && input.editable !== false && (
+          <InlineAction
+            label="lowercase"
+            variant="neutral"
+            disabled={lowered === text}
+            onPress={() => onLowercase(lowered)}
+            haptic
+            accessibilityLabel={`Make ${label.toLowerCase()} lowercase`}
+            style={styles.confirmPill}
+          />
+        )}
+      </View>
       <TextField
         style={[styles.fieldInput, style]}
         // Shelf words, not prose: see the name field below.
@@ -1302,6 +1319,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     // leaving a checked row with nothing in it.
                     included: text.trim().length > 0,
                   });
+                const onVariantChange = (text: string) =>
+                  patchRow(row.key, { variantEdit: text.slice(0, GROCERY_VARIANT_MAX_LENGTH) });
+                const onBrandChange = (text: string) =>
+                  patchRow(row.key, { brandEdit: text.slice(0, GROCERY_BRAND_MAX_LENGTH) });
                 // Existing things that resemble what is typed, to tap instead of
                 // typing the rest. Not for a row already resolved: that one is known.
                 const nameKey = groceryNameKey(shownName);
@@ -1457,6 +1478,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           placeholder="e.g. Edamame"
                           placeholderTextColor={colors.textTertiary}
                           onChangeText={onItemChange}
+                          onLowercase={onItemChange}
                           editable={nameable}
                           selectTextOnFocus
                         />
@@ -1501,7 +1523,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         value={shownVariant}
                         placeholder="e.g. Chili lime"
                         placeholderTextColor={colors.textTertiary}
-                        onChangeText={text => patchRow(row.key, { variantEdit: text.slice(0, GROCERY_VARIANT_MAX_LENGTH) })}
+                        onChangeText={onVariantChange}
+                        onLowercase={onVariantChange}
                         editable={nameable}
                       />
                       {nutritionBlock}
@@ -1511,7 +1534,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         value={shownBrand}
                         placeholder="e.g. Biena"
                         placeholderTextColor={colors.textTertiary}
-                        onChangeText={text => patchRow(row.key, { brandEdit: text.slice(0, GROCERY_BRAND_MAX_LENGTH) })}
+                        onChangeText={onBrandChange}
+                        onLowercase={onBrandChange}
                         editable={nameable}
                       />
 
@@ -1772,6 +1796,11 @@ function makeStyles(colors: Colors) {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
+    },
+    fieldLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       marginBottom: spacing.sm,
     },
     swapRow: { alignItems: 'center' },
