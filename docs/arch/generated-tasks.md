@@ -25,6 +25,7 @@ The invariants a change in this area most often breaks, one line each, with the 
 the section below that argues it (§). Read that section before deviating from one. The rest of the
 file is reference to read narrowly: `grep -n '^## ' docs/arch/generated-tasks.md` is its table of contents.
 
+- **A generator whose "wanted" input or day mark is device-local passes `blocksOnFinished`, or names what stands in for it.** The mood and journal entries stay off iCloud and the calendar, Health and WaniKani/Franki reads are per device, so a second device that has synced a finished row sees nothing and writes its own. A cadence reads the newest synced row with `latestOfferedDayKey`. Enforced by `src/__tests__/generatedBlocksOnFinished.test.ts`, whose list holds the reason for each kind without it.
 - **A new generator is a rules module, a registry entry and a firing, never a `Task` column or a reconcile of its own.** `GENERATED_KINDS` and `GENERATED_KIND_SPECS` in `src/utils/generatedTasks.ts`, fired from `src/utils/maintenancePasses.ts`. (§ The shared mechanism)
 - **Every generator's switch and rule list is on `SYNCED_SETTING_KEYS`**, so a second phone and the MCP server see the same automations. Enforced by `src/__tests__/generatedSync.test.ts`. (§ The shared mechanism)
 - **A read of `generatedSourceId` that means one kind goes through `generatedSourceOf(task, kind)`**, because two generators can hand out the same source id. (§ The shared mechanism)
