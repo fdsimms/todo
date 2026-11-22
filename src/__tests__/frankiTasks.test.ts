@@ -1,4 +1,14 @@
 import {
+  frankiCramCheckOffTitle,
+  frankiCramDoneSourceId,
+  frankiCramPlan,
+  frankiCramPracticeTitle,
+  frankiCramSourceId,
+  frankiCramStage,
+  frankiCramTaskId,
+  parseFrankiCramSpent,
+  withFrankiCramSpent,
+  type FrankiCram,
   frankiReadUrl,
   FRANKI_REVIEW_THRESHOLD_DEFAULT,
   clampFrankiGoalMinutes,
@@ -45,6 +55,7 @@ const snapshot = (overrides: Partial<FrankiSnapshot> = {}): FrankiSnapshot => {
     readToday: null,
     frankiNew: null,
     studyDays: [],
+    crams: null,
     ...overrides,
   };
 };
@@ -254,5 +265,89 @@ describe('the minutes line on a row', () => {
     expect(frankiRowMinutes(row('goal:2026-10-18'), snap, NOW, true)).toBeNull();
     expect(frankiRowMinutes(row('day:2026-10-18'), snapshot(), NOW, true)).toBeNull();
     expect(frankiRowMinutes(row('day:2026-10-18'), null, NOW, true)).toBeNull();
+  });
+});
+
+describe('crams', () => {
+  // NOW is Oct 18, 10:20. A Thai lesson on the 20th, its day ending at 4 AM on the 21st in Franki.
+  const lesson = (overrides: Partial<FrankiCram> = {}): FrankiCram => ({
+    id: 'thai-lesson-2026-10-20',
+    name: 'Thai lesson',
+    date: '2026-10-20',
+    endsAt: new Date(2026, 9, 21, 4).toISOString(),
+    practicedAt: null,
+    finishedAt: null,
+    ...overrides,
+  });
+  const dayStart = new Date(2026, 9, 18, 0, 0);
+  const asTask = (sourceId: string) => ({ generatedKind: 'franki' as const, generatedSourceId: sourceId });
+
+  it('names a practice task by day and cram, and a check-off task by the cram alone', () => {
+    const practice = asTask(frankiCramSourceId('2026-10-18', 'thai-lesson-2026-10-20'));
+    const done = asTask(frankiCramDoneSourceId('thai-lesson-2026-10-20'));
+    expect(frankiTaskKind(practice)).toBe('cram');
+    expect(frankiTaskKind(done)).toBe('cramDone');
+    expect(frankiTaskDayKey(practice)).toBe('2026-10-18');
+    // Not a day's, so the first pass of a new day leaves it alone.
+    expect(frankiTaskDayKey(done)).toBeNull();
+    expect(frankiCramTaskId(practice)).toBe('thai-lesson-2026-10-20');
+    expect(frankiCramTaskId(done)).toBe('thai-lesson-2026-10-20');
+    expect(frankiCramTaskId(asTask(frankiReadSourceId('2026-10-18', 'th')))).toBeNull();
+  });
+
+  it('counts the days to the cram by the calendar, and never says one has passed', () => {
+    expect(frankiCramPracticeTitle(lesson(), '2026-10-18')).toBe('Practice for Thai lesson (in 2 days)');
+    expect(frankiCramPracticeTitle(lesson(), '2026-10-19')).toBe('Practice for Thai lesson (tomorrow)');
+    expect(frankiCramPracticeTitle(lesson(), '2026-10-20')).toBe('Practice for Thai lesson (today)');
+    // Past midnight here while Franki's day hasn't turned yet.
+    expect(frankiCramPracticeTitle(lesson(), '2026-10-21')).toBe('Practice for Thai lesson (today)');
+    // Across the clocks going back (Nov 1 2026 in the US).
+    expect(frankiCramPracticeTitle(lesson({ date: '2026-11-03' }), '2026-10-31')).toBe('Practice for Thai lesson (in 3 days)');
+    expect(frankiCramCheckOffTitle(lesson())).toBe('Check off the words you used in Thai lesson');
+  });
+
+  it('runs until its day ends in Franki, is over until it is finished, then finished', () => {
+    expect(frankiCramStage(lesson(), NOW)).toBe('running');
+    expect(frankiCramStage(lesson(), new Date(2026, 9, 21, 4))).toBe('over');
+    expect(frankiCramStage(lesson({ finishedAt: NOW.toISOString() }), NOW)).toBe('finished');
+  });
+
+  it('plans practice while it runs and wasn’t practiced or written today, and a check-off once it’s over', () => {
+    const plan = (cram: FrankiCram, now = NOW, spent = parseFrankiCramSpent(null)) =>
+      frankiCramPlan({ cram, now, dayStart, spent, todayKey: '2026-10-18' });
+    expect(plan(lesson())).toEqual({ keepPractice: true, writePractice: true, keepCheckOff: false, writeCheckOff: false });
+    expect(plan(lesson({ practicedAt: new Date(2026, 9, 18, 9).toISOString() })).writePractice).toBe(false);
+    expect(plan(lesson({ practicedAt: new Date(2026, 9, 17, 23).toISOString() })).writePractice).toBe(true);
+    expect(plan(lesson(), NOW, { dayKey: '2026-10-18', practiced: ['thai-lesson-2026-10-20'], checkedOff: [] }).writePractice).toBe(false);
+    expect(plan(lesson(), NOW, { dayKey: '2026-10-17', practiced: ['thai-lesson-2026-10-20'], checkedOff: [] }).writePractice).toBe(true);
+
+    const over = lesson({ endsAt: new Date(2026, 9, 18, 4).toISOString() });
+    expect(plan(over)).toEqual({ keepPractice: false, writePractice: false, keepCheckOff: true, writeCheckOff: true });
+    expect(plan(over, NOW, { dayKey: '2026-10-15', practiced: [], checkedOff: ['thai-lesson-2026-10-20'] }).writeCheckOff).toBe(false);
+    // Finished: a check-off task already there stays (ready), and none is written.
+    expect(plan({ ...over, finishedAt: NOW.toISOString() })).toEqual({ keepPractice: false, writePractice: false, keepCheckOff: true, writeCheckOff: false });
+  });
+
+  it('records what was written, a new day starting practice afresh and check-offs kept to the crams still listed', () => {
+    const spent = withFrankiCramSpent(null, '2026-10-17', { practice: 'a' }, ['a', 'b']);
+    expect(spent).toEqual({ dayKey: '2026-10-17', practiced: ['a'], checkedOff: [] });
+    const next = withFrankiCramSpent({ ...spent, checkedOff: ['b', 'gone'] }, '2026-10-18', { checkOff: 'a' }, ['a', 'b']);
+    expect(next).toEqual({ dayKey: '2026-10-18', practiced: [], checkedOff: ['b', 'a'] });
+    expect(parseFrankiCramSpent(JSON.stringify(next))).toEqual(next);
+    expect(parseFrankiCramSpent('not json')).toBeNull();
+    expect(parseFrankiCramSpent({ practiced: [] })).toBeNull();
+  });
+
+  it('reads practice ready once practiced today, and a check-off ready once finished in Franki', () => {
+    const practice = asTask(frankiCramSourceId('2026-10-18', 'thai-lesson-2026-10-20'));
+    const done = asTask(frankiCramDoneSourceId('thai-lesson-2026-10-20'));
+    const withCram = (cram: FrankiCram) => snapshot({ crams: [cram] });
+    expect(isFrankiTaskReady(practice, withCram(lesson()), NOW)).toBe(false);
+    expect(isFrankiTaskReady(practice, withCram(lesson({ practicedAt: new Date(2026, 9, 18, 9).toISOString() })), NOW)).toBe(true);
+    // Practiced before today's reset (4 AM) is yesterday's.
+    expect(isFrankiTaskReady(practice, withCram(lesson({ practicedAt: new Date(2026, 9, 18, 3).toISOString() })), NOW, '04:00')).toBe(false);
+    expect(isFrankiTaskReady(done, withCram(lesson()), NOW)).toBe(false);
+    expect(isFrankiTaskReady(done, withCram(lesson({ finishedAt: NOW.toISOString() })), NOW)).toBe(true);
+    expect(isFrankiTaskReady(done, snapshot({ crams: null }), NOW)).toBe(false);
   });
 });

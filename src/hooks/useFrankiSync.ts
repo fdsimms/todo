@@ -33,6 +33,7 @@ export function useFrankiSync(): void {
         state.frankiReviewThreshold !== prev.frankiReviewThreshold ||
         state.frankiTaskCategory !== prev.frankiTaskCategory ||
         state.frankiReadTasks !== prev.frankiReadTasks ||
+        state.frankiCramTasks !== prev.frankiCramTasks ||
         state.vacationMode !== prev.vacationMode
       ) {
         check();

@@ -1,13 +1,13 @@
 import { isDemoModeActive } from '../utils/demoState';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { frankiStatusUrl, type FrankiReadListen, type FrankiReadToday, type FrankiSnapshot } from '../utils/frankiTasks';
+import { frankiStatusUrl, type FrankiCram, type FrankiReadListen, type FrankiReadToday, type FrankiSnapshot } from '../utils/frankiTasks';
 import type { FrankiStudyDay } from '../utils/frankiStudy';
 
 /**
  * The person's own Franki server (their Anki sync server, with Read & Listen
  * beside it), over the network: how many flashcards are due now, the learning
- * cards coming due later today, and which Read & Listen languages have a text
- * waiting.
+ * cards coming due later today, which Read & Listen languages have a text
+ * waiting, and Franki's crams.
  * The server answers with Anki's own counts (`GET /reader/api/status`, in
  * fdsimms/flashcards' `server/reader`).
  *
@@ -98,6 +98,35 @@ function studyDaysFrom(body: unknown): FrankiStudyDay[] {
   return days.sort((a, c) => Date.parse(a.startsAt) - Date.parse(c.startsAt));
 }
 
+/**
+ * Franki's crams, as it last reported them (`franki_crams.crams`). Null when
+ * it never has, or from a server older than crams, which is not the same as
+ * an empty list: nothing is written or taken away then. A cram missing its id,
+ * name, day or end is dropped.
+ */
+function cramsFrom(body: unknown): FrankiCram[] | null {
+  const list = (body as { crams?: unknown } | null)?.crams;
+  if (!Array.isArray(list)) return null;
+  const seen = new Set<string>();
+  const crams: FrankiCram[] = [];
+  for (const item of list) {
+    const c = item as { id?: unknown; name?: unknown; date?: unknown; ends_at?: unknown; practiced_at?: unknown; finished_at?: unknown } | null;
+    const endsAt = instant(c?.ends_at);
+    if (!c || typeof c.id !== 'string' || !c.id || seen.has(c.id) || typeof c.name !== 'string'
+      || typeof c.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(c.date) || !endsAt) continue;
+    seen.add(c.id);
+    crams.push({
+      id: c.id,
+      name: c.name,
+      date: c.date,
+      endsAt,
+      practicedAt: instant(c.practiced_at),
+      finishedAt: instant(c.finished_at),
+    });
+  }
+  return crams;
+}
+
 /** Franki's own new-card count, when it reported one today; null otherwise (`frankiNew`). */
 function frankiNewFrom(body: unknown): number | null {
   const n = (body as { new?: unknown } | null)?.new;
@@ -112,7 +141,7 @@ function frankiNewFrom(body: unknown): number | null {
 export function frankiSnapshotFrom(body: unknown, fetchedAt: string): FrankiSnapshot | null {
   const b = body as {
     reviews?: unknown; learning?: unknown; learning_later?: unknown; day_ends_at?: unknown;
-    read_and_listen?: unknown; read_and_listen_today?: unknown; franki?: unknown; study_days?: unknown;
+    read_and_listen?: unknown; read_and_listen_today?: unknown; franki?: unknown; study_days?: unknown; franki_crams?: unknown;
   } | null;
   if (!b || typeof b !== 'object' || typeof b.reviews !== 'number') return null;
   const byInstant = new Map<string, number>();
@@ -136,6 +165,7 @@ export function frankiSnapshotFrom(body: unknown, fetchedAt: string): FrankiSnap
     readToday: readTodayFrom(b.read_and_listen_today),
     frankiNew: frankiNewFrom(b.franki),
     studyDays: studyDaysFrom(b.study_days),
+    crams: cramsFrom(b.franki_crams),
   };
 }
 

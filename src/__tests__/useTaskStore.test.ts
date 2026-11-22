@@ -23516,6 +23516,7 @@ describe('checkFrankiTasks', () => {
       readToday: [todayThai],
       frankiNew: null,
       studyDays: [],
+      crams: null,
       ...overrides,
     };
   };
@@ -23534,6 +23535,8 @@ describe('checkFrankiTasks', () => {
       frankiReadTasks: true,
       frankiReviewState: { baseline: 0, openSourceId: null },
       frankiReadSpent: null,
+      frankiCramTasks: true,
+      frankiCramSpent: null,
       // The wave tests below set waves; the once-a-day ones set daily.
       frankiReviewMode: 'waves',
       frankiGoalMinutes: null,
@@ -23542,6 +23545,7 @@ describe('checkFrankiTasks', () => {
       frankiGoalLastDayKey: null,
       setFrankiReviewState: jest.fn((state: unknown) => { current.frankiReviewState = state; }),
       setFrankiReadSpent: jest.fn((spent: unknown) => { current.frankiReadSpent = spent; }),
+      setFrankiCramSpent: jest.fn((spent: unknown) => { current.frankiCramSpent = spent; }),
       setFrankiDailyLastDayKey: jest.fn((key: unknown) => { current.frankiDailyLastDayKey = key; }),
       setFrankiGoalLastDayKey: jest.fn((key: unknown) => { current.frankiGoalLastDayKey = key; }),
       ...overrides,
@@ -23753,5 +23757,111 @@ describe('checkFrankiTasks', () => {
     setSnapshot({ readToday: [] });
     check();
     expect(live('read:')).toHaveLength(0);
+  });
+
+  // ==== crams ====
+  // A Thai lesson on Oct 20, its day ending at 4 AM on the 21st in Franki.
+  const lesson = (overrides: Record<string, unknown> = {}) => ({
+    id: 'thai-lesson-2026-10-20',
+    name: 'Thai lesson',
+    date: '2026-10-20',
+    endsAt: new Date(2026, 9, 21, 4).toISOString(),
+    practicedAt: null,
+    finishedAt: null,
+    ...overrides,
+  });
+
+  it('writes a practice task once a day while a cram runs, opening the cram', () => {
+    setSnapshot({ crams: [lesson()] });
+    check();
+    const [task] = live('cram:');
+    expect(task.title).toBe('Practice for Thai lesson (in 2 days)');
+    expect(task.generatedSourceId).toBe('cram:2026-10-18:thai-lesson-2026-10-20');
+    expect(task.linkUrl).toBe('franki://cram?id=thai-lesson-2026-10-20');
+    expect(task.category).toBe('Study');
+    expect(live('cramdone:')).toHaveLength(0);
+    expect(current.frankiCramSpent).toEqual({ dayKey: '2026-10-18', practiced: ['thai-lesson-2026-10-20'], checkedOff: [] });
+
+    // Deleted by the person: spent for today, so it doesn't come back until tomorrow.
+    useTaskStore.setState({ tasks: useTaskStore.getState().tasks.filter(t => t.id !== task.id) });
+    check();
+    expect(live('cram:')).toHaveLength(0);
+    jest.setSystemTime(new Date(2026, 9, 19, 9, 0));
+    check();
+    expect(live('cram:').map(t => t.title)).toEqual(['Practice for Thai lesson (tomorrow)']);
+  });
+
+  it('writes no practice task for a cram already practiced today, and keeps one written before it was', () => {
+    setSnapshot({ crams: [lesson({ practicedAt: new Date(2026, 9, 18, 8).toISOString() })] });
+    check();
+    expect(live('cram:')).toHaveLength(0);
+
+    useTaskStore.setState({ tasks: [] });
+    setSettings();
+    setSnapshot({ crams: [lesson({ practicedAt: new Date(2026, 9, 17, 20).toISOString() })] });
+    check();
+    expect(live('cram:')).toHaveLength(1);
+    // Practiced now: the task stays, for the person to check off (TaskItem reads it as ready).
+    setSnapshot({ crams: [lesson({ practicedAt: new Date(2026, 9, 18, 10).toISOString() })] });
+    check();
+    expect(live('cram:')).toHaveLength(1);
+  });
+
+  it('once the cram’s day is over, takes practice away and asks to check off the words used, until it’s finished', () => {
+    setSnapshot({ crams: [lesson({ endsAt: new Date(2026, 9, 18, 4).toISOString(), date: '2026-10-17' })] });
+    check();
+    expect(live('cram:')).toHaveLength(0);
+    const [task] = live('cramdone:');
+    expect(task.title).toBe('Check off the words you used in Thai lesson');
+    expect(task.linkUrl).toBe('franki://cram-lesson?id=thai-lesson-2026-10-20');
+    expect(current.frankiCramSpent).toEqual({ dayKey: '2026-10-18', practiced: [], checkedOff: ['thai-lesson-2026-10-20'] });
+
+    // Not day-keyed: still there the next day.
+    jest.setSystemTime(new Date(2026, 9, 19, 9, 0));
+    check();
+    expect(live('cramdone:')).toHaveLength(1);
+    // Finished in Franki: kept, ready to check off.
+    setSnapshot({ crams: [lesson({ endsAt: new Date(2026, 9, 18, 4).toISOString(), finishedAt: new Date(2026, 9, 19, 8).toISOString() })] });
+    check();
+    expect(live('cramdone:')).toHaveLength(1);
+    // Franki stops listing it (finished on an earlier day): it goes.
+    setSnapshot({ crams: [] });
+    check();
+    expect(live('cramdone:')).toHaveLength(0);
+  });
+
+  it('writes a deleted check-off task only once, and none for a cram finished before its task was written', () => {
+    const over = lesson({ endsAt: new Date(2026, 9, 18, 4).toISOString() });
+    setSnapshot({ crams: [over] });
+    check();
+    useTaskStore.setState({ tasks: [] });
+    check();
+    expect(live('cramdone:')).toHaveLength(0);
+
+    setSettings();
+    setSnapshot({ crams: [lesson({ endsAt: over.endsAt, finishedAt: new Date(2026, 9, 18, 9).toISOString() })] });
+    check();
+    expect(live('cramdone:')).toHaveLength(0);
+  });
+
+  it('takes a cram’s tasks away when it is deleted in Franki or the switch is off, and touches nothing without a report', () => {
+    setSnapshot({ crams: [lesson()] });
+    check();
+    expect(live('cram:')).toHaveLength(1);
+    setSnapshot({ crams: null });
+    check();
+    expect(live('cram:')).toHaveLength(1);
+    setSettings({ frankiCramTasks: false });
+    setSnapshot({ crams: [lesson()] });
+    check();
+    expect(live('cram:')).toHaveLength(0);
+
+    setSettings();
+    useTaskStore.setState({ tasks: [] });
+    setSnapshot({ crams: [lesson()] });
+    check();
+    setSnapshot({ crams: [] });
+    check();
+    expect(live('cram:')).toHaveLength(0);
   });
 });

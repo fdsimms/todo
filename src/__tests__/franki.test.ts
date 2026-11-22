@@ -56,7 +56,29 @@ describe('frankiSnapshotFrom', () => {
         { startsAt: new Date(2026, 9, 17, 4).toISOString(), cards: 12, answerSeconds: 300, readingSeconds: 0 },
         { startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 120 },
       ],
+      crams: null,
     });
+  });
+
+  it('reads Franki’s crams, dropping one it can’t place, and no report as unknown rather than none', () => {
+    const crams = [
+      { id: 'thai-lesson-2026-10-20', name: 'Thai lesson', date: '2026-10-20', ends_at: '2026-10-21T08:00:00+00:00', practiced_at: '2026-10-18T13:00:00+00:00', finished_at: null },
+      { id: 'no-end', name: 'No end', date: '2026-10-20', ends_at: null },
+      { id: 'bad-date', name: 'Bad date', date: '20 October', ends_at: '2026-10-21T08:00:00+00:00' },
+      { id: 'thai-lesson-2026-10-20', name: 'Twice', date: '2026-10-20', ends_at: '2026-10-21T08:00:00+00:00' },
+    ];
+    expect(frankiSnapshotFrom({ ...statusBody, franki_crams: { crams, reported_at: later(9) } }, FETCHED)?.crams).toEqual([
+      {
+        id: 'thai-lesson-2026-10-20',
+        name: 'Thai lesson',
+        date: '2026-10-20',
+        endsAt: '2026-10-21T08:00:00.000Z',
+        practicedAt: '2026-10-18T13:00:00.000Z',
+        finishedAt: null,
+      },
+    ]);
+    expect(frankiSnapshotFrom({ ...statusBody, franki_crams: { crams: [], reported_at: later(9) } }, FETCHED)?.crams).toEqual([]);
+    expect(frankiSnapshotFrom({ ...statusBody, franki_crams: null }, FETCHED)?.crams).toBeNull();
   });
 
   it('reads an older server with no study days or Franki report as unknown, not zero', () => {

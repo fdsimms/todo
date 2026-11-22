@@ -1024,6 +1024,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['reading', 'listening', 'study time', 'minutes', 'goal'] },
   { id: 'frankiReadTasks', requires: 'gen:franki', groupId: 'generated', label: 'Read & Listen', section: 'Franki flashcards',
     keywords: ['reading', 'listening', 'text', 'story', 'language', 'daily'] },
+  { id: 'frankiCramTasks', requires: 'gen:franki', groupId: 'generated', label: 'Crams', section: 'Franki flashcards',
+    keywords: ['lesson', 'tutor', 'trip', 'practice', 'words', 'check off'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
   { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automations',

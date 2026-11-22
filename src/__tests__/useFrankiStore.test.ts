@@ -30,6 +30,7 @@ const snapshot = (overrides: Record<string, unknown> = {}) => ({
   readToday: null,
   frankiNew: null,
   studyDays: [],
+  crams: null,
   ...overrides,
 });
 

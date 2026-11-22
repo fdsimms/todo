@@ -2,6 +2,7 @@ import type { Task } from '../types';
 import { generatedSourceOf } from './generatedTasks';
 import { hourKeyOf, reviewHeldUntil, reviewQueueAt, type ReviewQueue } from './reviewQueue';
 import { minutesReadToday, minutesStudiedToday, type FrankiStudyDay } from './frankiStudy';
+import { logicalDayStart } from './clockTime';
 
 /**
  * The `franki` generator, from the person's flashcards (Franki, their Anki
@@ -37,6 +38,18 @@ import { minutesReadToday, minutesStudiedToday, type FrankiStudyDay } from './fr
  * only from Franki's own report (`frankiNew`, its deck list's count, progress
  * gates included); without one from today it counts what Anki says is due,
  * and never reads as done, since the new cards left aren't known.
+ *
+ * The cram tasks follow Franki's crams (Practice, Cram: the plan for a day
+ * coming up, a lesson or a trip), which live only on Franki's phone and reach
+ * its server while Franki's "Share today's counts and crams" is on:
+ *
+ * - **Practice, once a day while a cram runs** (`cram:<day>:<id>`), written
+ *   like a Read & Listen task: once a day, spent by writing it, not written
+ *   when the cram was already practiced today, ready once it has been.
+ * - **Check off the words used, once its day is over** (`cramdone:<id>`), as
+ *   Franki's own Today card asks. Not day-keyed: it stays until Franki says the
+ *   cram is finished (then it's ready) and goes once Franki stops listing it
+ *   (finished on an earlier day, or deleted). Written once per cram.
  */
 
 /** Read & Listen's side of a read: the language being read and its shelf. */
@@ -114,6 +127,27 @@ export interface FrankiSnapshot extends ReviewQueue {
   frankiNew: number | null;
   /** The last study days, oldest first (`frankiStudy.ts`); empty from an older server. */
   studyDays: FrankiStudyDay[];
+  /**
+   * Franki's open crams, and any finished today, as Franki last reported
+   * them. Null when Franki never has (its sharing setting is off, or the
+   * server is older): no cram task is written or taken away then.
+   */
+  crams: FrankiCram[] | null;
+}
+
+/** One of Franki's crams, as its server reports it (`franki_crams`). */
+export interface FrankiCram {
+  /** Franki's id for it ("thai-lesson-2026-11-20"): letters, digits and hyphens. */
+  id: string;
+  name: string;
+  /** Its day, `YYYY-MM-DD`. */
+  date: string;
+  /** When its day ends in Franki (ISO): practice runs until then. */
+  endsAt: string;
+  /** When it was last practiced (ISO), or null. */
+  practicedAt: string | null;
+  /** When Franki's Finish was pressed for it (ISO), or null. */
+  finishedAt: string | null;
 }
 
 /** How the reviews task works: once a day for all of today's cards, or in waves. */
@@ -145,6 +179,15 @@ export const FRANKI_REVIEW_THRESHOLD_MAX = 500;
 /** Where each task opens: Franki's deck list, and its Read & Listen tab. */
 export const FRANKI_REVIEW_URL = 'franki://';
 export const FRANKI_READ_URL = 'franki://read';
+
+/** A cram's practice task opens the cram; its check-off task opens At the lesson, where the words are checked off. */
+export function frankiCramUrl(id: string): string {
+  return `franki://cram?id=${encodeURIComponent(id)}`;
+}
+
+export function frankiCramCheckOffUrl(id: string): string {
+  return `franki://cram-lesson?id=${encodeURIComponent(id)}`;
+}
 
 /** A language's Read & Listen task opens Franki's shelf already on that language (`?language=de`). */
 export function frankiReadUrl(language: string): string {
@@ -178,6 +221,8 @@ const REVIEWS_PREFIX = 'reviews:';
 const READ_PREFIX = 'read:';
 const DAY_PREFIX = 'day:';
 const GOAL_PREFIX = 'goal:';
+const CRAM_PREFIX = 'cram:';
+const CRAM_DONE_PREFIX = 'cramdone:';
 
 /** A wave of reviews is named by the hour its task was placed at. */
 export function frankiReviewSourceId(at: Date): string {
@@ -199,7 +244,17 @@ export function frankiGoalSourceId(dayKey: string): string {
   return `${GOAL_PREFIX}${dayKey}`;
 }
 
-export type FrankiTaskKind = 'reviews' | 'read' | 'day' | 'goal';
+/** A day's practice task for one cram is named by the logical day and the cram's id. */
+export function frankiCramSourceId(dayKey: string, id: string): string {
+  return `${CRAM_PREFIX}${dayKey}:${id}`;
+}
+
+/** A cram's check-off task is named by the cram alone: it isn't a day's. */
+export function frankiCramDoneSourceId(id: string): string {
+  return `${CRAM_DONE_PREFIX}${id}`;
+}
+
+export type FrankiTaskKind = 'reviews' | 'read' | 'day' | 'goal' | 'cram' | 'cramDone';
 
 /** Which of the tasks a row is, or null when it isn't one of this generator's. */
 export function frankiTaskKind(task: Pick<Task, 'generatedKind' | 'generatedSourceId'>): FrankiTaskKind | null {
@@ -208,13 +263,16 @@ export function frankiTaskKind(task: Pick<Task, 'generatedKind' | 'generatedSour
   if (sourceId?.startsWith(READ_PREFIX)) return 'read';
   if (sourceId?.startsWith(DAY_PREFIX)) return 'day';
   if (sourceId?.startsWith(GOAL_PREFIX)) return 'goal';
+  if (sourceId?.startsWith(CRAM_PREFIX)) return 'cram';
+  if (sourceId?.startsWith(CRAM_DONE_PREFIX)) return 'cramDone';
   return null;
 }
 
-/** The day a day-keyed task (Read & Listen, the cards, the goal) is for, or null for a wave. */
+/** The day a day-keyed task (Read & Listen, the cards, the goal, a cram's practice) is for, or null for a wave or a cram's check-off. */
 export function frankiTaskDayKey(task: Pick<Task, 'generatedKind' | 'generatedSourceId'>): string | null {
   const sourceId = generatedSourceOf(task, 'franki');
   if (sourceId?.startsWith(READ_PREFIX)) return sourceId.slice(READ_PREFIX.length).split(':')[0];
+  if (sourceId?.startsWith(CRAM_PREFIX)) return sourceId.slice(CRAM_PREFIX.length).split(':')[0];
   for (const prefix of [DAY_PREFIX, GOAL_PREFIX]) {
     if (sourceId?.startsWith(prefix)) return sourceId.slice(prefix.length);
   }
@@ -229,6 +287,16 @@ export function frankiReadTaskLanguage(task: Pick<Task, 'generatedKind' | 'gener
   const sourceId = generatedSourceOf(task, 'franki');
   if (!sourceId?.startsWith(READ_PREFIX)) return null;
   const rest = sourceId.slice(READ_PREFIX.length);
+  const at = rest.indexOf(':');
+  return at === -1 ? null : rest.slice(at + 1) || null;
+}
+
+/** The cram a practice or check-off task is for, or null for any other row. */
+export function frankiCramTaskId(task: Pick<Task, 'generatedKind' | 'generatedSourceId'>): string | null {
+  const sourceId = generatedSourceOf(task, 'franki');
+  if (sourceId?.startsWith(CRAM_DONE_PREFIX)) return sourceId.slice(CRAM_DONE_PREFIX.length) || null;
+  if (!sourceId?.startsWith(CRAM_PREFIX)) return null;
+  const rest = sourceId.slice(CRAM_PREFIX.length);
   const at = rest.indexOf(':');
   return at === -1 ? null : rest.slice(at + 1) || null;
 }
@@ -251,6 +319,26 @@ export function frankiDailyTitle(left: number): string {
 
 export function frankiGoalTitle(minutes: number, goal: number): string {
   return `Franki: ${minutes} of ${goal} min`;
+}
+
+/** "Practice for Thai lesson (in 3 days)": counted in calendar days from today's key, never below today. */
+export function frankiCramPracticeTitle(cram: Pick<FrankiCram, 'name' | 'date'>, todayKey: string): string {
+  const days = Math.max(0, calendarDaysBetween(todayKey, cram.date));
+  const when = days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
+  return `Practice for ${cram.name} (${when})`;
+}
+
+export function frankiCramCheckOffTitle(cram: Pick<FrankiCram, 'name'>): string {
+  return `Check off the words you used in ${cram.name}`;
+}
+
+/** Whole days from one `YYYY-MM-DD` to another, by the calendar, so a DST change can't make one 23 hours. */
+function calendarDaysBetween(fromKey: string, toKey: string): number {
+  const utc = (key: string) => {
+    const [y, m, d] = key.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((utc(toKey) - utc(fromKey)) / 86_400_000);
 }
 
 // ==== the once-a-day cards task ====
@@ -335,9 +423,96 @@ export function wantedFrankiReadLanguages(readToday: FrankiReadToday[], spentTod
   return readToday.filter(l => !l.done && !spentToday.includes(l.language)).map(l => l.language);
 }
 
+// ==== crams ====
+
+/** The crams this device already wrote a task for: practice today, and the check-off tasks ever written. */
+export interface FrankiCramSpent {
+  dayKey: string;
+  /** The crams whose practice task was written on `dayKey`. */
+  practiced: string[];
+  /** The crams whose check-off task was written, on any day (kept to the crams Franki still lists). */
+  checkedOff: string[];
+}
+
+export function parseFrankiCramSpent(raw: unknown): FrankiCramSpent | null {
+  let value: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const v = value as { dayKey?: unknown; practiced?: unknown; checkedOff?: unknown } | null;
+  if (!v || typeof v.dayKey !== 'string') return null;
+  const strings = (list: unknown) => (Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []);
+  return { dayKey: v.dayKey, practiced: strings(v.practiced), checkedOff: strings(v.checkedOff) };
+}
+
+/**
+ * The record with one more task written: `practice` today, or `checkOff`. The
+ * check-off list keeps only the crams in `listed`, so one Franki stopped
+ * listing doesn't stay in it for good.
+ */
+export function withFrankiCramSpent(
+  spent: FrankiCramSpent | null,
+  todayKey: string,
+  written: { practice: string } | { checkOff: string },
+  listed: readonly string[],
+): FrankiCramSpent {
+  const practiced = spent && spent.dayKey === todayKey ? spent.practiced : [];
+  const checkedOff = (spent?.checkedOff ?? []).filter(id => listed.includes(id));
+  if ('practice' in written) {
+    return { dayKey: todayKey, practiced: practiced.includes(written.practice) ? practiced : [...practiced, written.practice], checkedOff };
+  }
+  return { dayKey: todayKey, practiced, checkedOff: checkedOff.includes(written.checkOff) ? checkedOff : [...checkedOff, written.checkOff] };
+}
+
+/**
+ * Where a cram is: `running` until its day ends in Franki (practice), then
+ * `over` until Franki's Finish is pressed (check off the words used), then
+ * `finished`. Franki's own `isRunning` / `isAwaitingFinish`, from what it sent.
+ */
+export type FrankiCramStage = 'running' | 'over' | 'finished';
+
+export function frankiCramStage(cram: Pick<FrankiCram, 'endsAt' | 'finishedAt'>, now: Date): FrankiCramStage {
+  if (cram.finishedAt) return 'finished';
+  return now.getTime() < Date.parse(cram.endsAt) ? 'running' : 'over';
+}
+
+/** Whether a cram was practiced since the logical day began. */
+export function frankiCramPracticedToday(cram: Pick<FrankiCram, 'practicedAt'>, dayStart: Date): boolean {
+  return cram.practicedAt !== null && Date.parse(cram.practicedAt) >= dayStart.getTime();
+}
+
+/**
+ * What each cram's tasks should be now. `keepPractice` / `keepCheckOff`: a
+ * task already there stays (a cram that stops being listed, or moves on, takes
+ * it away). `writePractice` / `writeCheckOff`: a task not there yet is written,
+ * once (spent by writing, so one checked off or deleted stays gone).
+ */
+export function frankiCramPlan(input: {
+  cram: FrankiCram;
+  now: Date;
+  dayStart: Date;
+  spent: FrankiCramSpent | null;
+  todayKey: string;
+}): { keepPractice: boolean; writePractice: boolean; keepCheckOff: boolean; writeCheckOff: boolean } {
+  const { cram, now, dayStart, spent, todayKey } = input;
+  const stage = frankiCramStage(cram, now);
+  const practicedSpent = spent && spent.dayKey === todayKey ? spent.practiced : [];
+  return {
+    keepPractice: stage === 'running',
+    writePractice: stage === 'running' && !practicedSpent.includes(cram.id) && !frankiCramPracticedToday(cram, dayStart),
+    keepCheckOff: stage !== 'running',
+    writeCheckOff: stage === 'over' && !(spent?.checkedOff ?? []).includes(cram.id),
+  };
+}
+
 /**
  * Whether a Franki row reads as ready to check off: its queue is empty, a text
- * was read today, every card due today is done, or the study-time goal is met. Derived only, from the latest read. A reviews task
+ * was read today, every card due today is done, the study-time goal is met, a cram
+ * was practiced today, or a cram whose day is over was finished in Franki. Derived only, from the latest read. A reviews task
  * still held for the forecast is never ready: the queue is empty *because*
  * the cards haven't come due yet.
  */
@@ -368,6 +543,14 @@ export function isFrankiTaskReady(
     if (goal.minutes === null) return false;
     const minutes = minutesStudiedToday(snapshot.studyDays, now, goal.countReading);
     return minutes !== null && minutes >= goal.minutes;
+  }
+  if (kind === 'cram' || kind === 'cramDone') {
+    const id = frankiCramTaskId(task);
+    const cram = snapshot.crams?.find(c => c.id === id);
+    if (!cram) return false;
+    return kind === 'cram'
+      ? frankiCramPracticedToday(cram, logicalDayStart(now, dayResetTime))
+      : cram.finishedAt !== null;
   }
   return false;
 }
