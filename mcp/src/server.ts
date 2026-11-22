@@ -37,7 +37,7 @@ import { authorize, bearerToken, scopeFor, type AuthScope } from './auth';
 import { oauthConfigProblem, openOAuthStore, OAuthRefusal, SCOPE_READ, SCOPE_WRITE, type OAuthClient, type OAuthStore } from './oauth';
 import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import { openSyncStore, DEFAULT_RETENTION_DAYS, type SyncStore } from './syncStore';
-import { createSyncGate, READ_WAIT_MS, type SyncGate } from './syncGate';
+import { createSyncGate, READ_WAIT_MS, WRITE_WAIT_MS, type SyncGate } from './syncGate';
 import { createTimingLog, noteWait, MAX_TIMINGS } from './timings';
 import {
   DEFAULT_LOG_DAYS,
@@ -256,7 +256,9 @@ function syncGateFor(replica: Replica): SyncGate {
       Date.now,
       e => console.error('Replica sync failed; answering from the database as it stands', e),
       READ_WAIT_MS,
-      () => console.error(`Replica sync still running after ${READ_WAIT_MS / 1000}s; answering from the database as it stands`)
+      () => console.error(`Replica sync still running after ${READ_WAIT_MS / 1000}s; answering from the database as it stands`),
+      WRITE_WAIT_MS,
+      () => console.error(`Push after a write still running after ${WRITE_WAIT_MS / 1000}s; answering, the push carries on`)
     );
     syncGateByReplica.set(replica, gate);
   }
@@ -380,9 +382,14 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     confirmedBatches?.push(batchId);
     const result = replica.withBatch(batchId, fn);
     const written = Date.now();
-    await gate.afterWrite();
+    const pushed = await gate.afterWrite();
     noteWait('push', Date.now() - written);
     if (LOG_TIMING) console.error(`[timing] write: handler ${written - start}ms, push wait ${Date.now() - written}ms`);
+    // The write is saved in the replica either way; say so rather than let the
+    // caller read a slow push as a failed write and send it again.
+    if (!pushed && result && typeof result === 'object' && !Array.isArray(result)) {
+      return { ...result, pushPending: 'Saved here. Sending it to the phone is taking longer than usual and carries on in the background. Do not repeat the change.' } as T;
+    }
     return result;
   };
 

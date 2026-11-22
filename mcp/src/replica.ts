@@ -9861,6 +9861,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const config = { url: process.env.SYNC_URL ?? '', token: process.env.SYNC_TOKEN ?? '' };
       if (!httpTransport.isHttpSyncConfigured(config)) return null;
 
+      // Whether the caches matched the file before the run. A sync that applies
+      // nothing still writes its own bookkeeping (cursors, stamps), which moves
+      // `changeToken`, and that is no reason to drop them.
+      const cachesCurrent = taskCache !== null && lastChangeToken === changeToken();
       const runs = await syncEngine.runSyncAll(
         [loggedTransport(httpTransport.httpSyncTransport(config))],
         syncLocal.databaseSyncLocal()
@@ -9868,11 +9872,19 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // A pull can carry the phone's zone, and it has to be in effect before
       // the refresh below re-hydrates the stores that read "today".
       adoptTimeZone(db.dbGetSetting(DEVICE_TIME_ZONE_KEY));
-      // Whatever a pull applied is now in the database and not in the caches
-      // above, so the next read has to go back to SQLite for it.
-      refresh();
+      const summary = syncEngine.summarizeRuns(runs);
+      const pulled = summary.applied.inserted + summary.applied.updated + summary.applied.deleted > 0;
+      if (pulled || !cachesCurrent) {
+        // Whatever a pull applied is now in the database and not in the caches
+        // above, so the next read has to go back to SQLite for it. That read
+        // is every task row, which is seconds on the server's machine once the
+        // history is long, so a run that pulled nothing must not cause it:
+        // every request after the throttle used to pay it.
+        refresh();
+      }
+      lastChangeToken = changeToken();
       syncedAt = new Date().toISOString();
-      return syncEngine.summarizeRuns(runs);
+      return summary;
     },
   };
 
@@ -9917,6 +9929,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const effects: AgentLedgerEntry[] = [];
     capturing = effects;
     let result!: T;
+    // The database is put back exactly as it was, so the caches filled before
+    // the write are still right afterwards. Without them the next read reloads
+    // every task row, and a preview did that before its confirm did it again.
+    const savedTasks = taskCache;
+    const savedPeople = personCache;
+    const savedProjects = projectCache;
+    const cachesWereCurrent = savedTasks !== null && lastChangeToken === changeToken();
     try {
       // Everything the write does lands inside one transaction that is then
       // thrown away: a nested dbTransaction becomes a savepoint inside it
@@ -9933,6 +9952,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // The stores the write touched in memory (settings, categories,
       // projects) go back to what the database says again.
       refresh();
+      if (cachesWereCurrent) {
+        taskCache = savedTasks;
+        personCache = savedPeople;
+        projectCache = savedProjects;
+        lastChangeToken = changeToken();
+      }
     }
     return { result, effects };
   };
