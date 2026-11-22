@@ -4474,7 +4474,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   };
 
   /** The next free `sortOrder` across every task, which is where a new one goes. */
-  const nextTaskOrder = (): number => db.dbGetAllTasks().reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1;
+  const nextTaskOrder = (): number => db.dbGetMaxTaskSortOrder() + 1;
 
   registerTaskSource(tasks);
   registerPersonSource(people);
@@ -6712,11 +6712,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     createTask(draft: Partial<TaskDraft>): Task {
       if (!draft.title?.trim()) throw new Error('A task needs a title.');
 
-      const all = db.dbGetAllTasks();
+      // Only a list already loaded is kept: loading one here just to patch it
+      // would be the full read this saves.
+      const before = taskCache;
       const task = taskDraft.newTaskFromDraft(
         taskDraft.applyTitleRulesToDraft(draft),
         new Date().toISOString(),
-        all.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+        nextTaskOrder(),
         // Seed time-of-day from the category, as the two from-scratch creation
         // paths in the app do. This is a from-scratch creation.
         true
@@ -6724,6 +6726,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       ensureCategory(task.category);
       db.dbInsertTask(task);
       refresh();
+      if (before) keepTasksAfterWrite(before, [task.id]);
       return task;
     },
 
@@ -8823,7 +8826,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const childOrder = new Map<string, number>();
         const pageOrder: string[] = [];
         const today = dates.getLogicalToday();
-        let order = db.dbGetAllTasks().reduce((m, t) => Math.max(m, t.sortOrder), 0);
+        let order = db.dbGetMaxTaskSortOrder();
         for (const { task, sectionId, subtasks } of blueprint.entries) {
           const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
           // Within a section the rows are numbered 1..n, as the app's

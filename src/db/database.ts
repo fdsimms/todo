@@ -4779,6 +4779,11 @@ export function dbGetAllTasks(): Task[] {
   return rows.map(rowToTask);
 }
 
+/** The highest task `sortOrder`, or 0 when there is none above it. One cell, where a new task's order needed every row. */
+export function dbGetMaxTaskSortOrder(): number {
+  return db.getFirstSync<{ m: number }>('SELECT MAX(0, COALESCE(MAX(sort_order), 0)) AS m FROM tasks')?.m ?? 0;
+}
+
 /** Every task id, one narrow column: what a delta reload diffs against to find deletions. */
 export function dbGetTaskIds(): string[] {
   return db.getAllSync<{ id: string }>('SELECT id FROM tasks').map(r => r.id);

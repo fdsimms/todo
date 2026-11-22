@@ -190,6 +190,25 @@ describe('quickAdd', () => {
     expect(replica.tasks()).toHaveLength(1);
   });
 
+  // Each line used to read every task twice: once for the next sortOrder and
+  // once to rebuild the cache the insert emptied.
+  it('reads the task table at most once for a whole list of lines', () => {
+    replica.createTask({ title: 'Already here' });
+    replica.tasks();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const database = require('../../../src/db/database') as typeof import('../../../src/db/database');
+    const loads = jest.spyOn(database, 'dbGetAllTasks');
+    try {
+      const added = quickAdd(replica, { lines: Array.from({ length: 12 }, (_, i) => `Line ${i} #home`), apply: true });
+      expect(added.applied).toBe(true);
+      expect(loads.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      loads.mockRestore();
+    }
+    expect(replica.tasks()).toEqual(database.dbGetAllTasks());
+    expect(replica.tasks().map(t => t.title)).toEqual(['Already here', ...Array.from({ length: 12 }, (_, i) => `Line ${i}`)]);
+  });
+
   // Every task made through this server lands in a category (docs/arch/mcp-server.md);
   // a line that names none and has nothing to supply one would sit in no section on Today.
   it('sends back a line that would land in no category, and adds nothing until it has one', () => {
