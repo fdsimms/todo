@@ -125,7 +125,7 @@ import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './
 import { healthSourceId, defaultHealthRules } from './healthRules';
 import { WAKE_UP_DEFAULT_GET_READY_MINUTES, wakeUpSourceId, wakeUpTitle } from './wakeUpTasks';
 import { WANIKANI_REVIEW_URL, wanikaniReviewSourceId, wanikaniReviewTitle } from './wanikaniTasks';
-import { frankiReadSourceId, frankiReadUrl, frankiReadTitle } from './frankiTasks';
+import { frankiCramPracticeTitle, frankiCramSourceId, frankiCramUrl, frankiReadSourceId, frankiReadUrl, frankiReadTitle } from './frankiTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -2168,6 +2168,15 @@ export function seedDemoData(): void {
       ...generatedBy('franki', frankiReadSourceId(dayKeyOf(today), code)),
     });
   }
+  // And a cram's practice task: a Thai lesson three days out, as Franki would report it.
+  const demoCram = { id: `thai-lesson-${dayKeyOf(addDays(today, 3))}`, name: 'Thai lesson', date: dayKeyOf(addDays(today, 3)) };
+  addTask({
+    title: frankiCramPracticeTitle(demoCram, dayKeyOf(today)),
+    dueDate: today.toISOString(),
+    category: 'Study',
+    linkUrl: frankiCramUrl(demoCram.id),
+    ...generatedBy('franki', frankiCramSourceId(dayKeyOf(today), demoCram.id)),
+  });
 
   // The weigh-in request, seeded directly for the same reason the health task
   // above it is: `checkWeighInTasks` refuses outright in demo mode, and it

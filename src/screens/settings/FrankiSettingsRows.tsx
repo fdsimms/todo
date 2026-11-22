@@ -45,12 +45,14 @@ export function FrankiSettingsRows(): React.ReactElement {
     server: st.frankiServer,
     threshold: st.frankiReviewThreshold,
     readTasks: st.frankiReadTasks,
+    cramTasks: st.frankiCramTasks,
     mode: st.frankiReviewMode,
     goal: st.frankiGoalMinutes,
     countReading: st.frankiCountReading,
     setServer: st.setFrankiServer,
     setThreshold: st.setFrankiReviewThreshold,
     setReadTasks: st.setFrankiReadTasks,
+    setCramTasks: st.setFrankiCramTasks,
     setMode: st.setFrankiReviewMode,
     setGoal: st.setFrankiGoalMinutes,
     setCountReading: st.setFrankiCountReading,
@@ -127,6 +129,15 @@ export function FrankiSettingsRows(): React.ReactElement {
         hint="Adds a task each day for each language Franki lists for today. Choose the languages in Franki, Settings, Read & Listen, Daily reading tasks. When off, no reading task is added."
         toggle={s.readTasks}
         onPress={() => s.setReadTasks(!s.readTasks)}
+      />
+
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId="frankiCramTasks"
+        label="Crams"
+        hint="Adds a task each day a cram runs in Franki, to practice for it, and one to check off the words you used once its day is over. Turn on “Share today’s counts and crams” in Franki, Settings, Read & Listen."
+        toggle={s.cramTasks}
+        onPress={() => s.setCramTasks(!s.cramTasks)}
       />
 
       <View style={styles.sep} />

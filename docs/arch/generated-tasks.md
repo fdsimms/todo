@@ -2268,7 +2268,7 @@ charger would read "no token".
   (default Study). Source ids are `reviews:<local hour>` and `lessons:<day>`; a delete writes
   nothing, since the close is the decision.
 
-## `franki`: today's cards, a Read & Listen text and a study goal, from the person's own Franki server
+## `franki`: today's cards, a Read & Listen text, a study goal and crams, from the person's own Franki server
 
 The person's flashcards (Franki, their Anki collection) read from their own Franki server: the
 Anki sync server with Read & Listen beside it (fdsimms/flashcards, `server/reader`).
@@ -2321,7 +2321,25 @@ lands. The rules are in `src/utils/frankiTasks.ts`.
   goal task is written from it. The same minutes are the line under a Franki row ("18 min studied
   today", `frankiRowMinutes`) and the FLASHCARDS week on Stats (`FrankiStudyCard`, absent until a
   read lands).
-- **Each opens Franki** (`franki://` for the deck list, `franki://read` for Read & Listen).
+- **The cram tasks follow Franki's crams** (Practice, Cram: the plan for a day coming up, a lesson
+  or a trip), behind their own switch (`frankiCramTasks`, off by default). Crams live only on
+  Franki's phone; it sends them to its server while its "Share today's counts and crams" is on, and
+  the status lists them as `franki_crams` (`crams` in the snapshot: id, name, day, when its day ends
+  in Franki, last practiced, finished). They mirror Franki's own Today cards (`frankiCramPlan`):
+  - **Practice, once a day while one runs** (`cram:<day>:<id>`, "Practice for Thai lesson (in 2
+    days)"), the Read & Listen task's rules: spent by writing (`frankiCramSpent.practiced`, this
+    device's own), not written when it was already practiced today, ready once it has been, and
+    yesterday's goes at the first pass of the new day. "Runs" is Franki's own: until the end of its
+    day there (`endsAt`), not this app's day.
+  - **Check off the words used, once its day is over** (`cramdone:<id>`, opening At the lesson).
+    Not day-keyed, so it stays across days; written once per cram (`frankiCramSpent.checkedOff`,
+    kept to the crams still listed), ready once Franki says it's finished.
+  - **A cram Franki stops listing takes its tasks away**: Franki sends the crams not finished and
+    any finished today, so one deleted, or finished on an earlier day, is gone. A server that never
+    had a report (`crams` null) gets nothing written or taken away, which is not the same as an
+    empty list (Franki sends one when its sharing is turned off).
+- **Each opens Franki** (`franki://` for the deck list, `franki://read` for Read & Listen,
+  `franki://cram?id=` and `franki://cram-lesson?id=` for a cram).
 - Pauses on vacation, refuses in demo mode, and files under its own category setting (default
   Study). A delete writes nothing: the reviews close is the decision, and the reading task's day is
   already spent.

@@ -181,6 +181,14 @@ import {
   frankiReadUrl,
   FRANKI_REVIEW_URL,
   frankiCardsLeft,
+  frankiCramCheckOffTitle,
+  frankiCramCheckOffUrl,
+  frankiCramDoneSourceId,
+  frankiCramPlan,
+  frankiCramPracticeTitle,
+  frankiCramSourceId,
+  frankiCramTaskId,
+  frankiCramUrl,
   frankiDailySourceId,
   frankiDailyTitle,
   frankiGoalSourceId,
@@ -196,6 +204,7 @@ import {
   wantedFrankiReadLanguages,
   wantsFrankiDailyTask,
   wantsFrankiGoalTask,
+  withFrankiCramSpent,
   withFrankiReadSpent,
 } from '../utils/frankiTasks';
 import { minutesStudiedToday } from '../utils/frankiStudy';
@@ -9821,6 +9830,48 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             const latest = useSettingsStore.getState();
             latest.setFrankiReadSpent(withFrankiReadSpent(latest.frankiReadSpent, todayKey, code));
           },
+        });
+      });
+    }
+
+    // ==== crams: practice while one runs, then check off the words used ====
+    // Franki's crams live on its phone; it sends them to the server while its
+    // "Share today's counts and crams" is on. A server that never had them
+    // (`crams` null) gets no cram task written or taken away.
+    const crams = snapshot.crams;
+    if (crams) {
+      const listed = crams.map(c => c.id);
+      const byId = new Map(crams.map(c => [c.id, c]));
+      // The crams Franki lists, and any that still have a task here (one it stopped listing goes).
+      const cramIds = new Set([
+        ...listed,
+        ...[...liveOf('cram'), ...liveOf('cramDone')].flatMap(task => frankiCramTaskId(task) ?? []),
+      ]);
+      cramIds.forEach(id => {
+        const cram = byId.get(id);
+        const plan = cram
+          ? frankiCramPlan({ cram, now, dayStart, spent: settings.frankiCramSpent, todayKey })
+          : { keepPractice: false, writePractice: false, keepCheckOff: false, writeCheckOff: false };
+        // The latest record, since another cram's task may have spent just before this one.
+        const spend = (written: { practice: string } | { checkOff: string }) => {
+          const latest = useSettingsStore.getState();
+          latest.setFrankiCramSpent(withFrankiCramSpent(latest.frankiCramSpent, todayKey, written, listed));
+        };
+        dayTask({
+          sourceId: frankiCramSourceId(todayKey, id),
+          wanted: settings.frankiCramTasks && plan.keepPractice,
+          wants: plan.writePractice,
+          title: cram ? frankiCramPracticeTitle(cram, todayKey) : '',
+          link: frankiCramUrl(id),
+          spend: () => spend({ practice: id }),
+        });
+        dayTask({
+          sourceId: frankiCramDoneSourceId(id),
+          wanted: settings.frankiCramTasks && plan.keepCheckOff,
+          wants: plan.writeCheckOff,
+          title: cram ? frankiCramCheckOffTitle(cram) : '',
+          link: frankiCramCheckOffUrl(id),
+          spend: () => spend({ checkOff: id }),
         });
       });
     }

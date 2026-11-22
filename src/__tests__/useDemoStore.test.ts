@@ -5453,7 +5453,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const settings = useSettingsStore.getState();
     const today = dayKeyOf(getCurrentDayStart());
 
-    const franki = tasks.filter(t => t.generatedKind === 'franki');
+    const franki = tasks.filter(t => t.generatedKind === 'franki' && t.generatedSourceId?.startsWith('read:'));
     expect(franki.map(t => t.title).sort()).toEqual(['Read & Listen: Polish', 'Read & Listen: Thai']);
     expect(franki.map(t => t.generatedSourceId).sort()).toEqual([`read:${today}:pl`, `read:${today}:th`]);
     for (const task of franki) {
@@ -5462,6 +5462,14 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     }
     expect(settings.frankiTaskCategory).toBe('Study');
     expect(settings.frankiTasks).toBe(false);
+  });
+
+  it('seeds a Franki cram practice task, opening the cram', () => {
+    const today = dayKeyOf(getCurrentDayStart());
+    const cram = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'franki' && t.generatedSourceId?.startsWith('cram:'));
+    expect(cram.map(t => t.title)).toEqual(['Practice for Thai lesson (in 3 days)']);
+    expect(cram[0].generatedSourceId).toMatch(new RegExp(`^cram:${today}:thai-lesson-`));
+    expect(cram[0].linkUrl).toMatch(/^franki:\/\/cram\?id=thai-lesson-/);
   });
 
   it('seeds a Stay under limit, shown on Today, and a warning for it', () => {

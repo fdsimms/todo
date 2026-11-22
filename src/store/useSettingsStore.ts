@@ -199,6 +199,8 @@ import {
   clampFrankiGoalMinutes,
   parseFrankiReadSpent,
   type FrankiReadSpent,
+  parseFrankiCramSpent,
+  type FrankiCramSpent,
   clampFrankiReviewThreshold,
   FRANKI_REVIEW_MODE_DEFAULT,
   FRANKI_REVIEW_THRESHOLD_DEFAULT,
@@ -2050,8 +2052,11 @@ interface SettingsStore {
   // wave needs. frankiReadTasks is the Read & Listen tasks' own switch (which
   // languages get one is Franki's call, its Settings, Daily reading tasks),
   // frankiGoalMinutes the study-time goal (null for none) and
-  // frankiCountReading whether Read & Listen time counts toward it. The review
-  // state and the day marks are this device's own and never sync.
+  // frankiCountReading whether Read & Listen time counts toward it.
+  // frankiCramTasks is the cram tasks' own switch, off by default (a cram
+  // reaches the server only while Franki's own sharing setting is on). The
+  // review state, the day marks and the spent records are this device's own
+  // and never sync.
   frankiTasks: boolean;
   frankiTaskCategory: string | null;
   frankiServer: string;
@@ -2059,6 +2064,8 @@ interface SettingsStore {
   frankiReadTasks: boolean;
   frankiReviewState: ReviewWaveState;
   frankiReadSpent: FrankiReadSpent | null;
+  frankiCramTasks: boolean;
+  frankiCramSpent: FrankiCramSpent | null;
   frankiReviewMode: FrankiReviewMode;
   frankiGoalMinutes: number | null;
   frankiCountReading: boolean;
@@ -2693,6 +2700,8 @@ interface SettingsStore {
   setFrankiReadTasks: (on: boolean) => void;
   setFrankiReviewState: (state: ReviewWaveState) => void;
   setFrankiReadSpent: (spent: FrankiReadSpent) => void;
+  setFrankiCramTasks: (on: boolean) => void;
+  setFrankiCramSpent: (spent: FrankiCramSpent) => void;
   setFrankiReviewMode: (mode: FrankiReviewMode) => void;
   setFrankiGoalMinutes: (minutes: number | null) => void;
   setFrankiCountReading: (on: boolean) => void;
@@ -3541,6 +3550,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   frankiReadTasks: true,
   frankiReviewState: REVIEW_WAVE_INITIAL_STATE,
   frankiReadSpent: null,
+  frankiCramTasks: false,
+  frankiCramSpent: null,
   frankiReviewMode: FRANKI_REVIEW_MODE_DEFAULT,
   frankiGoalMinutes: null,
   frankiCountReading: true,
@@ -4160,6 +4171,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const frankiReadTasks = dbGetSetting('frankiReadTasks') !== 'false';
     const frankiReviewState = parseReviewWaveState(dbGetSetting('frankiReviewState'));
     const frankiReadSpent = parseFrankiReadSpent(dbGetSetting('frankiReadSpent'));
+    const frankiCramTasks = dbGetSetting('frankiCramTasks') === 'true';
+    const frankiCramSpent = parseFrankiCramSpent(dbGetSetting('frankiCramSpent'));
     const frankiReviewMode = parseFrankiReviewMode(dbGetSetting('frankiReviewMode'));
     const storedFrankiGoal = parseInt(dbGetSetting('frankiGoalMinutes') ?? '', 10);
     const frankiGoalMinutes = clampFrankiGoalMinutes(Number.isFinite(storedFrankiGoal) ? storedFrankiGoal : null);
@@ -4469,6 +4482,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       focusWorkCapMinutes,
       foodLogPinnedNutrients,
       frankiCountReading,
+      frankiCramSpent,
+      frankiCramTasks,
       frankiDailyLastDayKey,
       frankiGoalLastDayKey,
       frankiGoalMinutes,
@@ -5794,6 +5809,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFrankiReadSpent(spent: FrankiReadSpent) {
     dbSetSetting('frankiReadSpent', JSON.stringify(spent));
     set({ frankiReadSpent: spent });
+  },
+
+  setFrankiCramTasks(on: boolean) {
+    dbSetSetting('frankiCramTasks', on ? 'true' : 'false');
+    set({ frankiCramTasks: on });
+  },
+
+  setFrankiCramSpent(spent: FrankiCramSpent) {
+    dbSetSetting('frankiCramSpent', JSON.stringify(spent));
+    set({ frankiCramSpent: spent });
   },
 
   setFrankiReviewMode(mode: FrankiReviewMode) {

@@ -675,11 +675,12 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'wanikaniClientLink',
   // The Franki tasks' options and the server's address. The key is the
   // keychain's and never syncs, and neither do the review state or the Read &
-  // Listen spent languages, which say what this device has seen.
+  // Listen and cram spent records, which say what this device has seen.
   'frankiTaskCategory',
   'frankiServer',
   'frankiReviewThreshold',
   'frankiReadTasks',
+  'frankiCramTasks',
   'frankiReviewMode',
   'frankiGoalMinutes',
   'frankiCountReading',
