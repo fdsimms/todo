@@ -436,7 +436,7 @@ export interface RotationPill {
   title: string;
   /** Its count for the period is reached. A done pill can still be tapped to log it again. */
   done: boolean;
-  /** "1/3" for a member done more than once a week, null for one done once. Counts past the target ("4/3"). */
+  /** "1/3" for a member done more than once a week, null for one done once. Counts past the target ("4/3", "2/1"). */
   progress: string | null;
   /** It has been logged more often than its count, so the pill shows the surplus. */
   over: boolean;
@@ -462,7 +462,7 @@ export function rotationPills(
     id: m.item.id,
     title: m.item.title,
     done: m.doneAt !== null,
-    progress: m.perWeek > 1 ? `${m.count}/${m.perWeek}` : null,
+    progress: m.perWeek > 1 || m.count > m.perWeek ? `${m.count}/${m.perWeek}` : null,
     over: m.count > m.perWeek,
     hasWorkout: !!(m.item.workoutRoutineId || m.item.workoutProgramId),
   }));
@@ -480,14 +480,13 @@ export function rotationRemaining(
 }
 
 /**
- * How much of the set's target this period's picks have covered: each member
- * counts up to its own count and no further.
+ * How much of the set's target this period's picks have reached: every pick
+ * counts, a member already at its own count included.
  *
- * Capped per member, because a member may be logged again once it is at its
- * count (the picker allows it, since a fourth run is a real run and refusing to
- * record it would be the app arguing with you). A repeat is a real log entry
- * and a real `lastDoneAt` bump; what it is not is progress against the week,
- * because the week is about coverage.
+ * A fourth run in a week of three is a real run, and the person tapping a done
+ * pill is saying it should count, so it fills the target like any other pick.
+ * That makes the target a total of picks and not strict coverage: a surplus on
+ * one member can close a week with another still short.
  */
 export function rotationDoneCount(
   task: RotationCarrier,
@@ -495,7 +494,7 @@ export function rotationDoneCount(
   weekStartsOn: 0 | 1,
 ): number {
   return rotationMembers(task, dayStart, weekStartsOn)
-    .reduce((sum, m) => sum + Math.min(m.count, m.perWeek), 0);
+    .reduce((sum, m) => sum + m.count, 0);
 }
 
 /**
@@ -518,45 +517,27 @@ export function rotationCountAfterPick(
 
 /**
  * Covered against total for a ledger read back on its own, with no period
- * check: the picks a closed week kept, against what the set asks for. Capped
- * per member exactly as `rotationDoneCount` is.
+ * check: the picks a closed week kept, against what the set asks for. Counts
+ * every pick exactly as `rotationDoneCount` does.
  */
 export function rotationCoveredOf(
   items: readonly RotationItem[],
   log: readonly RotationLogEntry[],
 ): { covered: number; total: number } {
   const covered = items.reduce(
-    (sum, i) => sum + Math.min(log.filter(e => e.itemId === i.id).length, rotationPerWeek(i)),
+    (sum, i) => sum + log.filter(e => e.itemId === i.id).length,
     0,
   );
   return { covered, total: rotationTargetTotal(items) };
 }
 
-/** Picks still owed this period: the set's target less what has been covered. */
+/** Picks still owed this period: the set's target less every pick made. */
 export function rotationUnitsLeft(
   task: RotationCarrier,
   dayStart: Date,
   weekStartsOn: 0 | 1,
 ): number {
-  return rotationMembers(task, dayStart, weekStartsOn)
-    .reduce((sum, m) => sum + Math.max(0, m.perWeek - m.count), 0);
-}
-
-/**
- * Whether logging `itemId` would newly cover part of the target: the member is
- * still under its own count. That is whether it should move `progressCount`.
- * False for a repeat past the count, which still logs.
- */
-export function rotationCoversNew(
-  task: RotationCarrier,
-  itemId: string,
-  dayStart: Date,
-  weekStartsOn: 0 | 1,
-): boolean {
-  const item = (task.rotationItems ?? []).find(i => i.id === itemId);
-  if (!item) return false;
-  const count = activeRotationLog(task, dayStart, weekStartsOn).filter(e => e.itemId === itemId).length;
-  return count < rotationPerWeek(item);
+  return Math.max(0, rotationTargetTotal(task.rotationItems ?? []) - rotationDoneCount(task, dayStart, weekStartsOn));
 }
 
 /**

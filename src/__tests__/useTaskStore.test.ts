@@ -15586,7 +15586,7 @@ describe('quota tasks', () => {
       expect(pods().completed).toBe(true);
     });
 
-    it('logs a fourth run without counting it', () => {
+    it('counts a fourth run toward the week, which can close it with the bike ride still owed', () => {
       useTaskStore.setState({ tasks: [workouts()] });
       const store = useTaskStore.getState();
       store.logRotationUnit('pods', 'run');
@@ -15594,8 +15594,8 @@ describe('quota tasks', () => {
       store.logRotationUnit('pods', 'run');
       store.logRotationUnit('pods', 'run');
       expect(pods().rotationLog).toHaveLength(4);
-      expect(pods().progressCount).toBe(3);
-      expect(pods().completed).toBe(false);
+      expect(pods().progressCount).toBe(4);
+      expect(pods().completed).toBe(true);
     });
 
     it('takes back a run without dropping a covered count', () => {
@@ -15639,15 +15639,14 @@ describe('quota tasks', () => {
       expect(pods().rotationPeriodStart).toBeTruthy();
     });
 
-    it('logs a repeat without counting it toward the week', () => {
+    it('counts a repeat toward the week', () => {
       useTaskStore.setState({ tasks: [rotation()] });
       const store = useTaskStore.getState();
       store.logRotationUnit('pods', 'es');
       store.logRotationUnit('pods', 'es');
 
-      // Two real listens, one language covered — the week is about coverage.
       expect(pods().rotationLog).toHaveLength(2);
-      expect(pods().progressCount).toBe(1);
+      expect(pods().progressCount).toBe(2);
       expect(pods().completed).toBe(false);
     });
 
@@ -15712,15 +15711,14 @@ describe('quota tasks', () => {
       expect(pods().progressCount).toBe(1);
     });
 
-    it('undoing a repeat leaves the member covered', () => {
+    it('undoing a repeat takes one off the count', () => {
       useTaskStore.setState({ tasks: [rotation()] });
       const store = useTaskStore.getState();
       store.logRotationUnit('pods', 'es');
       store.logRotationUnit('pods', 'es');
-      expect(pods().progressCount).toBe(1);
+      expect(pods().progressCount).toBe(2);
 
       useTaskStore.getState().unlogRotationUnit('pods');
-      // The first Spanish still counts, so the count must not fall.
       expect(pods().rotationLog.map(e => e.itemId)).toEqual(['es']);
       expect(pods().progressCount).toBe(1);
     });

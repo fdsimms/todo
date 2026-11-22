@@ -1282,10 +1282,9 @@ export interface Task {
    *
    * `progressCount` stays the count and this stays the ledger. The invariant
    * held at the two write sites (`recordRotationPick` / `unlogRotationUnit`)
-   * is that `progressCount` equals the number of *distinct* members in here,
-   * not the number of entries: a member may be logged twice in a period and
-   * the second one is a real listen but not a sixth language, so the ledger
-   * can be longer than the count. See `rotationDoneCount`.
+   * is that `progressCount` equals the number of entries in here: every pick
+   * counts toward the target, a member already at its own count included.
+   * See `rotationDoneCount`.
    *
    * The redundancy is deliberate and is what buys the paragraph above: every
    * reader that only needs "how many" keeps working untouched, and only the

@@ -5875,10 +5875,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * `completeTask`, where the quota path completes instead of bumping — a
    * rotation's last pick has to land in the ledger before the week closes, or
    * the closed row's record is missing the pick that closed it. And a repeat
-   * (a member already down this period) logs without moving `progressCount`,
-   * because the week is about coverage; listening to Spanish twice is a real
-   * thing to do and refusing to record it would be the app arguing with you,
-   * but it is not one of the five.
+   * (a member already down this period) moves `progressCount` like any other
+   * pick: listening to Spanish twice is a real thing to do, and the person
+   * tapping a done pill is saying it counts toward the week.
    */
   recordRotationPick(id, itemId) {
     const task = taskById(get().tasks, id);
@@ -5887,10 +5886,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const dayStart = getCurrentDayStart();
     const patch = rotationPick(task, itemId, new Date(), dayStart, weekStartsOn);
     if (!patch) return false;
-    // Read off the ledger, not stepped from the stored count: a repeat leaves
-    // it where it was (a second Spanish is a real listen but not a sixth
-    // language), and a row whose count had fallen behind its ledger heals on
-    // its next pick instead of counting every tap as a repeat for ever.
+    // Read off the ledger, not stepped from the stored count, so a row whose
+    // count had fallen behind its ledger heals on its next pick.
     const progressCount = rotationDoneCount({ ...task, ...patch }, dayStart, weekStartsOn);
     const updated = { ...task, ...patch, progressCount };
     dbUpdateTask(updated);
@@ -5934,10 +5931,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   /**
    * Takes the most recent pick back — what a long-press on the meter does.
    *
-   * `progressCount` only falls when the pick being removed was the one
-   * covering that member, which is the mirror of the repeat rule above: undoing
-   * a second Spanish leaves Spanish covered, because the first one still
-   * counts.
+   * `progressCount` falls by one, because every pick counted toward it.
    */
   planRotationItem(id, itemId) {
     const task = taskById(get().tasks, id);
