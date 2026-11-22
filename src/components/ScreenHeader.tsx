@@ -99,19 +99,27 @@ interface Props {
    * the top row stays empty, so the lenses without one match Today's height.
    */
   gridLayout?: boolean;
+  /**
+   * A single title row with the actions centered on it: no reserved overline
+   * or subtitle line and less padding below, so a screen that wants the room
+   * for content (the Calendar's hour grid) gives up about 40pt. Plain title
+   * and actions only; the reserved lines are what keep the other screens'
+   * titles at one height, so a screen using this has its own.
+   */
+  compact?: boolean;
 }
 
 /**
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, gridLayout = false }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, gridLayout = false, compact = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const brandFace = useBrandFace('heavy');
 
   const actionButtons = (
-      <View style={[styles.actions, gridLayout && styles.actionsGrid]}>
+      <View style={[styles.actions, (gridLayout || compact) && styles.actionsGrid]}>
         {actions?.map((action, i) => {
           const tintColor = action.tint === 'orange' ? colors.orangeFill : colors.accentFill;
           const iconColor = action.disabled
@@ -161,6 +169,15 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
         {right}
       </View>
   );
+
+  if (compact) {
+    return (
+      <View style={styles.compactHeader}>
+        <Text style={[styles.title, brandFace]}>{title}</Text>
+        {actionButtons}
+      </View>
+    );
+  }
 
   if (gridLayout) {
     return (
@@ -256,6 +273,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // space left, so without it the text ends flush with the first button.
   // gridLayout: the top row is as tall as the coin pill so the date centers on
   // it; the main row is as tall as the title's line and the 34pt buttons.
+  compactHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
+  },
   gridHeader: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm },
   gridTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 30 },
   gridOverline: { flexShrink: 1, color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium, marginRight: spacing.md },
