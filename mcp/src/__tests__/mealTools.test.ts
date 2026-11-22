@@ -99,7 +99,16 @@ describe('set_meal_cooked', () => {
     const task = slotTask(DAY);
     completeTask(replica, task.id);
     const step2 = liveSlotTasks(DAY)[0];
-    completeTask(replica, step2.id);
+    // Once: cooking the meal reads the task list, and used to find this step
+    // still open there and complete it a second time.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const writes = jest.spyOn(require('../../../src/db/database') as typeof import('../../../src/db/database'), 'dbUpdateTask');
+    try {
+      completeTask(replica, step2.id);
+      expect(writes.mock.calls.filter(([t]) => t.id === step2.id)).toHaveLength(1);
+    } finally {
+      writes.mockRestore();
+    }
     expect(listMealPlan(replica, { from: DAY, days: 1 }).meals[0]).toMatchObject({ id: meal.id, cooked: true });
     expect(() => reopenTask(replica, step2.id)).toThrow(/set_meal_cooked/);
   });

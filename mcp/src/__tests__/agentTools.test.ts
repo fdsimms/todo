@@ -120,6 +120,31 @@ describe('batchUpdateTasks', () => {
       }
     });
 
+    it('does it at most once for a batch of defers or completions too', () => {
+      const deferred = Array.from({ length: 6 }, (_, i) => replica.createTask({ title: `Later ${i}` }));
+      const habits = Array.from({ length: 6 }, (_, i) =>
+        replica.createTask({ title: `Habit ${i}`, recurrenceType: 'daily', dueDate: day(0) }));
+      replica.tasks();
+      const loads = jest.spyOn(db(), 'dbGetAllTasks');
+      try {
+        const done = batchUpdateTasks(replica, {
+          apply: true,
+          changes: [
+            ...deferred.map(r => ({ id: r.id, action: 'defer' as const, date: keyOf(day(4)) })),
+            ...habits.map(r => ({ id: r.id, action: 'complete' as const })),
+          ],
+        });
+        expect(done.applied).toBe(true);
+        expect(loads.mock.calls.length).toBeLessThanOrEqual(1);
+      } finally {
+        loads.mockRestore();
+      }
+      // Each completion inserted the next day's row, and the cache placed it
+      // where a reload would.
+      expect(replica.tasks()).toEqual(db().dbGetAllTasks());
+      expect(replica.tasks().filter(t => t.title.startsWith('Habit') && !t.completed)).toHaveLength(6);
+    });
+
     it('leaves the cached list exactly as a fresh read would, in the same order', () => {
       const a = replica.createTask({ title: 'A' });
       const b = replica.createTask({ title: 'B' });
@@ -163,6 +188,25 @@ describe('quickAdd', () => {
     const added = quickAdd(replica, { lines: ['Pay rent tomorrow #home'], apply: true });
     expect(added.rows[0].task).toMatchObject({ title: 'Pay rent', category: 'Home' });
     expect(replica.tasks()).toHaveLength(1);
+  });
+
+  // Each line used to read every task twice: once for the next sortOrder and
+  // once to rebuild the cache the insert emptied.
+  it('reads the task table at most once for a whole list of lines', () => {
+    replica.createTask({ title: 'Already here' });
+    replica.tasks();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const database = require('../../../src/db/database') as typeof import('../../../src/db/database');
+    const loads = jest.spyOn(database, 'dbGetAllTasks');
+    try {
+      const added = quickAdd(replica, { lines: Array.from({ length: 12 }, (_, i) => `Line ${i} #home`), apply: true });
+      expect(added.applied).toBe(true);
+      expect(loads.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      loads.mockRestore();
+    }
+    expect(replica.tasks()).toEqual(database.dbGetAllTasks());
+    expect(replica.tasks().map(t => t.title)).toEqual(['Already here', ...Array.from({ length: 12 }, (_, i) => `Line ${i}`)]);
   });
 
   // Every task made through this server lands in a category (docs/arch/mcp-server.md);
