@@ -3665,8 +3665,19 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * instead when a named row is gone, an existing one's place in the list moved
    * (`sortOrder`, `createdAt`), or an inserted one ties another row on both,
    * since a patched copy could then be in a different order than a reload.
+   *
+   * Two rules for a task write here:
+   * - End it with `refresh()` then this, naming every row it wrote, rather
+   *   than `refresh()` alone, wherever it can run once per row of a batch
+   *   (`batch_update_tasks`, `quick_add`). Find a new row's `sortOrder` with
+   *   `nextTaskOrder()`, never by reading every task.
+   * - When it calls into another path that reads `tasks()` before it is done
+   *   (as `finishCompletion` calls `cookMeal`), empty or patch the cache first.
+   *   The cache still holds the rows from before the write, so that path acts
+   *   on stale rows (it found the completed task still open and completed it
+   *   again).
    */
-  const keepTasksAfterWrite = (before: readonly Task[], ids: readonly string[]): void => {
+  const keepTasksAfterWrite =(before: readonly Task[], ids: readonly string[]): void => {
     const wanted = [...new Set(ids)];
     const fresh = db.dbGetTasksByIds(wanted);
     if (fresh.length !== wanted.length) return;
