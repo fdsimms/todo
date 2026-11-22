@@ -34,6 +34,10 @@ completions, which made it read as one more task list. What it does now:
   (`dayEventColors`). It replaced the task-load shade and the deadline dot: those measured tasks,
   and the grid is now read for which days have things on them. `WhenPicker` keeps the shade, since
   picking a day for a task is exactly when task load is the question.
+- **The month grid collapses to the selected week** (the chevron handle under it), so the day's
+  list can have the screen. Month view only, session-only like `viewMode`. Collapsed, the arrows page
+  by week (`stepDay(±7)`, which carries the month along) and the legend is hidden. The buckets are still
+  built over the whole month, so nothing about the reads changes.
 - **Hidden events are left off the grid and the agenda** (`useHiddenEventsStore`), as on Today,
   but stay in the event sheet a tap opens, which is where they are unhidden.
 - **There is no bulk selection, no task drag onto a day, and no projected repeats** on this screen

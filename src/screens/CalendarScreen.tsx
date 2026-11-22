@@ -24,10 +24,12 @@ import { TodayEventsSheet } from '../components/TodayEventsSheet';
 import { CalendarAgenda, UntimedRow, type UntimedLink } from '../components/CalendarAgenda';
 import { EmptyNote } from '../components/EmptyNote';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors, textScale } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { monthCellSizeFor } from '../utils/frameWidth';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
+import { RotatingChevron } from '../components/RotatingChevron';
 import { resetToLocateTask, resetToMealPlan, showTodayViewMode } from '../navigation/navigationRef';
 import { openSettingsEntryById } from '../navigation/openScreen';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
@@ -237,6 +239,9 @@ export function CalendarScreen() {
   // Month, week or one day on a clock. Session-only: which way you are reading
   // this month is not a preference about the app.
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
+  // Month view only: the grid shrinks to the selected week so the day's list
+  // gets the room. Session-only for the same reason `viewMode` is.
+  const [gridCollapsed, setGridCollapsed] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
@@ -760,6 +765,15 @@ export function CalendarScreen() {
     [days],
   );
 
+  // The rows drawn: all of them, or only the one holding the selected day. A
+  // selection outside the grid (it can't happen through paging) falls back to
+  // the full month rather than drawing nothing.
+  const visibleGridRows = useMemo(() => {
+    if (!gridCollapsed) return gridRows;
+    const week = gridRows.find(row => row.some(d => dayKeyOf(d) === selectedKey));
+    return week ? [week] : gridRows;
+  }, [gridCollapsed, gridRows, selectedKey]);
+
   /**
    * The trips under one row of cells, a band per run of days with the trip's
    * name on it, the way a multi-day event draws in a calendar app. Ends that
@@ -1042,12 +1056,14 @@ export function CalendarScreen() {
       </View>
 
       {viewMode === 'month' ? (
+        // Collapsed to one week, the arrows page by week and the label follows
+        // the selected day, since the week can straddle two months.
         <PeriodNav
-          label={format(displayMonth, 'MMMM yyyy')}
-          onPrev={() => stepMonth(-1)}
-          onNext={() => stepMonth(1)}
-          prevAccessibilityLabel="Previous month"
-          nextAccessibilityLabel="Next month"
+          label={format(gridCollapsed ? selectedDate : displayMonth, 'MMMM yyyy')}
+          onPrev={() => (gridCollapsed ? stepDay(-7) : stepMonth(-1))}
+          onNext={() => (gridCollapsed ? stepDay(7) : stepMonth(1))}
+          prevAccessibilityLabel={gridCollapsed ? 'Previous week' : 'Previous month'}
+          nextAccessibilityLabel={gridCollapsed ? 'Next week' : 'Next month'}
         />
       ) : viewMode === 'threeDay' ? (
         <PeriodNav
@@ -1085,7 +1101,7 @@ export function CalendarScreen() {
         </View>
 
         <View>
-          {gridRows.map(row => (
+          {visibleGridRows.map(row => (
             <View key={dayKeyOf(row[0])}>
               <View style={styles.gridRow}>
                 {row.map(day => {
@@ -1114,12 +1130,21 @@ export function CalendarScreen() {
         {/* The dots are calendar events only, so a day full of tasks looks as
             empty as one with nothing on it. Only while reading is on: with it
             off there are no dots to explain, and the link below says why. */}
-        {reading && (
+        {reading && !gridCollapsed && (
           <View style={styles.gridLegend}>
             <View style={styles.gridLegendDot} />
             <Text style={styles.gridLegendText}>Dots are calendar events. The day you select lists its tasks below.</Text>
           </View>
         )}
+        <TouchableOpacity
+          style={styles.gridHandle}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); animateLayout(); setGridCollapsed(c => !c); }}
+          accessibilityRole="button"
+          accessibilityLabel={gridCollapsed ? 'Show the whole month' : 'Show only this week'}
+        >
+          <RotatingChevron open={!gridCollapsed} size={iconSize.md} color={colors.textTertiary} />
+        </TouchableOpacity>
       </View>
       )}
 
@@ -1500,6 +1525,12 @@ function makeStyles(colors: Colors, textScaleFactor = 1, cellSize = 0) {
       alignItems: 'center',
       gap: spacing.sm,
       marginTop: spacing.sm,
+    },
+    // Full width and tall enough to hit: the chevron alone is a small target.
+    gridHandle: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 32,
     },
     gridLegendDot: {
       width: EVENT_DOT,
