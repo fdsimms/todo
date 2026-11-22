@@ -212,7 +212,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/experiments.ts` — EXPERIMENT_LENGTH_PRESETS, describeLength, DEFAULT_EXPERIMENT_DAYS, EXPERIMENT_LABEL_MAX_LENGTH, ExperimentStatus, experimentDayKey, startedAtFor, startedAtRefusal, ExperimentSpan, experimentSpan, +25 more
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabAnchor.ts` — FabMenuAnchor, fabMenuAnchorFor
-- `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
+- `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, rowsInColumnAt, DEFAULT_DROP_SLOT, +14 more
 - `src/utils/fasting.ts` — DEFAULT_FAST_GOAL_HOURS, MIN_FAST_GOAL_HOURS, MAX_FAST_GOAL_HOURS, MAX_FAST_START_AGE_HOURS, clampFastGoalHours, activeFast, lastEndedFast, pastFasts, formatFastLengthShort, fastElapsedMs, +8 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, BackfillStep, backfillMultiQueue, +5 more
 - `src/utils/firstRun.ts` — FirstRunAnswers, FIRST_RUN_DEFAULTS, FirstRunSettings, firstRunSettings, FirstRunState, shouldOfferFirstRun

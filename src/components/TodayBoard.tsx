@@ -25,6 +25,7 @@ import {
   type BoardRowRect,
 } from '../utils/todayBoard';
 import type { RowScroller } from './ReorderableList';
+import type { DragScroller } from '../utils/fabDrop';
 
 /** What a drag on the board was released onto. */
 export interface BoardDrop<T> {
@@ -68,6 +69,15 @@ interface Props<T extends { type: string }> {
   scrollEnabled: boolean;
   contentContainerStyle?: StyleProp<ViewStyle>;
   rowScrollerRef?: React.Ref<RowScroller>;
+  /** The add button's drag scrolls the board through this, as it does the column (`DragScroller`). */
+  scrollControlRef?: React.Ref<DragScroller>;
+  /**
+   * Wraps each region of rows: the header, each column, the footer. Today puts a
+   * `PaintSelectionProvider` around each, so painting a run of selection dots
+   * finds its gutter at the column's own trailing edge and only that column's
+   * rows (each row registers with the nearest provider).
+   */
+  wrapRegion?: (children: React.ReactNode, key: string) => React.ReactNode;
   /** The number of columns the board settled on for its width, for the keyboard's reading order. */
   onColumnsChange?: (columns: number) => void;
   onDragBegin?: (item: T) => void;
@@ -100,7 +110,7 @@ const AUTOSCROLL_TICK_MS = 16;
  */
 export function TodayBoard<T extends { type: string }>({
   data, keyExtractor, renderItem, renderDragCard, canDrag, weightOf, canJoin, canPin, header, footer, empty,
-  scrollEnabled, contentContainerStyle, rowScrollerRef, onColumnsChange, onDragBegin, onTargetChange, onDrop,
+  scrollEnabled, contentContainerStyle, rowScrollerRef, scrollControlRef, wrapRegion, onColumnsChange, onDragBegin, onTargetChange, onDrop,
 }: Props<T>) {
   const colors = useColors();
   const [width, setWidth] = useState(0);
@@ -170,6 +180,18 @@ export function TodayBoard<T extends { type: string }>({
     scrollToTop: () => scrollRef.current?.scrollTo({ y: 0, animated: true }),
     scrollToEnd: () => scrollRef.current?.scrollToEnd({ animated: true }),
   }));
+
+  const [scrollLocked, setScrollLocked] = useState(false);
+  useImperativeHandle(scrollControlRef, () => ({
+    getOffset: () => scrollOffsetRef.current,
+    getMaxOffset: () => Math.max(0, contentHeightRef.current - viewportHeightRef.current),
+    scrollToOffset: (y: number) => {
+      scrollOffsetRef.current = y;
+      scrollRef.current?.scrollTo({ y, animated: false });
+    },
+    setScrollLocked,
+  }), []);
+  const wrap = (children: React.ReactNode, key: string) => (wrapRegion ? wrapRegion(children, key) : children);
 
   // ==== the drag ====
   const dataRef = useRef(data);
@@ -409,7 +431,7 @@ export function TodayBoard<T extends { type: string }>({
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={contentContainerStyle}
-        scrollEnabled={scrollEnabled && !isDragging}
+        scrollEnabled={scrollEnabled && !isDragging && !scrollLocked}
         scrollEventThrottle={16}
         onScroll={handleScroll}
         onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
@@ -417,7 +439,7 @@ export function TodayBoard<T extends { type: string }>({
         keyboardShouldPersistTaps="handled"
       >
         {header != null && (
-          <View ref={headerRef} collapsable={false}>{header}</View>
+          <View ref={headerRef} collapsable={false}>{wrap(header, 'header')}</View>
         )}
         {data.length === 0 ? empty : (
           <View
@@ -431,16 +453,16 @@ export function TodayBoard<T extends { type: string }>({
                 collapsable={false}
                 style={styles.column}
               >
-                {column.map(section => (
+                {wrap(column.map(section => (
                   <View key={keyExtractor(sections[section].items[0]!)}>
                     {sections[section].items.map(renderRow)}
                   </View>
-                ))}
+                )), `column-${c}`)}
               </View>
             ))}
           </View>
         )}
-        {footer}
+        {footer != null && wrap(footer, 'footer')}
       </ScrollView>
       {lineColumn && line && (
         <View

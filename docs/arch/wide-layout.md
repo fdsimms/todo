@@ -176,9 +176,11 @@ the header as one line (`TodayGlanceLine`). Five rules:
   the row into the section above it in that column, never the one below, since the section before a header
   in the flat order can be in another column. Over a stack's middle it joins it, over the header block it
   pins. For the same reason a stack being dragged keeps its rows open, where the column folds them.
-- **What finds rows by height alone is off on the board**: painting a run of selection dots (`rowIdAtY`) and
-  dropping the add button onto a row (`zoneAtY`). Rows are picked one tap at a time, and the add button adds
-  as a tap does.
+- **What finds rows by height alone works a column at a time.** Painting a run of selection dots
+  (`rowIdAtY`) gets a `PaintSelectionProvider` per region (`wrapRegion`: the header, each column, the footer),
+  so each has its own trailing gutter and its own rows; the screen's own provider stands down. Dropping the
+  add button onto a row (`zoneAtY`) takes the button's x and looks only at the column under it
+  (`rowsInColumnAt`), and its line is drawn across that column. In one column both are unchanged.
 - **The floating bars follow the board** (`useTodayPaneStore`, `floatingLayerInsetFor`'s `todayBoardPane`):
   the whole column while nothing is open, the column less the pane while a task is.
 

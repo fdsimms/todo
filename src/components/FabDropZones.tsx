@@ -7,6 +7,7 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react';
 import { Animated, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
@@ -230,6 +231,11 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
     const containerRef = useRef<View | null>(null);
     const containerYRef = useRef(0);
     const containerHeightRef = useRef(0);
+    // The container's left and right edges, for the line on Today's board, where
+    // a row is one column wide rather than the whole list (`indicatorInsets`).
+    const containerXRef = useRef(0);
+    const containerWidthRef = useRef(0);
+    const [indicatorInsets, setIndicatorInsets] = useState<{ left: number; right: number } | null>(null);
     const viewsRef = useRef<Map<string, MeasurableView>>(new Map());
     const zonesRef = useRef<Map<string, DropZone>>(new Map());
     /**
@@ -334,6 +340,13 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
         }
         const hit = rectsRef.current.find(r => zoneKey(r.zone) === intent.anchorKey);
         if (!hit) return;
+        // Across the row's own column: the whole list in one column, one column of a board.
+        const width = containerWidthRef.current;
+        if (width > 0 && hit.right > hit.left) {
+          const left = Math.max(0, hit.left - containerXRef.current) + spacing.lg;
+          const right = Math.max(0, containerXRef.current + width - hit.right) + spacing.lg;
+          setIndicatorInsets(prev => (prev && prev.left === left && prev.right === right ? prev : { left, right }));
+        }
         // Band space → this container's space: take the scroll offset back out
         // (it was added when the row was measured) so the line lands on the
         // seam where the rows are drawn right now.
@@ -380,7 +393,7 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
         // The pointer joins the bands' space, which carries the offset.
         const y = lastPageYRef.current + scrollOffset();
         return resolveFabDrop(
-          zoneAtY(rectsRef.current, y),
+          zoneAtY(rectsRef.current, y, undefined, undefined, lastPageXRef.current),
           y,
           lastHomeRef.current === 'returned',
           lastPageXRef.current,
@@ -504,9 +517,11 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           ref={containerRef}
           style={[styles.container, style]}
           onLayout={() => {
-            containerRef.current?.measureInWindow?.((_x, y, _w, h) => {
+            containerRef.current?.measureInWindow?.((x, y, w, h) => {
               if (Number.isFinite(y)) containerYRef.current = y;
               if (h > 0) containerHeightRef.current = h;
+              if (Number.isFinite(x)) containerXRef.current = x;
+              if (w > 0) containerWidthRef.current = w;
             });
           }}
         >
@@ -515,6 +530,7 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
             pointerEvents="none"
             style={[
               styles.indicator,
+              indicatorInsets,
               { opacity: indicatorOpacity, transform: [{ translateY: indicatorTop }] },
             ]}
           />

@@ -3622,11 +3622,12 @@ export function TodayScreen() {
       setExpandedTaskId(null);
       dropZonesRef.current?.begin();
     },
-    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
-    onEnd: (pageY, home) => {
+    // The x picks the column on the board (`zoneAtY`), and changes nothing in one column.
+    onMove: (pageY, home, pageX) => dropZonesRef.current?.moveTo(pageY, home, pageX),
+    onEnd: (pageY, home, pageX) => {
       // end()/cancel() publish a null intent themselves, which is what clears
       // the label and any lit stack.
-      openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
+      openQuickAddForDrop(dropZonesRef.current?.end(pageY, home, pageX) ?? { kind: 'plain' });
     },
     onCancel: () => {
       dropZonesRef.current?.cancel();
@@ -5078,6 +5079,12 @@ export function TodayScreen() {
   const canDragOnBoard = (item: ListItem) => !selectionMode && (item.type === 'task' || item.type === 'group');
   const canJoinOnBoard = (dragged: ListItem, target: ListItem) => dragged.type === 'task' && target.type === 'group';
   const canPinOnBoard = (dragged: ListItem) => dragged.type === 'task' && !dragged.task.pinned;
+  // Each region of the board (the header, each column, the footer) paints on its own:
+  // its gutter at its own trailing edge, its own rows (each registers with the nearest
+  // provider). `flex: 0` because a region is as tall as its rows, inside a scroll view.
+  const wrapBoardRegion = (children: React.ReactNode, key: string) => (
+    <PaintSelectionProvider key={key} {...paintProps} style={styles.boardRegion}>{children}</PaintSelectionProvider>
+  );
   // A task's card is its row, drawn as the column's drag draws it. A stack's is its
   // title alone: a second tray would register its rows a second time.
   const renderBoardDragCard = (item: ListItem) => {
@@ -5726,8 +5733,8 @@ export function TodayScreen() {
         >
         <ViewSwitchVeil channel={viewSwitchChannel}>
         {/* Painting a run of rows finds them by height alone (`rowIdAtY`), which
-            columns side by side would confuse, so on the board rows are picked
-            one tap at a time. */}
+            columns side by side would confuse, so on the board each column has a
+            provider of its own (`wrapBoardRegion`) and this one stands down. */}
         <PaintSelectionProvider {...paintProps} enabled={paintProps.enabled && !boardActive}>
         <FabDropZoneProvider
           ref={dropZonesRef}
@@ -5879,10 +5886,9 @@ export function TodayScreen() {
           <TodayBoard
             data={draggableData}
             keyExtractor={listItemKey}
-            // No FabDropZone here: the add button's drop targets are found by height
-            // alone (`zoneAtY`), which rows side by side would confuse, so dragging
-            // the button onto the board adds as tapping it does.
-            renderItem={renderListItem}
+            // With FabDropZone, like the column's: the add button's drop finds the
+            // row under it by height within the column under it (`zoneAtY`'s x).
+            renderItem={renderItem}
             renderDragCard={renderBoardDragCard}
             canDrag={canDragOnBoard}
             weightOf={boardWeightOf}
@@ -5899,6 +5905,8 @@ export function TodayScreen() {
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             rowScrollerRef={todayRowScroller}
+            scrollControlRef={todayScrollControl}
+            wrapRegion={wrapBoardRegion}
             onColumnsChange={setBoardColumns}
             // A stack dragged here keeps its rows open, unlike in the column: the
             // board measures every row as the drag starts and aims by those
@@ -6787,6 +6795,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   emptyContainer: { flexGrow: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
+  boardRegion: { flex: 0 },
   boardDragStack: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginHorizontal: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.smd,

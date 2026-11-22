@@ -142,17 +142,23 @@ export const TAIL_HIT_SLOP = 64;
  * gap between two cards — `tailSlop` instead of `slop` when it lands below the
  * last row, per TAIL_HIT_SLOP. Null past that, so releasing well clear of every
  * row stays a plain add rather than snapping to the last one.
+ *
+ * With `x`, only the rows in the column under it count (`rowsInColumnAt`): on
+ * Today's board two rows side by side share a height, and the one under the
+ * button is the one meant. A one-column list's rows all span the same width,
+ * so there `x` changes nothing.
  */
 export function zoneAtY(
   rects: ZoneRect[],
   y: number,
   slop: number = ZONE_HIT_SLOP,
   tailSlop: number = TAIL_HIT_SLOP,
+  x: number | null = null,
 ): ZoneRect | null {
   let best: ZoneRect | null = null;
   let bestDist = Infinity;
   let last: ZoneRect | null = null;
-  for (const r of rects) {
+  for (const r of x === null ? rects : rowsInColumnAt(rects, x)) {
     const dist = Math.max(r.top - y, y - r.bottom, 0);
     if (dist === 0) return r;
     if (dist < bestDist) {
@@ -165,6 +171,18 @@ export function zoneAtY(
   // is the tail, and nothing above the list can reach the larger slop.
   const belowList = best !== null && best === last && y > best.bottom;
   return bestDist <= (belowList ? Math.max(slop, tailSlop) : slop) ? best : null;
+}
+
+/**
+ * The rows whose column is nearest `x` horizontally: those under it, or when it
+ * is in a gutter or off to one side, those of the nearest column. Rows with no
+ * measured width count as under it, so nothing drops out for want of a width.
+ */
+export function rowsInColumnAt<R extends { left: number; right: number }>(rects: readonly R[], x: number): R[] {
+  const distance = (r: R) => (r.right > r.left ? Math.max(r.left - x, x - r.right, 0) : 0);
+  let nearest = Infinity;
+  for (const r of rects) nearest = Math.min(nearest, distance(r));
+  return rects.filter(r => distance(r) === nearest);
 }
 
 /**
