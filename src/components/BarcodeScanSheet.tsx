@@ -1341,14 +1341,19 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 // For a scan read the wrong way round ("Classic Lemonade" as the item,
                 // "lemonade" as the flavor). Goes through the same patch as typing in
                 // Item, so the row is marked named and resolves like a typed name.
-                const canSwap = nameable && shownVariant.trim().length > 0;
-                const swapItemAndFlavor = () =>
+                // Works with either side empty: moving Item into an empty Flavor
+                // leaves Item blank, which un-includes the row exactly as
+                // clearing Item by hand does (see onItemChange).
+                const canSwap = nameable && (shownVariant.trim().length > 0 || shownName.trim().length > 0);
+                const swapItemAndFlavor = () => {
+                  const nextName = shownVariant.trim().slice(0, GROCERY_NAME_MAX_LENGTH);
                   patchRow(row.key, {
-                    name: shownVariant.trim().slice(0, GROCERY_NAME_MAX_LENGTH),
+                    name: nextName,
                     nameTyped: true,
-                    included: true,
+                    included: nextName.length > 0,
                     variantEdit: shownName.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH),
                   });
+                };
 
                 // The way out of a code nothing has heard of: the packet is in hand and
                 // its figures are printed on it, so offer to read them off the label.
