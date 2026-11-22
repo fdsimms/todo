@@ -8,6 +8,7 @@ import {
   indicatorY,
   isOverFabHome,
   resolveFabDrop,
+  rowsInColumnAt,
   slotAtX,
   targetKey,
   zoneAtY,
@@ -415,5 +416,44 @@ describe('fabHomeState — cancel radius', () => {
   it('agrees with isOverFabHome on the radius it is given', () => {
     expect(isOverFabHome(0, -35, TIGHT_RADIUS)).toBe(false);
     expect(isOverFabHome(0, -28, TIGHT_RADIUS)).toBe(true);
+  });
+});
+
+describe('zoneAtY across columns (Today\'s board)', () => {
+  // Two columns side by side, each with a row at the same height.
+  const LEFT = zone({ kind: 'task', key: 't-left', category: 'Work' }, 100, 152, 0, 320);
+  const RIGHT = zone({ kind: 'task', key: 't-right', category: 'Home' }, 100, 152, 320, 640);
+  const RIGHT_LOW = zone({ kind: 'task', key: 't-right-low', category: 'Home' }, 156, 208, 320, 640);
+
+  it('takes the row in the column under the pointer', () => {
+    expect(key(zoneAtY([LEFT, RIGHT], 120, undefined, undefined, 100))).toBe('t-left');
+    expect(key(zoneAtY([LEFT, RIGHT], 120, undefined, undefined, 500))).toBe('t-right');
+  });
+
+  it('never reaches across to a row in another column, however near it is', () => {
+    expect(key(zoneAtY([LEFT, RIGHT_LOW], 170, undefined, undefined, 100))).toBe('t-left');
+  });
+
+  it('changes nothing for a one-column list', () => {
+    expect(key(zoneAtY(RECTS, 200, undefined, undefined, 50))).toBe('t-report');
+  });
+});
+
+describe('rowsInColumnAt', () => {
+  const a = { left: 0, right: 100 };
+  const b = { left: 120, right: 220 };
+
+  it('keeps the rows under x', () => {
+    expect(rowsInColumnAt([a, b], 150)).toEqual([b]);
+  });
+
+  it('keeps the nearest column from a gutter or off the side', () => {
+    expect(rowsInColumnAt([a, b], 105)).toEqual([a]);
+    expect(rowsInColumnAt([a, b], 400)).toEqual([b]);
+  });
+
+  it('counts a row with no measured width as under x', () => {
+    const unmeasured = { left: 0, right: 0 };
+    expect(rowsInColumnAt([unmeasured, b], 150)).toEqual([unmeasured, b]);
   });
 });

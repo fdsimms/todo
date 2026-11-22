@@ -1,43 +1,50 @@
-import type { BusyEvent } from './calendarBusy';
-
 /**
- * What the right-hand pane of Today shows while no task is open in it
- * (`TodayGlance`): the events the day still has ahead of it, as a short list.
- *
- * It is the same read the "events left" figure under the view pills makes, with
- * the same refusals: an event the person hid from Today stays hidden, and one
- * that has ended is gone. An all-day event is kept until the day ends, since it
- * has no moment to be over at, and is listed as "All day" rather than at 12:00 AM.
+ * What the pane beside Today as a list shows while no task is open in it
+ * (`TodayDayPane`): the rest of the day, an hour a row.
  */
-export interface GlanceEvent {
-  /** Stable across renders, and distinct for two occurrences of one repeating event. */
+
+/** Something on the rest of the day: an event that starts, or a task that surfaces, at `at`. */
+export interface DayEntry {
   key: string;
   title: string;
-  /** A clock time, or "All day". */
-  time: string;
+  kind: 'event' | 'task';
+  at: Date;
 }
 
-/** How many events the list shows. Past it the calendar is the place to look. */
-export const GLANCE_EVENT_LIMIT = 5;
+/** One hour of `dayTimeline`, and what starts in it. */
+export interface DayHour {
+  /** The hour's first instant. */
+  start: Date;
+  entries: DayEntry[];
+}
 
-export function glanceEvents(
-  events: readonly BusyEvent[],
-  now: Date,
-  isHidden: (event: BusyEvent) => boolean,
-  formatTime: (at: Date) => string,
-  limit: number = GLANCE_EVENT_LIMIT,
-): GlanceEvent[] {
-  const nowMs = now.getTime();
-  const out: GlanceEvent[] = [];
-  for (const event of events) {
-    if (out.length >= limit) break;
-    if (isHidden(event)) continue;
-    if (!event.allDay && new Date(event.end).getTime() <= nowMs) continue;
-    out.push({
-      key: `${event.id}-${event.start}`,
-      title: event.title,
-      time: event.allDay ? 'All day' : formatTime(new Date(event.start)),
-    });
+/** The fewest hours the timeline shows, so a quiet afternoon still reads as an afternoon. */
+export const DAY_TIMELINE_MIN_HOURS = 6;
+
+/**
+ * The rest of the day as hours, for the pane beside Today as a list
+ * (`TodayDayPane`): from the hour `now` is in to the last hour anything starts
+ * in, at least `DAY_TIMELINE_MIN_HOURS`, and never past `dayEnd` (the next
+ * logical day's start, so a day that runs past midnight keeps its small hours).
+ * An entry that started before this hour (an event under way) is shown in it;
+ * one at or after `dayEnd` is left out, since it belongs to another day.
+ */
+export function dayTimeline(entries: readonly DayEntry[], now: Date, dayEnd: Date): DayHour[] {
+  const HOUR = 3_600_000;
+  const first = new Date(now);
+  first.setMinutes(0, 0, 0);
+  const firstMs = first.getTime();
+  const endMs = dayEnd.getTime();
+  const kept = entries.filter(e => e.at.getTime() < endMs).slice().sort((a, b) => a.at.getTime() - b.at.getTime());
+  const last = kept.length > 0 ? kept[kept.length - 1].at.getTime() : firstMs;
+  const count = Math.max(
+    1,
+    Math.min(Math.ceil((endMs - firstMs) / HOUR), Math.max(DAY_TIMELINE_MIN_HOURS, Math.floor((last - firstMs) / HOUR) + 1)),
+  );
+  const hours: DayHour[] = Array.from({ length: count }, (_, i) => ({ start: new Date(firstMs + i * HOUR), entries: [] }));
+  for (const entry of kept) {
+    const index = Math.max(0, Math.floor((entry.at.getTime() - firstMs) / HOUR));
+    if (index < hours.length) hours[index].entries.push(entry);
   }
-  return out;
+  return hours;
 }

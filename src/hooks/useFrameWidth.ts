@@ -1,5 +1,6 @@
 import { useWindowDimensions } from 'react-native';
 import { frameLeftFor, frameWidthFor, sidebarWidthFor } from '../utils/frameWidth';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 /**
  * The width of the column the app is drawn in, how far its left edge is from
@@ -11,9 +12,10 @@ import { frameLeftFor, frameWidthFor, sidebarWidthFor } from '../utils/frameWidt
  */
 export function useFrameWidth(): { width: number; left: number; sidebar: number } {
   const { width: windowWidth } = useWindowDimensions();
+  const collapsed = useSettingsStore(s => s.sidebarCollapsed);
   return {
-    width: frameWidthFor(windowWidth),
-    left: frameLeftFor(windowWidth),
-    sidebar: sidebarWidthFor(windowWidth),
+    width: frameWidthFor(windowWidth, collapsed),
+    left: frameLeftFor(windowWidth, collapsed),
+    sidebar: sidebarWidthFor(windowWidth, collapsed),
   };
 }

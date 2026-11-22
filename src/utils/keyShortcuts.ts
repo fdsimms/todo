@@ -52,7 +52,8 @@ export type ShortcutAction =
   | 'goPantry'
   | 'textLarger'
   | 'textSmaller'
-  | 'textReset';
+  | 'textReset'
+  | 'toggleSidebar';
 
 export interface KeyShortcut {
   /** Sent to native and back, so it must be unique. */
@@ -136,6 +137,8 @@ export const MENU_SHORTCUTS: readonly KeyShortcut[] = [
   { id: 'menuGoRecipes', action: 'goRecipes', input: '4', modifiers: ['option', 'command'], screenOnly: true },
   { id: 'menuGoMealPlan', action: 'goMealPlan', input: '5', modifiers: ['option', 'command'], screenOnly: true },
   { id: 'menuGoPantry', action: 'goPantry', input: '6', modifiers: ['option', 'command'], screenOnly: true },
+  // A Mac app's own chord for its sidebar. Not screen-only: folding the menu while a sheet is up harms nothing.
+  { id: 'menuToggleSidebar', action: 'toggleSidebar', input: 's', modifiers: ['control', 'command'], screenOnly: false },
 ];
 
 /** The route each Go chord opens, and the shortcut that opens it. */
@@ -217,6 +220,7 @@ const ACTION_LABELS: Record<ShortcutAction, string> = {
   textLarger: 'Larger text',
   textSmaller: 'Smaller text',
   textReset: 'Default text size',
+  toggleSidebar: 'Collapse or expand the sidebar',
 };
 
 /**

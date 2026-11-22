@@ -2,6 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewProps } from 'react-native';
 import { spacing } from '../theme';
 import { dashboardColumnsFor } from '../utils/columnCap';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { dealColumns } from '../utils/columnDeal';
 
 /**
@@ -23,7 +24,8 @@ export const WideScroll = React.forwardRef<ScrollView, ScrollViewProps>(function
   ref,
 ) {
   const { width } = useWindowDimensions();
-  const twoColumns = dashboardColumnsFor(width) === 2;
+  const sidebarCollapsed = useSettingsStore(s => s.sidebarCollapsed);
+  const twoColumns = dashboardColumnsFor(width, sidebarCollapsed) === 2;
   return (
     <ScrollView ref={ref} {...rest}>
       {twoColumns ? dealt(children) : children}

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { deviceHasWideWindows } from '../utils/deviceKind';
 import { Platform } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSyncStore } from '../store/useSyncStore';
@@ -55,7 +56,8 @@ export function useElsewhereSearch(query: string, active: boolean): ElsewhereSec
     return searchElsewhere({
       destinations,
       settingsEntries: searchableSettingsEntries(
-        Platform.OS, useSettingsStore.getState(), useSyncStore.getState()),
+        Platform.OS, useSettingsStore.getState(), useSyncStore.getState(),
+        deviceHasWideWindows(Platform.OS === 'ios' && Platform.isPad)),
       settingsGroupTitle: id => settingsGroup(id)?.title ?? 'Settings',
       people: routes.has('People') ? usePersonStore.getState().people : [],
       recipes: routes.has('Recipes') ? useRecipeStore.getState().recipes : [],

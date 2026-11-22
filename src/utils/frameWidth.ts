@@ -41,14 +41,29 @@ export const SIDEBAR_MIN_WINDOW_WIDTH = 900;
 /** The sidebar's width, a fixed strip so the content column keeps the rest. */
 export const SIDEBAR_WIDTH = 236;
 
-/** How much of the window the sidebar takes: nothing, below the breakpoint. */
-export function sidebarWidthFor(windowWidth: number): number {
-  return windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH ? SIDEBAR_WIDTH : 0;
+/**
+ * The sidebar folded to its icon rail (Settings › Appearance, the button at its
+ * foot, or ⌃⌘S): one icon per menu row, with the hub's members in a popover. It
+ * hands the 176pt back to the screen, which is a fourth column on Today's board
+ * at 1440pt.
+ */
+export const SIDEBAR_RAIL_WIDTH = 60;
+
+/**
+ * How much of the window the sidebar takes: nothing, below the breakpoint, and
+ * the rail or the full strip above it. `collapsed` is the person's
+ * `sidebarCollapsed` setting, required so every caller has to say which it is
+ * sizing against: a helper that assumed the full strip would center a column
+ * 88pt off from where the rail leaves it.
+ */
+export function sidebarWidthFor(windowWidth: number, collapsed: boolean): number {
+  if (windowWidth < SIDEBAR_MIN_WINDOW_WIDTH) return 0;
+  return collapsed ? SIDEBAR_RAIL_WIDTH : SIDEBAR_WIDTH;
 }
 
 /** The column's width in a window `windowWidth` wide, after the sidebar if there is one. */
-export function frameWidthFor(windowWidth: number): number {
-  return Math.min(windowWidth - sidebarWidthFor(windowWidth), MAX_CONTENT_WIDTH);
+export function frameWidthFor(windowWidth: number, collapsed: boolean): number {
+  return Math.min(windowWidth - sidebarWidthFor(windowWidth, collapsed), MAX_CONTENT_WIDTH);
 }
 
 /**
@@ -56,9 +71,9 @@ export function frameWidthFor(windowWidth: number): number {
  * `pageX` has to be offset by to land in the column's own coordinates. The
  * column is centered in what the sidebar leaves.
  */
-export function frameLeftFor(windowWidth: number): number {
-  const sidebar = sidebarWidthFor(windowWidth);
-  return sidebar + Math.max(0, Math.floor((windowWidth - sidebar - frameWidthFor(windowWidth)) / 2));
+export function frameLeftFor(windowWidth: number, collapsed: boolean): number {
+  const sidebar = sidebarWidthFor(windowWidth, collapsed);
+  return sidebar + Math.max(0, Math.floor((windowWidth - sidebar - frameWidthFor(windowWidth, collapsed)) / 2));
 }
 
 /** The side menu's width: most of a phone, a fixed strip on anything wider. */
@@ -67,8 +82,8 @@ export function drawerWidthFor(windowWidth: number): number {
 }
 
 /** A month grid's cell: seven columns across the column, less its side margins. */
-export function monthCellSizeFor(windowWidth: number, sideMargin: number): number {
-  return Math.floor((frameWidthFor(windowWidth) - sideMargin * 2) / 7);
+export function monthCellSizeFor(windowWidth: number, sideMargin: number, sidebarCollapsed: boolean): number {
+  return Math.floor((frameWidthFor(windowWidth, sidebarCollapsed) - sideMargin * 2) / 7);
 }
 
 /** A centered picker card (date, reminder, birthday): a phone's width less a margin, never past 380. */

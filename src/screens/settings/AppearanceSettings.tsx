@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { Platform, View, Text, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useSettingsStore, type FabHand } from '../../store/useSettingsStore';
+import { useSettingsStore, type FabHand, type TodayWideLayout } from '../../store/useSettingsStore';
+import { deviceHasWideWindows } from '../../utils/deviceKind';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction, type ThemeMode } from '../../theme';
 import { APP_FONT_OPTIONS, resolveFontFace, type AppFont } from '../../theme/fonts';
@@ -23,6 +24,10 @@ const THEME_OPTIONS: SegmentOption<ThemeMode>[] = [
   { value: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 
+const TODAY_WIDE_LAYOUT_OPTIONS: SegmentOption<TodayWideLayout>[] = [
+  { value: 'board', label: 'Board', icon: 'grid-outline' },
+  { value: 'list', label: 'List', icon: 'list-outline' },
+];
 const TEXT_SIZE_OPTIONS: SegmentOption<number>[] = TEXT_SIZE_STEPS.map(s => ({ value: s.value, label: s.label }));
 
 const FAB_HAND_OPTIONS: SegmentOption<FabHand>[] = [
@@ -57,6 +62,12 @@ export function AppearanceSettings() {
   const tipsEnabled = useSettingsStore(s => s.tipsEnabled);
   const setTipsEnabled = useSettingsStore(s => s.setTipsEnabled);
   const setHideHelpText = useSettingsStore(s => s.setHideHelpText);
+  const todayWideLayout = useSettingsStore(s => s.todayWideLayout);
+  const setTodayWideLayout = useSettingsStore(s => s.setTodayWideLayout);
+  const sidebarCollapsed = useSettingsStore(s => s.sidebarCollapsed);
+  const setSidebarCollapsed = useSettingsStore(s => s.setSidebarCollapsed);
+  // An iPad or a Mac: a phone never draws the sidebar or two panes these set.
+  const wideWindows = deviceHasWideWindows(Platform.OS === 'ios' && Platform.isPad);
 
   const fontPreviewsLoaded = useFontPreviewsLoaded();
   const colors = useColors();
@@ -182,6 +193,41 @@ export function AppearanceSettings() {
           );
         })}
       </SettingsSection>
+
+      {wideWindows && (
+        <SettingsSection
+          label="Wide windows"
+          footer="For a window wide enough for the sidebar and a second pane: an iPad held sideways, or a Mac."
+        >
+          <SettingsRow
+            entryId="todayWideLayout"
+            icon="grid-outline"
+            iconColor={colors.accent}
+            label="Today on a wide window"
+            hint={todayWideLayout === 'board'
+              ? 'Shows each category in columns across the window. A task opens in a pane on the right.'
+              : 'Shows one list beside the rest of your day, hour by hour. On a Mac, each task takes one line.'}
+            tight
+          />
+          <SettingsSegments
+            attached
+            options={TODAY_WIDE_LAYOUT_OPTIONS}
+            selected={todayWideLayout}
+            onSelect={setTodayWideLayout}
+            accessibilityLabelFor={o => `Today as a ${o.label.toLowerCase()}`}
+          />
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="sidebarCollapsed"
+            icon="albums-outline"
+            iconColor={sidebarCollapsed ? colors.accent : undefined}
+            label="Icons only in the sidebar"
+            hint="Shows the sidebar as a narrow column of icons, so screens get more room. ⌃⌘S switches it on a Mac"
+            toggle={sidebarCollapsed}
+            onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
+        </SettingsSection>
+      )}
 
       <SettingsSection label="Feedback">
         <SettingsRow

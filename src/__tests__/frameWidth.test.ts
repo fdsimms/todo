@@ -5,6 +5,7 @@ import {
   OVERLAY_SEARCH_MAX_WIDTH,
   OVERLAY_SHEET_MAX_WIDTH,
   SIDEBAR_MIN_WINDOW_WIDTH,
+  SIDEBAR_RAIL_WIDTH,
   SIDEBAR_WIDTH,
   drawerWidthFor,
   frameLeftFor,
@@ -16,55 +17,64 @@ import {
 
 describe('frameWidthFor', () => {
   it('is the whole window on a phone', () => {
-    expect(frameWidthFor(393)).toBe(393);
-    expect(frameWidthFor(MAX_CONTENT_WIDTH)).toBe(MAX_CONTENT_WIDTH);
+    expect(frameWidthFor(393, false)).toBe(393);
+    expect(frameWidthFor(MAX_CONTENT_WIDTH, false)).toBe(MAX_CONTENT_WIDTH);
   });
 
   it('stops at the cap on anything wider', () => {
-    expect(frameWidthFor(834)).toBe(MAX_CONTENT_WIDTH);
-    expect(frameWidthFor(1440)).toBe(MAX_CONTENT_WIDTH);
+    expect(frameWidthFor(834, false)).toBe(MAX_CONTENT_WIDTH);
+    expect(frameWidthFor(1440, false)).toBe(MAX_CONTENT_WIDTH);
   });
 
   it('is what the sidebar leaves once there is one', () => {
-    expect(frameWidthFor(SIDEBAR_MIN_WINDOW_WIDTH)).toBe(SIDEBAR_MIN_WINDOW_WIDTH - SIDEBAR_WIDTH);
+    expect(frameWidthFor(SIDEBAR_MIN_WINDOW_WIDTH, false)).toBe(SIDEBAR_MIN_WINDOW_WIDTH - SIDEBAR_WIDTH);
   });
 });
 
 describe('sidebarWidthFor', () => {
   it('is nothing below the breakpoint, so a phone and an upright iPad keep the drawer', () => {
-    expect(sidebarWidthFor(393)).toBe(0);
-    expect(sidebarWidthFor(834)).toBe(0);
-    expect(sidebarWidthFor(SIDEBAR_MIN_WINDOW_WIDTH - 1)).toBe(0);
+    expect(sidebarWidthFor(393, false)).toBe(0);
+    expect(sidebarWidthFor(834, false)).toBe(0);
+    expect(sidebarWidthFor(SIDEBAR_MIN_WINDOW_WIDTH - 1, false)).toBe(0);
   });
 
   it('is a fixed strip from the breakpoint up', () => {
-    expect(sidebarWidthFor(SIDEBAR_MIN_WINDOW_WIDTH)).toBe(SIDEBAR_WIDTH);
-    expect(sidebarWidthFor(1440)).toBe(SIDEBAR_WIDTH);
+    expect(sidebarWidthFor(SIDEBAR_MIN_WINDOW_WIDTH, false)).toBe(SIDEBAR_WIDTH);
+    expect(sidebarWidthFor(1440, false)).toBe(SIDEBAR_WIDTH);
+  });
+
+  it('is the rail when folded, and still nothing below the breakpoint', () => {
+    expect(sidebarWidthFor(1440, true)).toBe(SIDEBAR_RAIL_WIDTH);
+    expect(sidebarWidthFor(834, true)).toBe(0);
+  });
+
+  it('centers the column in what the rail leaves', () => {
+    expect(frameLeftFor(1440, true)).toBe(SIDEBAR_RAIL_WIDTH + (1440 - SIDEBAR_RAIL_WIDTH - MAX_CONTENT_WIDTH) / 2);
   });
 
   it('never leaves the column narrower than a phone', () => {
-    expect(frameWidthFor(SIDEBAR_MIN_WINDOW_WIDTH)).toBeGreaterThan(393);
+    expect(frameWidthFor(SIDEBAR_MIN_WINDOW_WIDTH, false)).toBeGreaterThan(393);
   });
 });
 
 describe('frameLeftFor', () => {
   it('is zero when the column fills the window', () => {
-    expect(frameLeftFor(393)).toBe(0);
-    expect(frameLeftFor(MAX_CONTENT_WIDTH)).toBe(0);
+    expect(frameLeftFor(393, false)).toBe(0);
+    expect(frameLeftFor(MAX_CONTENT_WIDTH, false)).toBe(0);
   });
 
   it('centers the column in a wider window', () => {
-    expect(frameLeftFor(834)).toBe(57);
+    expect(frameLeftFor(834, false)).toBe(57);
   });
 
   it('starts after the sidebar, and centers in what it leaves', () => {
-    expect(frameLeftFor(SIDEBAR_MIN_WINDOW_WIDTH)).toBe(SIDEBAR_WIDTH);
-    expect(frameLeftFor(1440)).toBe(SIDEBAR_WIDTH + (1440 - SIDEBAR_WIDTH - MAX_CONTENT_WIDTH) / 2);
+    expect(frameLeftFor(SIDEBAR_MIN_WINDOW_WIDTH, false)).toBe(SIDEBAR_WIDTH);
+    expect(frameLeftFor(1440, false)).toBe(SIDEBAR_WIDTH + (1440 - SIDEBAR_WIDTH - MAX_CONTENT_WIDTH) / 2);
   });
 
   it('rounds down on an odd gutter so the column is never pushed off the window', () => {
-    expect(frameLeftFor(MAX_CONTENT_WIDTH + 1)).toBe(0);
-    expect(frameLeftFor(MAX_CONTENT_WIDTH + 3)).toBe(1);
+    expect(frameLeftFor(MAX_CONTENT_WIDTH + 1, false)).toBe(0);
+    expect(frameLeftFor(MAX_CONTENT_WIDTH + 3, false)).toBe(1);
   });
 });
 
@@ -81,12 +91,12 @@ describe('drawerWidthFor', () => {
 
 describe('monthCellSizeFor', () => {
   it('is seven columns across a phone, less the margins', () => {
-    expect(monthCellSizeFor(393, 16)).toBe(51);
+    expect(monthCellSizeFor(393, 16, false)).toBe(51);
   });
 
   it('is measured against the column, not the window', () => {
-    expect(monthCellSizeFor(1440, 16)).toBe(monthCellSizeFor(MAX_CONTENT_WIDTH, 16));
-    expect(monthCellSizeFor(1440, 16)).toBe(98);
+    expect(monthCellSizeFor(1440, 16, false)).toBe(monthCellSizeFor(MAX_CONTENT_WIDTH, 16, false));
+    expect(monthCellSizeFor(1440, 16, false)).toBe(98);
   });
 });
 

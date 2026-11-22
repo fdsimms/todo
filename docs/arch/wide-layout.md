@@ -68,7 +68,11 @@ repeated the shape, which is why it is now one set of caps in `frameWidth.ts` an
 ## The sidebar (phase 2)
 
 From `SIDEBAR_MIN_WINDOW_WIDTH` (900pt) up, the menu is a 236pt column that is always on screen
-(`Sidebar`), the bottom tab bar is hidden and the side menu drawer never opens. An upright iPad
+(`Sidebar`), the bottom tab bar is hidden and the side menu drawer never opens. It folds to a 60pt rail of
+icons (`SidebarRail`, `sidebarCollapsed`) from the button at its foot, Settings › Appearance or ⌃⌘S
+(View › Toggle Sidebar): the same rows in the same order, a hub's members in a popover. **Every width helper
+takes `sidebarCollapsed`, required** (`sidebarWidthFor` and everything built on it), so nothing can center
+a column against the full strip while the rail is up. An upright iPad
 (about 820pt) stays on the drawer; a landscape iPad or a Mac window gets the sidebar. Four things
 to know:
 
@@ -143,10 +147,44 @@ they always were, and a tap pushes the page. Four things to know:
   trailing ellipsis (a long press drags), and is outlined while it is the one open.
 - **Anything else that opens the same page still pushes it** (a meal plan row, a search result, a
   deep link). Only the list screen's own rows and the "new" flows open it in the pane.
-- **Today's pane shows the day while nothing is open in it** (`TodayGlance`): done and left, the same
-  "planned" and "events left" line the list's header draws (so the two can't disagree, and simplified mode
-  drops it from both), and the events still ahead (`glanceEvents`). It offers nothing to tap, because the list
-  is where you act. With no tasks at all, or on Later, Unscheduled and Inbox, the old icon and hint stay.
+- **Today has two layouts on a wide window** (`todayWideLayout`, Settings › Appearance › Wide windows,
+  device-local). Board, the default, is the next section. List is the two panes above: the list on the left
+  and, while nothing is open, the rest of the day on the right (`TodayDayPane`): done and left with the same
+  summary line the list's header draws (so the two can't disagree), then the day an hour a row
+  (`dayTimeline`), each event and each task surfacing later today in the hour it starts. It offers nothing to
+  tap, because the list is where you act. On a Mac the list's rows are one line (`TaskItem`'s `compact`: the
+  title with its details beside it, the details giving way first); an iPad keeps touch-sized rows. With no
+  tasks at all, or on Later, Unscheduled and Inbox, the old icon and hint stay.
+
+## Today's board (`TodayBoard`)
+
+With `todayWideLayout: 'board'` on a two-pane window, Today's own view (not Later, Unscheduled or Inbox,
+which keep the list beside a pane) deals its sections into columns across the window: as many as fit at
+`BOARD_COLUMN_MIN_WIDTH` (`boardColumnsFor`), at most four. The Pinned Tasks block and the bands sit above
+the columns, Later Today and held back below, the whole width. The editor is a pane at the right
+(`boardPaneWidthFor`, `TwoPane`'s `board`) drawn only while a task is open, and the day's figure moves into
+the header as one line (`TodayGlanceLine`). Five rules:
+
+- **The board only decides where a section is drawn.** It takes Today's flat list (headers interleaved with
+  rows) and cuts it at each header (`boardSections`); every row is `renderListItem`'s, and a drop is filed by
+  `resolveDrop` from the flat list, the same as in the column (`commitTodayReorder` serves both).
+- **A section goes to the column with the least in it so far** (`dealBoardSections`), weighed in rows,
+  because the real heights aren't known until the board has been drawn once in the wrong shape.
+- **It has its own drag.** `ReorderableList` finds a slot by adding row heights down one column, which rows
+  side by side break. The board measures every row as a drag starts, aims by those places
+  (`boardAimAt`), draws a line where the row will land and moves nothing until the drop. A seam always files
+  the row into the section above it in that column, never the one below, since the section before a header
+  in the flat order can be in another column. Over a stack's middle it joins it, over the header block it
+  pins. For the same reason a stack being dragged keeps its rows open, where the column folds them.
+- **What finds rows by height alone works a column at a time.** Painting a run of selection dots
+  (`rowIdAtY`) gets a `PaintSelectionProvider` per region (`wrapRegion`: the header, each column, the footer),
+  so each has its own trailing gutter and its own rows; the screen's own provider stands down. Dropping the
+  add button onto a row (`zoneAtY`) takes the button's x and looks only at the column under it
+  (`rowsInColumnAt`), and its line is drawn across that column. In one column both are unchanged.
+- **The floating bars follow the board** (`useTodayPaneStore`, `floatingLayerInsetFor`'s `todayBoardPane`):
+  the whole column while nothing is open, the column less the pane while a task is.
+
+The keyboard's row cursor walks the board down each column in turn (`boardReadingOrder`).
 
 ## Lists and dashboards (`columnCapFor`)
 

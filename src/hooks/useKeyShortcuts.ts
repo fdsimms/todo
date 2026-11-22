@@ -102,6 +102,11 @@ export function runShortcut(shortcut: KeyShortcut): void {
     case 'viewUnscheduled': showTodayViewModeFromKeyboard('unscheduled'); return;
     case 'viewInbox': showTodayViewModeFromKeyboard('inbox'); return;
     case 'openSettings': openSettingsFromKeyboard(); return;
+    case 'toggleSidebar': {
+      const settings = useSettingsStore.getState();
+      settings.setSidebarCollapsed(!settings.sidebarCollapsed);
+      return;
+    }
     case 'goTasks':
     case 'goProjects':
     case 'goGroceries':

@@ -86,6 +86,11 @@ describe('buildMenuItems', () => {
   it('has a Settings item with ⌘,', () => {
     expect(items.find(i => i.menu === 'settings')).toMatchObject({ title: 'Settings…', input: ',', modifiers: ['command'] });
   });
+
+  it('folds the sidebar from View with ⌃⌘S, the chord a Mac app uses for it', () => {
+    expect(items.find(i => i.id === 'shortcut:menuToggleSidebar'))
+      .toMatchObject({ title: 'Toggle Sidebar', menu: 'view', input: 's', modifiers: ['control', 'command'] });
+  });
 });
 
 describe('menuCommandTarget', () => {

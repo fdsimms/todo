@@ -96,7 +96,10 @@ export function searchableSettingsEntries(
   platformOS: string,
   settings: SettingsGateState,
   sync: SyncGateState,
+  /** Whether this device can have a wide window (`deviceHasWideWindows`), for the rows only it shows. */
+  wideWindows: boolean,
 ): SettingsEntry[] {
   return visibleSettingsEntries(
-    platformOS, settings.kitchenEnabled, settings.simpleMode, activeSettingsEntryIds(settings, sync));
+    platformOS, settings.kitchenEnabled, settings.simpleMode, activeSettingsEntryIds(settings, sync))
+    .filter(e => wideWindows || !e.wideWindowOnly);
 }

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { useFocusedRouteStore } from '../store/useFocusedRouteStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { columnCapFor } from '../utils/columnCap';
 
 /**
@@ -25,10 +26,11 @@ export function AppFrame({ children, followRoute = false }: { children: React.Re
   // to ask, and subscribing every one would re-render it on each tab switch.
   const route = useFocusedRouteStore(s => (followRoute ? s.route : null));
   const { width } = useWindowDimensions();
+  const sidebarCollapsed = useSettingsStore(s => s.sidebarCollapsed);
   // Always a number, never `undefined`: a prop going from 720 to undefined is
   // "unset" in the style diff, and a native view can keep the old cap, which left
   // two panes squeezed into one column's width.
-  const maxWidth = columnCapFor(width, route);
+  const maxWidth = columnCapFor(width, route, sidebarCollapsed);
   return (
     <View style={[styles.window, { backgroundColor: colors.bg }]}>
       <View style={[styles.column, { maxWidth }]}>{children}</View>

@@ -343,6 +343,13 @@ interface Props {
   subtasks?: Task[];
   drag?: () => void;
   isActive?: boolean;
+  /**
+   * One line where it fits: the title with its details beside it rather than
+   * under it, and a tighter card. Today as a list on a Mac (`todayWideLayout:
+   * 'list'`), where a pointer doesn't need a touch-sized row. An expanded row and
+   * one being renamed are drawn in full.
+   */
+  compact?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
   onSelect?: (id: string) => void;
@@ -585,6 +592,7 @@ const TaskItemRow = React.memo(function TaskItem({
   subtasks = [],
   drag,
   isActive = false,
+  compact = false,
   selectionMode = false,
   selected = false,
   onSelect,
@@ -3579,8 +3587,861 @@ const TaskItemRow = React.memo(function TaskItem({
     </>
   );
 
+  // ==== the title and the line under it ====
+  // Named so the compact row (`compact`, Today as a list on a Mac) can set the
+  // two side by side; everywhere else the line sits under the title as always.
+  // The line is one line there and gives way to the title, which wraps.
+  const compactLine = compact && !expanded && !nutrientRow && !isEditingTitle;
+  const titleBlock = nutrientRow ? (
+    <NutrientTaskBar task={task} streak={showStreakChip ? shownStreak : null} streakColor={streakColor} done={completing} />
+  ) : isEditingTitle ? (
+    <TextField
+      ref={titleInputRef}
+      style={styles.titleInput}
+      value={titleEdit}
+      onChangeText={setTitleEdit}
+      onBlur={saveTitle}
+      onSubmitEditing={() => {
+        // In iPhone Mirroring, Return takes the pill on show rather
+        // than saving the raw text, so a hardware keyboard needn't reach
+        // for the pointer. Taking it saves the cleaned title too.
+        if (mirroringMode && activeTitleOffer) applyTitleOffer();
+        else saveTitle();
+        if (listRow) onSubmitLine?.(task.id);
+      }}
+      returnKeyType={listRow && onSubmitLine ? 'next' : 'done'}
+      maxLength={TITLE_MAX_LENGTH}
+      blurOnSubmit
+      autoFocus
+      // A list line can be a long question for the doctor, and a
+      // one-line field scrolls it out of sight while it's edited.
+      multiline={listRow}
+    />
+  ) : (
+    <View style={styles.titleRow}>
+      {isNew && <View style={styles.newDot} />}
+      {expanded && !notice ? (
+        // Only tappable for edit when already expanded — avoids intercepting expand taps.
+        // A notice is never renameable: its title is the question the
+        // generator asks, and the next sweep writes the same one again.
+        // Editing always edits the task's own title, not the chain step's
+        // (handleTitleTap/saveTitle), even though the displayed text here
+        // is the step's while one is active — matching the collapsed row.
+        <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity} hitSlop={8}>
+          {/* Same crossfade wrapper as the collapsed row below — see
+              chainStepOpacity/chainStepAnim's own comment. A no-op the
+              rest of the time: chainStepAnim rests at 1. */}
+          <Animated.View style={{ opacity: chainStepOpacity, transform: reduceMotion ? [] : [{ scale: chainStepAnim }] }}>
+            <StrikeReveal
+              struck={completing}
+              animate={titleStrikeAnimates}
+              struckCopy={
+                <HighlightedText
+                  text={displayTitle}
+                  ranges={titleMentionRanges}
+                  style={[styles.title, styles.titleDone]}
+                  highlightStyle={[styles.titleMention, styles.titleDone]}
+                  numberOfLines={listRow ? undefined : 2}
+                  trailing={markersFit || notesStayInTitle ? markerNodes : null}
+                />
+              }
+            >
+              <HighlightedText
+                text={displayTitle}
+                ranges={titleMentionRanges}
+                style={[styles.title, heldBackDim && styles.titleHeldBack]}
+                highlightStyle={styles.titleMention}
+                // Open, a list line shows all of itself: the editor was
+                // otherwise the only place a long question could be read.
+                numberOfLines={listRow ? undefined : 2}
+                trailing={markersFit || notesStayInTitle ? markerNodes : null}
+              />
+            </StrikeReveal>
+          </Animated.View>
+        </TouchableOpacity>
+      ) : (
+        <Animated.View style={[styles.titleFlex, { opacity: chainStepOpacity, transform: reduceMotion ? [] : [{ scale: chainStepAnim }] }]}>
+          {/* Struck through as it's checked off: see StrikeReveal. The
+              copy is the same title with the same props, so it lies
+              exactly over the original. */}
+          <StrikeReveal
+            struck={completing}
+            animate={titleStrikeAnimates}
+            struckCopy={
+              <HighlightedText
+                text={displayTitle}
+                ranges={titleMentionRanges}
+                style={[styles.title, styles.titleDone]}
+                highlightStyle={[styles.titleMention, styles.titleDone]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+                trailing={markersFit || notesStayInTitle ? markerNodes : null}
+              />
+            }
+          >
+            <HighlightedText
+              text={displayTitle}
+              ranges={titleMentionRanges}
+              style={[styles.title, heldBackDim && styles.titleHeldBack]}
+              highlightStyle={styles.titleMention}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+              trailing={markersFit || notesStayInTitle ? markerNodes : null}
+            />
+          </StrikeReveal>
+        </Animated.View>
+      )}
+    </View>
+  );
+
+  const metaBlock = (markersOnMeta || hasOtherMeta) ? (
+    <View style={[styles.metaRow, compactLine && styles.metaRowCompact]}>
+      {morning && (
+        <PressableScale
+          style={[styles.alarmChip, !morning.ring && styles.alarmChipNone]}
+          onPress={() => { haptics.tap(); setShowAlarmCard(true); }}
+          disabled={selectionMode}
+          accessibilityLabel={morning.ring
+            ? `Tomorrow’s alarm, ${morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}`
+            : `${morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}. Set one`}
+        >
+          <Ionicons name="alarm-outline" size={iconSize.xs} color={morning.ring ? colors.accentText : colors.warningText} />
+          <Text style={[styles.alarmChipText, !morning.ring && styles.alarmChipTextNone]} numberOfLines={1}>
+            {morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}
+          </Text>
+        </PressableScale>
+      )}
+      {markersOnMeta && hasNotes && !notesStayInTitle && (
+        <View style={styles.metaChip} accessibilityLabel="Has notes">
+          <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
+        </View>
+      )}
+      {markersOnMeta && hasAttachments && !notesStayInTitle && (
+        <View style={styles.metaChip} accessibilityLabel="Has attachments">
+          <Ionicons name="attach" size={iconSize.xs} color={colors.textSecondary} />
+        </View>
+      )}
+      {markersOnMeta && deadlineDays !== null && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={deadlineClosed ? `Deadline was ${deadlineLabel}` : `Deadline ${deadlineLabel}`}
+        >
+          <Ionicons name="flag" size={9} color={deadlineColor} />
+          <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
+            {deadlineLabel}
+          </Text>
+        </View>
+      )}
+      {showCategory && task.category && (
+        onOpenCategory ? (
+          <PressableScale
+            style={styles.metaChip}
+            onPress={() => onOpenCategory(task.category!)}
+            accessibilityLabel={`Open category ${task.category}`}
+          >
+            <Text style={styles.categoryLabel} numberOfLines={1}>
+              {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
+            </Text>
+          </PressableScale>
+        ) : (
+          <View style={styles.metaChip}>
+            <Text style={styles.categoryLabel} numberOfLines={1}>
+              {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
+            </Text>
+          </View>
+        )
+      )}
+      {showProject && projectTitle && (
+        onOpenProject ? (
+          <PressableScale
+            style={styles.metaChip}
+            onPress={() => onOpenProject(task.projectId!)}
+            accessibilityLabel={`Open project ${projectTitle}`}
+          >
+            <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+            <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
+          </PressableScale>
+        ) : (
+          <View style={styles.metaChip}>
+            <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+            <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
+          </View>
+        )
+      )}
+      {showGroup && groupTitle && (
+        <View style={styles.metaChip}>
+          <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.groupLabel} numberOfLines={1}>{groupTitle}</Text>
+        </View>
+      )}
+      {/* The chain's own name. The row's title is the current step, so
+          without this the task you typed ("Write Sam a postcard") only
+          showed up once the row was expanded. */}
+      {!!chainName && (
+        <View style={styles.metaChip} accessibilityLabel={`Chain: ${chainName}`}>
+          <Ionicons name="git-commit-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.projectLabel} numberOfLines={1}>{chainName}</Text>
+        </View>
+      )}
+      {isQuota && (
+        <View style={styles.metaChip}>
+          <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
+          {/* The count rolls as a unit lands; the rest stays put and is
+              what gives way if the chip runs out of room. */}
+          <AnimatedNumber
+            text={quotaProgress}
+            value={quotaLogged}
+            style={[styles.quotaLabel, rotationTight && styles.rotationTight]}
+          />
+          {quotaReturnAt ? (
+            <Text style={[styles.quotaLabel, styles.quotaReturn]} numberOfLines={1}>{`· next ${quotaReturnAt}`}</Text>
+          ) : null}
+        </View>
+      )}
+      {rotationPlanned !== null && (
+        <TouchableOpacity
+          style={styles.metaChip}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => setShowRotationPick(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Planned for today: ${rotationPlanned.title}. Open to change it.`}
+        >
+          <Ionicons name="flag" size={iconSize.xs} color={colors.accent} />
+          <Text style={styles.quotaLabel} numberOfLines={1}>Today: {rotationPlanned.title}</Text>
+        </TouchableOpacity>
+      )}
+      {rotationLast !== null && (
+        // Its own chip, so a long member name truncates itself rather
+        // than the count beside it, and so it still shows once the set
+        // is covered.
+        <View style={styles.metaChip}>
+          <Text style={styles.quotaLabel} numberOfLines={1}>{rotationLast}</Text>
+        </View>
+      )}
+      {subtaskCount > 0 && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
+        >
+          <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
+          <AnimatedNumber text={`${subtaskDoneCount}/${subtaskCount}`} value={subtaskDoneCount} style={styles.subtaskBadgeText} />
+        </View>
+      )}
+      {task.generatedKind === 'calendarReview' && (
+        // The row's only sign that it opens: the panel holds the events
+        // themselves, and a bare checkbox gives no hint of that. Shown
+        // at zero too, since the panel still carries "Sync now".
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={`${calendarReviewEvents.length === 0 ? 'No events' : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}, tap to expand`}
+        >
+          <Ionicons name="calendar-outline" size={9} color={colors.textSecondary} />
+          <Text style={styles.subtaskBadgeText} numberOfLines={1}>
+            {calendarReviewEvents.length === 0
+              ? 'No events'
+              : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}
+          </Text>
+          <RotatingChevron open={expanded} size={9} color={colors.textSecondary} />
+        </View>
+      )}
+      {task.generatedKind === 'eventDetails' && (
+        // calendarReview's chip, for its reason: the panel is the task.
+        <View style={styles.metaChip} accessibilityLabel="Events to add details to, tap to expand">
+          <Ionicons name="calendar-outline" size={9} color={colors.textSecondary} />
+          <EventDetailsCount style={styles.subtaskBadgeText} />
+          <RotatingChevron open={expanded} size={9} color={colors.textSecondary} />
+        </View>
+      )}
+      {supplyLabel !== null && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={supplyLabel}
+        >
+          <Ionicons
+            name={supplyOut ? 'cube' : 'cube-outline'}
+            size={iconSize.xs}
+            color={supplyOut ? colors.red : supplyLow ? colors.orangeText : colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.supplyLabel,
+              supplyLow && styles.supplyLabelLow,
+              supplyOut && styles.supplyLabelOut,
+            ]}
+            numberOfLines={1}
+          >
+            {supplyLabel}
+          </Text>
+        </View>
+      )}
+      {penaltyLabel !== null && (
+        <View style={styles.metaChip} accessibilityLabel={penaltyLabel}>
+          <Ionicons name="lock-closed-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.subtaskBadgeText} numberOfLines={1}>{penaltyLabel}</Text>
+        </View>
+      )}
+      {timed && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={
+            timerReady
+              ? (isQuota ? 'Timer done, ready to log' : 'Timer done, ready to complete')
+              : timerRunning
+                ? `${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
+                : timerPaused
+                  ? `Timer paused, ${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
+                  : `Timed, ${formatDuration(task.timedMinutes!)}${liveSegment ? `, starting with ${liveSegment.title}` : ''}`
+          }
+        >
+          <Ionicons
+            name={timerReady ? 'checkmark-circle' : timerPaused ? 'pause' : timerRunning ? 'timer' : 'timer-outline'}
+            size={iconSize.xs}
+            color={timerReady ? colors.green : timerRunning ? colors.accent : colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.countdownLabel,
+              timerReady && styles.countdownLabelReady,
+              !timerReady && timerRunning && styles.countdownLabelRunning,
+            ]}
+            numberOfLines={1}
+          >
+            {timerReady
+              ? 'Ready'
+              : timerRunning || timerPaused
+                ? formatStopwatch(remainingSeconds)
+                : formatDuration(task.timedMinutes!)}
+          </Text>
+          {/* Which stretch of the run you're on. It's on the collapsed row
+              rather than only in the panel below because that's the whole
+              use for apportioning one — knowing to move on to the new
+              piece is no help if it takes a tap to find out. */}
+          {liveSegment && !timerReady && (
+            <Text style={styles.countdownSegment} numberOfLines={1}>
+              · {liveSegment.title}
+            </Text>
+          )}
+        </View>
+      )}
+      {/* A health target's progress, read from Apple Health. Green at the
+          target is the same "ready" the timer's chip uses, and it means
+          the same thing: you can tick this now, not that anything has
+          been ticked. Absent entirely when there is no reading — a
+          "0 / 8,000" would be the figure somebody who refused the read
+          would see, and it would be this app telling them they had
+          walked nowhere. */}
+      {healthLabel !== null && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={healthReady
+            ? `${healthLabel}, target reached, ready to complete`
+            : healthLabel}
+        >
+          <Ionicons
+            name={healthReady ? 'checkmark-circle' : healthIcon}
+            size={iconSize.xs}
+            color={healthReady ? colors.green : colors.textSecondary}
+          />
+          <Text
+            style={[styles.countdownLabel, healthReady && styles.countdownLabelReady]}
+            numberOfLines={1}
+          >
+            {healthLabel}
+          </Text>
+        </View>
+      )}
+      {/* One day of the weekly meal-plan nudge: how much of that day is
+          planned. Sits with the other counters rather than replacing the
+          title, because the day itself is the title and this is its
+          state. Green at 3/3 is the same "ready" the timer's chip uses. */}
+      {plannedMeals !== undefined && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={
+            mealPlanReady
+              ? `All ${mealPlanNudgeSlotCount} meals planned, ready to complete`
+              : `${plannedMeals} of ${mealPlanNudgeSlotCount} meals planned`
+          }
+        >
+          <Ionicons
+            name={mealPlanReady ? 'checkmark-circle' : 'restaurant-outline'}
+            size={iconSize.xs}
+            color={mealPlanReady ? colors.green : colors.textSecondary}
+          />
+          <Text
+            style={[styles.plannedMealsLabel, mealPlanReady && styles.plannedMealsLabelReady]}
+            numberOfLines={1}
+          >
+            {plannedMeals}/{mealPlanNudgeSlotCount} planned
+          </Text>
+        </View>
+      )}
+      {/* Order of the meta line: what the task is (category, project,
+          target, parts) first, then when and what it waits on, then the
+          app's own offers, then stats about its history (streak, slips,
+          bounty) last. */}
+      {scheduledIso !== null && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={
+            scheduledHidden
+              ? `Hidden until ${formatScheduledDate(scheduledIso)}`
+              : `Scheduled for ${formatScheduledDate(scheduledIso)}`
+          }
+        >
+          <Ionicons
+            name={scheduledHidden ? 'eye-off-outline' : 'calendar-outline'}
+            size={iconSize.xs}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.scheduledLabel} numberOfLines={1}>
+            {formatScheduledDate(scheduledIso)}
+          </Text>
+        </View>
+      )}
+      {weatherWaitText !== null && (
+        <View style={styles.metaChip} accessibilityLabel={weatherWaitText}>
+          <Ionicons name="partly-sunny-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.scheduledLabel} numberOfLines={1}>
+            {weatherWaitText}
+          </Text>
+        </View>
+      )}
+      {slotInText !== null && (
+        <View style={styles.metaChip} accessibilityLabel={slotInText}>
+          <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.scheduledLabel} numberOfLines={1}>
+            {slotInText}
+          </Text>
+        </View>
+      )}
+      {/* An "every N hours" task's own placement — see hoursUnlockTime's
+          comment above. Shown regardless of showDate, the same as the
+          reminder chip below: that flag is about a calendar date, and
+          this task has none to gate on. */}
+      {hoursUnlockTime !== null && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={`Comes up again at ${hoursUnlockTime}`}
+        >
+          <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.scheduledLabel} numberOfLines={1}>
+            {hoursUnlockTime}
+          </Text>
+        </View>
+      )}
+      {/* The hour a reminder actually fires at — see reminderTimeLabel's
+          own comment on why this exists regardless of the scheduled
+          chip above. */}
+      {reminderTimeLabel !== null && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={isTravelRow ? `Leave at ${reminderTimeLabel}` : `Reminder at ${reminderTimeLabel}`}
+        >
+          <Ionicons name={isTravelRow ? 'walk-outline' : 'notifications-outline'} size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={isTravelRow ? styles.leaveTimeLabel : styles.scheduledLabel} numberOfLines={1}>
+            {isTravelRow ? `Leave at ${reminderTimeLabel}` : reminderTimeLabel}
+          </Text>
+        </View>
+      )}
+      {/* When leaving at the reminder gets you there. Always on its own
+          line under the reminder chip, so it can't run into the row's
+          buttons whatever the width; with the start time, in the warning
+          colour, when the arrival is after the start. */}
+      {travelArrival !== null && (
+        <TouchableOpacity
+          style={[styles.metaChip, styles.travelDisruptionChip]}
+          disabled={selectionMode}
+          onPress={() => { haptics.tap(); setShowArrivePicker(true); }}
+          hitSlop={8}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={travelArrival.text}
+          accessibilityHint="Choose how early to arrive"
+        >
+          <Ionicons name="flag-outline" size={iconSize.xs} color={travelArrival.late ? colors.warningText : colors.textSecondary} />
+          <Text style={travelArrival.late ? styles.travelDisruptionLabel : styles.scheduledLabel} numberOfLines={2}>
+            {travelArrival.text}
+          </Text>
+          <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+        </TouchableOpacity>
+      )}
+      {placeReminderLabel !== null && (
+        <View style={styles.metaChip} accessibilityLabel={`Reminder when ${placeReminderLabel.toLowerCase()}`}>
+          <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.scheduledLabel} numberOfLines={1}>{placeReminderLabel}</Text>
+        </View>
+      )}
+      {travelPending && !travelCompareModes && (
+        <View style={styles.metaChip} accessibilityLabel="Checking travel time">
+          <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textTertiary} />
+          <Text style={[styles.scheduledLabel, { color: colors.textTertiary }]} numberOfLines={1}>
+            Checking travel time
+          </Text>
+        </View>
+      )}
+      {frankiMinutes !== null && (
+        <View style={styles.metaChip} accessibilityLabel={frankiMinutes}>
+          <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.scheduledLabel} numberOfLines={1}>
+            {frankiMinutes}
+          </Text>
+        </View>
+      )}
+      {travelNote !== null && travelOptions.length === 0 && (
+        <TouchableOpacity
+          style={styles.metaChip}
+          disabled={selectionMode}
+          onPress={() => { haptics.tap(); setShowTravelPicker(true); }}
+          hitSlop={8}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Travel time ${travelNote}`}
+          accessibilityHint="Choose how you get there"
+        >
+          <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.scheduledLabel} numberOfLines={1}>
+            {travelNote}
+          </Text>
+        </TouchableOpacity>
+      )}
+      {/* The prep tasks that have to be done before walking out. Same
+          line-of-its-own treatment as the notice below, in the plain
+          meta colour: it is a to-do, not a warning. */}
+      {leavePrep !== null && (
+        <View style={styles.metaChip} accessibilityLabel={leavePrep}>
+          <Ionicons name="alert-circle-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.scheduledLabel} numberOfLines={2}>
+            {leavePrep}
+          </Text>
+        </View>
+      )}
+      {/* What the MTA says about this trip. On its own line (basis 100%)
+          and in the warning colour, so it reads as a notice rather than as
+          one more fact beside the time. */}
+      {travelDisruption !== null && (
+        <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={`Transit alert: ${travelDisruption}`}>
+          <Ionicons name="warning-outline" size={iconSize.xs} color={colors.warningText} />
+          <Text style={styles.travelDisruptionLabel} numberOfLines={2}>
+            {travelDisruption}
+          </Text>
+        </View>
+      )}
+      {/* Which meal this row is. Sits at the front with the scheduled
+          chip rather than back with the counters, because it places the
+          task in the day the way that one does — three of these rows
+          share a category, a shape and (once each is planned) a title
+          that only names food. The glyph is the slot's own, the same one
+          the Settings row that switches the meal on wears. */}
+      {/* What ticking this row records (a dose, a meal), so a row that
+          logs something is told apart from one that doesn't. */}
+      {logChips.map(chip => (
+        <TouchableOpacity
+          key={chip.kind}
+          style={styles.logsChip}
+          disabled={!chip.editable}
+          onPress={() => { haptics.tap(); setShowDoseSheet(true); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole={chip.editable ? 'button' : undefined}
+          accessibilityLabel={chip.editable ? `${chip.text}. Change the amount` : chip.text}
+        >
+          <Ionicons
+            name={chip.kind === 'dose' ? 'medkit-outline' : 'restaurant-outline'}
+            size={iconSize.xs}
+            color={colors.accentText}
+          />
+          <Text style={styles.logsChipLabel} numberOfLines={1}>
+            {chip.text}
+          </Text>
+          {chip.editable && <Ionicons name="chevron-down" size={iconSize.xs} color={colors.accentText} />}
+        </TouchableOpacity>
+      ))}
+      {mealSlot !== null && (
+        <View style={styles.metaChip}>
+          <Ionicons
+            name={MEAL_SLOT_ICONS[mealSlot] as keyof typeof Ionicons.glyphMap}
+            size={iconSize.xs}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.mealSlotLabel} numberOfLines={1}>
+            {MEAL_SLOT_LABELS[mealSlot]}
+          </Text>
+        </View>
+      )}
+      {windowActive && windowEnd && (
+        <View style={styles.metaChip}>
+          <Ionicons name="time" size={iconSize.xs} color={colors.red} />
+          <Text style={styles.windowLabel} numberOfLines={1}>
+            {formatWindowRemaining(windowEnd)}
+          </Text>
+        </View>
+      )}
+      {!windowActive && windowExpired && (
+        <View style={styles.metaChip}>
+          <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.windowLabelExpired} numberOfLines={1}>
+            Expired at {formatHHMM(windowEnd ?? task.windowEnd!)}
+          </Text>
+        </View>
+      )}
+      {/* What this task is holding back — the only place the queue is
+          visible from a list, since the waiters themselves are hidden. */}
+      {waitingCount > 0 && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={`${waitingCount} ${waitingCount === 1 ? 'task is' : 'tasks are'} waiting on this`}
+        >
+          <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.blockingLabel} numberOfLines={1}>
+            {waitingCount} waiting
+          </Text>
+        </View>
+      )}
+      {/* The other side of the same relationship. Only reachable where a
+          blocked task is still listed — Search, and a project's own screen. */}
+      {notNeeded && (
+        <View style={styles.metaChip} accessibilityLabel="Not needed: another answer was picked">
+          <Ionicons name="remove-circle-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.blockingLabel} numberOfLines={1}>
+            Not needed
+          </Text>
+        </View>
+      )}
+      {!!blockerTitle && (onEdit && blockerId ? (
+        // Opens the blocker so what this task is waiting on is one tap
+        // away, rather than something to go and find in the list.
+        <TouchableOpacity
+          style={[styles.metaChip, styles.waitingChip]}
+          onPress={() => {
+            haptics.tap();
+            onEdit(blockerId);
+          }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Waiting on ${blockerTitle}. Double tap to open it.`}
+        >
+          <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
+          <Text style={styles.waitingLabel} numberOfLines={1}>
+            After {blockerTitle}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={[styles.metaChip, styles.waitingChip]} accessibilityLabel={`Waiting on ${blockerTitle}`}>
+          <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
+          <Text style={styles.waitingLabel} numberOfLines={1}>
+            After {blockerTitle}
+          </Text>
+        </View>
+      ))}
+      {/* Tappable where the blocker chip above isn't, and that asymmetry
+          is the point (#2087): a task waiting on a task frees itself when
+          the blocker is ticked off, where nobody completes a person. This
+          chip is the way out, so it has to be here on the row and not
+          only in the editor. */}
+      {!!waitingPersonName && (
+        <TouchableOpacity
+          style={[styles.metaChip, styles.waitingChip]}
+          onPress={() => {
+            haptics.tap();
+            animateLayout();
+            // One tap on a small chip is easy to make by accident, and
+            // it drops the wait's start and follow-up day with it.
+            const snapshot = { ...task };
+            updateTask(task.id, { waitingOnPersonId: null });
+            setLastAction({
+              label: 'Stopped waiting',
+              undo: () => updateTask(snapshot.id, snapshot),
+              redo: redoRestoringRows([task.id]),
+            });
+          }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}
+        >
+          <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
+          <Text style={styles.waitingLabel} numberOfLines={1}>
+            Waiting on {waitingPersonName}
+          </Text>
+          {/* The same glyph the Waiting screen releases a row with,
+              rather than a new bordered-chip treatment: without it this
+              is pixel-identical to the blocker chip beside it, which is
+              not a button, and the one way out of a wait nothing else
+              ends would be undiscoverable. */}
+          <Ionicons name="close" size={iconSize.xs} color={colors.warningText} />
+        </TouchableOpacity>
+      )}
+      {/* How long this project has been silent — the one thing the
+          quiet-projects banner said that the row's own title doesn't.
+          Filled rather than a bare chip, which makes it the one thing in
+          the meta line with a shape: these rows are the app's own offers
+          sitting among tasks the user wrote, and at tertiary weight they
+          read as one more attribute and got skipped — the same finding
+          that made "Scheduled for you" the one accent chip here.
+          Deliberately not a "Review" badge before the title, which would
+          restate the title's own first word, and would have to take that
+          word *out* of it — leaving the row reading "Kitchen renovation"
+          on the widget, in Search and in the Logbook, none of which
+          render a meta line. This says the same thing with the fact the
+          row already had. */}
+      {quietDays !== null && (
+        <View style={[styles.metaChip, styles.quietChip]}>
+          <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.accent} />
+          <Text style={styles.quietLabel} numberOfLines={1}>
+            {describeProjectQuiet(quietDays)}
+          </Text>
+        </View>
+      )}
+      {/* A "Shop for Tue ragù" row's own size — one missing onion and a
+          twelve-line curry otherwise read identically. Filled the same
+          way the quiet-project chip is, per that chip's own finding
+          that tertiary weight here reads as one more attribute rather
+          than the app's own offer. Plain and literal per CLAUDE.md:
+          a count, not a figure of speech. */}
+      {/* Which calendar event a rule wrote this row for. The title is the
+          rule's own words ("Prep for interview"), so without this the row
+          appears with no hint of what asked for it. Filled like the two
+          chips above, for their finding that a plain chip reads as one
+          more attribute rather than the app's own offer. */}
+      {eventTaskContext !== null && (
+        <View style={[styles.metaChip, styles.quietChip]}>
+          <Ionicons name="calendar-outline" size={iconSize.xs} color={colors.accent} />
+          <Text style={styles.quietLabel} numberOfLines={1}>
+            {eventTaskContext}
+          </Text>
+        </View>
+      )}
+      {/* When the event an on-call swap task is about is, or, in the warning
+          colour, that it no longer clashes: the swap was arranged or the
+          event moved. The row stays for the person to tick off, since the
+          app never removes a task they may have acted on. */}
+      {onCallSwap !== null && (onCallSwap.stale ? (
+        <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={onCallSwap.label}>
+          <Ionicons name="alert-circle-outline" size={iconSize.xs} color={colors.warningText} />
+          <Text style={styles.travelDisruptionLabel} numberOfLines={1}>
+            {onCallSwap.label}
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.metaChip, styles.quietChip]}>
+          <Ionicons name="swap-horizontal-outline" size={iconSize.xs} color={colors.accent} />
+          <Text style={styles.quietLabel} numberOfLines={1}>
+            {onCallSwap.label}
+          </Text>
+        </View>
+      ))}
+      {missingCount !== null && (
+        <View style={[styles.metaChip, styles.quietChip]}>
+          <Ionicons name="cart-outline" size={iconSize.xs} color={colors.accent} />
+          <Text style={styles.quietLabel} numberOfLines={1}>
+            {missingCount} to buy
+          </Text>
+        </View>
+      )}
+      {/* The app dated this one, not the user (see Task.autoScheduledAt).
+          Its own chip rather than a variant of the project chip beside
+          it: that one answers "which project", this one answers "who put
+          this on my day", and folding them together made a row that had
+          been filed under a project by hand look auto-scheduled too.
+          Same icon as the project's "Keep it moving" toggle, so the row
+          points at the setting that caused it. */}
+      {autoScheduled && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={
+            projectTitle
+              ? `Scheduled automatically because ${projectTitle} had gone quiet`
+              : 'Scheduled automatically because this project had gone quiet'
+          }
+        >
+          <Ionicons name="play-forward-outline" size={iconSize.xs} color={colors.accent} />
+          <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled automatically</Text>
+        </View>
+      )}
+      {showStreakChip && !nutrientRow && (
+        <Animated.View
+          style={[styles.metaChip, styles.streakChip, { transform: [{ scale: streakChipScale }] }]}
+          accessibilityLabel={
+            // Same number, different thing counted: a negative habit's run
+            // is days it survived, not times it was done.
+            isNegative
+              ? shownStreak > 0
+                ? `${shownStreak} clean ${shownStreak === 1 ? 'day' : 'days'}${atRecord ? ', the longest this task has had' : ''}`
+                : 'No clean days yet'
+            : countsUnits(task)
+              ? `Done ${shownStreak} ${shownStreak === 1 ? 'time' : 'times'}`
+            : atRecord
+              ? `${shownStreak} day streak, the longest this task has had`
+              : shownStreak > 0
+                ? `${shownStreak} day streak`
+                : 'No streak yet'
+          }
+        >
+          <Ionicons
+            name={chipStreak > 0 ? 'flame' : 'flame-outline'}
+            size={iconSize.xs}
+            color={chipStreak > 0 ? streakColor : colors.textSecondary}
+          />
+          <AnimatedNumber
+            text={String(chipStreak)}
+            value={chipStreak}
+            style={[
+              styles.streakChipText,
+              chipStreak > 0 && styles.streakChipTextActive,
+              atRecord && { color: streakColor },
+            ]}
+          />
+        </Animated.View>
+      )}
+      {slipsLoggedToday > 0 && !nutrientRow && (
+        // Without this the second tap of the day changes nothing on the
+        // row: the shield is already red and the streak is already 0, so
+        // frequency logging ("how many, not whether") would be invisible
+        // at exactly the point it starts being the thing being recorded.
+        <View style={styles.metaChip}>
+          <Text style={styles.slipLabel} numberOfLines={1}>
+            {slipAllowanceOf(task) > 0
+              ? `${slipsLoggedToday} of ${slipAllowanceOf(task)} allowed slip${slipAllowanceOf(task) === 1 ? '' : 's'} today`
+              : `${slipsLoggedToday} slip${slipsLoggedToday === 1 ? '' : 's'} today`}
+          </Text>
+        </View>
+      )}
+      {/* Same wording StuckScreen's own drift row uses ("Moved N times"),
+          so a task doesn't get a second way of saying the same thing. */}
+      {isDrifting && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={`Moved ${task.postponeCount} times`}
+        >
+          <Ionicons name="repeat-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.blockingLabel} numberOfLines={1}>
+            Moved {task.postponeCount}×
+          </Text>
+        </View>
+      )}
+      {guardTitle !== null && (
+        <View style={styles.metaChip} accessibilityLabel={`Linked to ${rewardGuardTitle !== null ? 'the reward' : 'the unlock'} ${guardTitle}`}>
+          <CoinIcon size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.blockingLabel} numberOfLines={1}>
+            Linked to {guardTitle}
+          </Text>
+        </View>
+      )}
+      {bountyCoins > 0 && (
+        <View
+          style={styles.metaChip}
+          accessibilityLabel={`Bounty, ${formatCoins(bountyCoins)} extra when done`}
+        >
+          <CoinIcon size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.blockingLabel} numberOfLines={1}>
+            +{bountyCoins} bounty
+          </Text>
+        </View>
+      )}
+    </View>
+  ) : null;
+
   const rowBody = (
-    <View style={[styles.row, showTravelStrip && styles.rowWrap, showAutoTab && styles.rowBelowAutoTab, isActive && styles.rowActive]}>
+    <View style={[styles.row, compactLine && styles.rowCompact, showTravelStrip && styles.rowWrap, showAutoTab && styles.rowBelowAutoTab, isActive && styles.rowActive]}>
       {task.priority > 0 && (
         <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
       )}
@@ -3929,107 +4790,12 @@ const TaskItemRow = React.memo(function TaskItem({
             />
           </View>
         )}
-        {nutrientRow ? (
-          <NutrientTaskBar task={task} streak={showStreakChip ? shownStreak : null} streakColor={streakColor} done={completing} />
-        ) : isEditingTitle ? (
-          <TextField
-            ref={titleInputRef}
-            style={styles.titleInput}
-            value={titleEdit}
-            onChangeText={setTitleEdit}
-            onBlur={saveTitle}
-            onSubmitEditing={() => {
-              // In iPhone Mirroring, Return takes the pill on show rather
-              // than saving the raw text, so a hardware keyboard needn't reach
-              // for the pointer. Taking it saves the cleaned title too.
-              if (mirroringMode && activeTitleOffer) applyTitleOffer();
-              else saveTitle();
-              if (listRow) onSubmitLine?.(task.id);
-            }}
-            returnKeyType={listRow && onSubmitLine ? 'next' : 'done'}
-            maxLength={TITLE_MAX_LENGTH}
-            blurOnSubmit
-            autoFocus
-            // A list line can be a long question for the doctor, and a
-            // one-line field scrolls it out of sight while it's edited.
-            multiline={listRow}
-          />
-        ) : (
-          <View style={styles.titleRow}>
-            {isNew && <View style={styles.newDot} />}
-            {expanded && !notice ? (
-              // Only tappable for edit when already expanded — avoids intercepting expand taps.
-              // A notice is never renameable: its title is the question the
-              // generator asks, and the next sweep writes the same one again.
-              // Editing always edits the task's own title, not the chain step's
-              // (handleTitleTap/saveTitle), even though the displayed text here
-              // is the step's while one is active — matching the collapsed row.
-              <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity} hitSlop={8}>
-                {/* Same crossfade wrapper as the collapsed row below — see
-                    chainStepOpacity/chainStepAnim's own comment. A no-op the
-                    rest of the time: chainStepAnim rests at 1. */}
-                <Animated.View style={{ opacity: chainStepOpacity, transform: reduceMotion ? [] : [{ scale: chainStepAnim }] }}>
-                  <StrikeReveal
-                    struck={completing}
-                    animate={titleStrikeAnimates}
-                    struckCopy={
-                      <HighlightedText
-                        text={displayTitle}
-                        ranges={titleMentionRanges}
-                        style={[styles.title, styles.titleDone]}
-                        highlightStyle={[styles.titleMention, styles.titleDone]}
-                        numberOfLines={listRow ? undefined : 2}
-                        trailing={markersFit || notesStayInTitle ? markerNodes : null}
-                      />
-                    }
-                  >
-                    <HighlightedText
-                      text={displayTitle}
-                      ranges={titleMentionRanges}
-                      style={[styles.title, heldBackDim && styles.titleHeldBack]}
-                      highlightStyle={styles.titleMention}
-                      // Open, a list line shows all of itself: the editor was
-                      // otherwise the only place a long question could be read.
-                      numberOfLines={listRow ? undefined : 2}
-                      trailing={markersFit || notesStayInTitle ? markerNodes : null}
-                    />
-                  </StrikeReveal>
-                </Animated.View>
-              </TouchableOpacity>
-            ) : (
-              <Animated.View style={[styles.titleFlex, { opacity: chainStepOpacity, transform: reduceMotion ? [] : [{ scale: chainStepAnim }] }]}>
-                {/* Struck through as it's checked off: see StrikeReveal. The
-                    copy is the same title with the same props, so it lies
-                    exactly over the original. */}
-                <StrikeReveal
-                  struck={completing}
-                  animate={titleStrikeAnimates}
-                  struckCopy={
-                    <HighlightedText
-                      text={displayTitle}
-                      ranges={titleMentionRanges}
-                      style={[styles.title, styles.titleDone]}
-                      highlightStyle={[styles.titleMention, styles.titleDone]}
-                      numberOfLines={2}
-                      ellipsizeMode="tail"
-                      trailing={markersFit || notesStayInTitle ? markerNodes : null}
-                    />
-                  }
-                >
-                  <HighlightedText
-                    text={displayTitle}
-                    ranges={titleMentionRanges}
-                    style={[styles.title, heldBackDim && styles.titleHeldBack]}
-                    highlightStyle={styles.titleMention}
-                    numberOfLines={2}
-                    ellipsizeMode="tail"
-                    trailing={markersFit || notesStayInTitle ? markerNodes : null}
-                  />
-                </StrikeReveal>
-              </Animated.View>
-            )}
+        {compactLine ? (
+          <View style={styles.compactLine}>
+            <View style={styles.compactTitle}>{titleBlock}</View>
+            {metaBlock !== null && <View style={styles.compactMeta}>{metaBlock}</View>}
           </View>
-        )}
+        ) : titleBlock}
         {weatherNote !== null && !nutrientRow && !isEditingTitle && (
           <Text style={[styles.scheduledLabel, styles.weatherNote]} numberOfLines={1}>{weatherNote}</Text>
         )}
@@ -4104,751 +4870,7 @@ const TaskItemRow = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(markersOnMeta || hasOtherMeta) && (
-          <View style={styles.metaRow}>
-            {morning && (
-              <PressableScale
-                style={[styles.alarmChip, !morning.ring && styles.alarmChipNone]}
-                onPress={() => { haptics.tap(); setShowAlarmCard(true); }}
-                disabled={selectionMode}
-                accessibilityLabel={morning.ring
-                  ? `Tomorrow’s alarm, ${morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}`
-                  : `${morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}. Set one`}
-              >
-                <Ionicons name="alarm-outline" size={iconSize.xs} color={morning.ring ? colors.accentText : colors.warningText} />
-                <Text style={[styles.alarmChipText, !morning.ring && styles.alarmChipTextNone]} numberOfLines={1}>
-                  {morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}
-                </Text>
-              </PressableScale>
-            )}
-            {markersOnMeta && hasNotes && !notesStayInTitle && (
-              <View style={styles.metaChip} accessibilityLabel="Has notes">
-                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
-              </View>
-            )}
-            {markersOnMeta && hasAttachments && !notesStayInTitle && (
-              <View style={styles.metaChip} accessibilityLabel="Has attachments">
-                <Ionicons name="attach" size={iconSize.xs} color={colors.textSecondary} />
-              </View>
-            )}
-            {markersOnMeta && deadlineDays !== null && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={deadlineClosed ? `Deadline was ${deadlineLabel}` : `Deadline ${deadlineLabel}`}
-              >
-                <Ionicons name="flag" size={9} color={deadlineColor} />
-                <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
-                  {deadlineLabel}
-                </Text>
-              </View>
-            )}
-            {showCategory && task.category && (
-              onOpenCategory ? (
-                <PressableScale
-                  style={styles.metaChip}
-                  onPress={() => onOpenCategory(task.category!)}
-                  accessibilityLabel={`Open category ${task.category}`}
-                >
-                  <Text style={styles.categoryLabel} numberOfLines={1}>
-                    {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
-                  </Text>
-                </PressableScale>
-              ) : (
-                <View style={styles.metaChip}>
-                  <Text style={styles.categoryLabel} numberOfLines={1}>
-                    {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
-                  </Text>
-                </View>
-              )
-            )}
-            {showProject && projectTitle && (
-              onOpenProject ? (
-                <PressableScale
-                  style={styles.metaChip}
-                  onPress={() => onOpenProject(task.projectId!)}
-                  accessibilityLabel={`Open project ${projectTitle}`}
-                >
-                  <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
-                  <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
-                </PressableScale>
-              ) : (
-                <View style={styles.metaChip}>
-                  <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
-                  <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
-                </View>
-              )
-            )}
-            {showGroup && groupTitle && (
-              <View style={styles.metaChip}>
-                <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.groupLabel} numberOfLines={1}>{groupTitle}</Text>
-              </View>
-            )}
-            {/* The chain's own name. The row's title is the current step, so
-                without this the task you typed ("Write Sam a postcard") only
-                showed up once the row was expanded. */}
-            {!!chainName && (
-              <View style={styles.metaChip} accessibilityLabel={`Chain: ${chainName}`}>
-                <Ionicons name="git-commit-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.projectLabel} numberOfLines={1}>{chainName}</Text>
-              </View>
-            )}
-            {isQuota && (
-              <View style={styles.metaChip}>
-                <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
-                {/* The count rolls as a unit lands; the rest stays put and is
-                    what gives way if the chip runs out of room. */}
-                <AnimatedNumber
-                  text={quotaProgress}
-                  value={quotaLogged}
-                  style={[styles.quotaLabel, rotationTight && styles.rotationTight]}
-                />
-                {quotaReturnAt ? (
-                  <Text style={[styles.quotaLabel, styles.quotaReturn]} numberOfLines={1}>{`· next ${quotaReturnAt}`}</Text>
-                ) : null}
-              </View>
-            )}
-            {rotationPlanned !== null && (
-              <TouchableOpacity
-                style={styles.metaChip}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => setShowRotationPick(true)}
-                accessibilityRole="button"
-                accessibilityLabel={`Planned for today: ${rotationPlanned.title}. Open to change it.`}
-              >
-                <Ionicons name="flag" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quotaLabel} numberOfLines={1}>Today: {rotationPlanned.title}</Text>
-              </TouchableOpacity>
-            )}
-            {rotationLast !== null && (
-              // Its own chip, so a long member name truncates itself rather
-              // than the count beside it, and so it still shows once the set
-              // is covered.
-              <View style={styles.metaChip}>
-                <Text style={styles.quotaLabel} numberOfLines={1}>{rotationLast}</Text>
-              </View>
-            )}
-            {subtaskCount > 0 && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
-              >
-                <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
-                <AnimatedNumber text={`${subtaskDoneCount}/${subtaskCount}`} value={subtaskDoneCount} style={styles.subtaskBadgeText} />
-              </View>
-            )}
-            {task.generatedKind === 'calendarReview' && (
-              // The row's only sign that it opens: the panel holds the events
-              // themselves, and a bare checkbox gives no hint of that. Shown
-              // at zero too, since the panel still carries "Sync now".
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={`${calendarReviewEvents.length === 0 ? 'No events' : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}, tap to expand`}
-              >
-                <Ionicons name="calendar-outline" size={9} color={colors.textSecondary} />
-                <Text style={styles.subtaskBadgeText} numberOfLines={1}>
-                  {calendarReviewEvents.length === 0
-                    ? 'No events'
-                    : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}
-                </Text>
-                <RotatingChevron open={expanded} size={9} color={colors.textSecondary} />
-              </View>
-            )}
-            {task.generatedKind === 'eventDetails' && (
-              // calendarReview's chip, for its reason: the panel is the task.
-              <View style={styles.metaChip} accessibilityLabel="Events to add details to, tap to expand">
-                <Ionicons name="calendar-outline" size={9} color={colors.textSecondary} />
-                <EventDetailsCount style={styles.subtaskBadgeText} />
-                <RotatingChevron open={expanded} size={9} color={colors.textSecondary} />
-              </View>
-            )}
-            {supplyLabel !== null && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={supplyLabel}
-              >
-                <Ionicons
-                  name={supplyOut ? 'cube' : 'cube-outline'}
-                  size={iconSize.xs}
-                  color={supplyOut ? colors.red : supplyLow ? colors.orangeText : colors.textSecondary}
-                />
-                <Text
-                  style={[
-                    styles.supplyLabel,
-                    supplyLow && styles.supplyLabelLow,
-                    supplyOut && styles.supplyLabelOut,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {supplyLabel}
-                </Text>
-              </View>
-            )}
-            {penaltyLabel !== null && (
-              <View style={styles.metaChip} accessibilityLabel={penaltyLabel}>
-                <Ionicons name="lock-closed-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.subtaskBadgeText} numberOfLines={1}>{penaltyLabel}</Text>
-              </View>
-            )}
-            {timed && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={
-                  timerReady
-                    ? (isQuota ? 'Timer done, ready to log' : 'Timer done, ready to complete')
-                    : timerRunning
-                      ? `${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
-                      : timerPaused
-                        ? `Timer paused, ${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
-                        : `Timed, ${formatDuration(task.timedMinutes!)}${liveSegment ? `, starting with ${liveSegment.title}` : ''}`
-                }
-              >
-                <Ionicons
-                  name={timerReady ? 'checkmark-circle' : timerPaused ? 'pause' : timerRunning ? 'timer' : 'timer-outline'}
-                  size={iconSize.xs}
-                  color={timerReady ? colors.green : timerRunning ? colors.accent : colors.textSecondary}
-                />
-                <Text
-                  style={[
-                    styles.countdownLabel,
-                    timerReady && styles.countdownLabelReady,
-                    !timerReady && timerRunning && styles.countdownLabelRunning,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {timerReady
-                    ? 'Ready'
-                    : timerRunning || timerPaused
-                      ? formatStopwatch(remainingSeconds)
-                      : formatDuration(task.timedMinutes!)}
-                </Text>
-                {/* Which stretch of the run you're on. It's on the collapsed row
-                    rather than only in the panel below because that's the whole
-                    use for apportioning one — knowing to move on to the new
-                    piece is no help if it takes a tap to find out. */}
-                {liveSegment && !timerReady && (
-                  <Text style={styles.countdownSegment} numberOfLines={1}>
-                    · {liveSegment.title}
-                  </Text>
-                )}
-              </View>
-            )}
-            {/* A health target's progress, read from Apple Health. Green at the
-                target is the same "ready" the timer's chip uses, and it means
-                the same thing: you can tick this now, not that anything has
-                been ticked. Absent entirely when there is no reading — a
-                "0 / 8,000" would be the figure somebody who refused the read
-                would see, and it would be this app telling them they had
-                walked nowhere. */}
-            {healthLabel !== null && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={healthReady
-                  ? `${healthLabel}, target reached, ready to complete`
-                  : healthLabel}
-              >
-                <Ionicons
-                  name={healthReady ? 'checkmark-circle' : healthIcon}
-                  size={iconSize.xs}
-                  color={healthReady ? colors.green : colors.textSecondary}
-                />
-                <Text
-                  style={[styles.countdownLabel, healthReady && styles.countdownLabelReady]}
-                  numberOfLines={1}
-                >
-                  {healthLabel}
-                </Text>
-              </View>
-            )}
-            {/* One day of the weekly meal-plan nudge: how much of that day is
-                planned. Sits with the other counters rather than replacing the
-                title, because the day itself is the title and this is its
-                state. Green at 3/3 is the same "ready" the timer's chip uses. */}
-            {plannedMeals !== undefined && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={
-                  mealPlanReady
-                    ? `All ${mealPlanNudgeSlotCount} meals planned, ready to complete`
-                    : `${plannedMeals} of ${mealPlanNudgeSlotCount} meals planned`
-                }
-              >
-                <Ionicons
-                  name={mealPlanReady ? 'checkmark-circle' : 'restaurant-outline'}
-                  size={iconSize.xs}
-                  color={mealPlanReady ? colors.green : colors.textSecondary}
-                />
-                <Text
-                  style={[styles.plannedMealsLabel, mealPlanReady && styles.plannedMealsLabelReady]}
-                  numberOfLines={1}
-                >
-                  {plannedMeals}/{mealPlanNudgeSlotCount} planned
-                </Text>
-              </View>
-            )}
-            {/* Order of the meta line: what the task is (category, project,
-                target, parts) first, then when and what it waits on, then the
-                app's own offers, then stats about its history (streak, slips,
-                bounty) last. */}
-            {scheduledIso !== null && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={
-                  scheduledHidden
-                    ? `Hidden until ${formatScheduledDate(scheduledIso)}`
-                    : `Scheduled for ${formatScheduledDate(scheduledIso)}`
-                }
-              >
-                <Ionicons
-                  name={scheduledHidden ? 'eye-off-outline' : 'calendar-outline'}
-                  size={iconSize.xs}
-                  color={colors.textSecondary}
-                />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>
-                  {formatScheduledDate(scheduledIso)}
-                </Text>
-              </View>
-            )}
-            {weatherWaitText !== null && (
-              <View style={styles.metaChip} accessibilityLabel={weatherWaitText}>
-                <Ionicons name="partly-sunny-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>
-                  {weatherWaitText}
-                </Text>
-              </View>
-            )}
-            {slotInText !== null && (
-              <View style={styles.metaChip} accessibilityLabel={slotInText}>
-                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>
-                  {slotInText}
-                </Text>
-              </View>
-            )}
-            {/* An "every N hours" task's own placement — see hoursUnlockTime's
-                comment above. Shown regardless of showDate, the same as the
-                reminder chip below: that flag is about a calendar date, and
-                this task has none to gate on. */}
-            {hoursUnlockTime !== null && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={`Comes up again at ${hoursUnlockTime}`}
-              >
-                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>
-                  {hoursUnlockTime}
-                </Text>
-              </View>
-            )}
-            {/* The hour a reminder actually fires at — see reminderTimeLabel's
-                own comment on why this exists regardless of the scheduled
-                chip above. */}
-            {reminderTimeLabel !== null && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={isTravelRow ? `Leave at ${reminderTimeLabel}` : `Reminder at ${reminderTimeLabel}`}
-              >
-                <Ionicons name={isTravelRow ? 'walk-outline' : 'notifications-outline'} size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={isTravelRow ? styles.leaveTimeLabel : styles.scheduledLabel} numberOfLines={1}>
-                  {isTravelRow ? `Leave at ${reminderTimeLabel}` : reminderTimeLabel}
-                </Text>
-              </View>
-            )}
-            {/* When leaving at the reminder gets you there. Always on its own
-                line under the reminder chip, so it can't run into the row's
-                buttons whatever the width; with the start time, in the warning
-                colour, when the arrival is after the start. */}
-            {travelArrival !== null && (
-              <TouchableOpacity
-                style={[styles.metaChip, styles.travelDisruptionChip]}
-                disabled={selectionMode}
-                onPress={() => { haptics.tap(); setShowArrivePicker(true); }}
-                hitSlop={8}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={travelArrival.text}
-                accessibilityHint="Choose how early to arrive"
-              >
-                <Ionicons name="flag-outline" size={iconSize.xs} color={travelArrival.late ? colors.warningText : colors.textSecondary} />
-                <Text style={travelArrival.late ? styles.travelDisruptionLabel : styles.scheduledLabel} numberOfLines={2}>
-                  {travelArrival.text}
-                </Text>
-                <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
-              </TouchableOpacity>
-            )}
-            {placeReminderLabel !== null && (
-              <View style={styles.metaChip} accessibilityLabel={`Reminder when ${placeReminderLabel.toLowerCase()}`}>
-                <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>{placeReminderLabel}</Text>
-              </View>
-            )}
-            {travelPending && !travelCompareModes && (
-              <View style={styles.metaChip} accessibilityLabel="Checking travel time">
-                <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textTertiary} />
-                <Text style={[styles.scheduledLabel, { color: colors.textTertiary }]} numberOfLines={1}>
-                  Checking travel time
-                </Text>
-              </View>
-            )}
-            {frankiMinutes !== null && (
-              <View style={styles.metaChip} accessibilityLabel={frankiMinutes}>
-                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>
-                  {frankiMinutes}
-                </Text>
-              </View>
-            )}
-            {travelNote !== null && travelOptions.length === 0 && (
-              <TouchableOpacity
-                style={styles.metaChip}
-                disabled={selectionMode}
-                onPress={() => { haptics.tap(); setShowTravelPicker(true); }}
-                hitSlop={8}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`Travel time ${travelNote}`}
-                accessibilityHint="Choose how you get there"
-              >
-                <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>
-                  {travelNote}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {/* The prep tasks that have to be done before walking out. Same
-                line-of-its-own treatment as the notice below, in the plain
-                meta colour: it is a to-do, not a warning. */}
-            {leavePrep !== null && (
-              <View style={styles.metaChip} accessibilityLabel={leavePrep}>
-                <Ionicons name="alert-circle-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={2}>
-                  {leavePrep}
-                </Text>
-              </View>
-            )}
-            {/* What the MTA says about this trip. On its own line (basis 100%)
-                and in the warning colour, so it reads as a notice rather than as
-                one more fact beside the time. */}
-            {travelDisruption !== null && (
-              <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={`Transit alert: ${travelDisruption}`}>
-                <Ionicons name="warning-outline" size={iconSize.xs} color={colors.warningText} />
-                <Text style={styles.travelDisruptionLabel} numberOfLines={2}>
-                  {travelDisruption}
-                </Text>
-              </View>
-            )}
-            {/* Which meal this row is. Sits at the front with the scheduled
-                chip rather than back with the counters, because it places the
-                task in the day the way that one does — three of these rows
-                share a category, a shape and (once each is planned) a title
-                that only names food. The glyph is the slot's own, the same one
-                the Settings row that switches the meal on wears. */}
-            {/* What ticking this row records (a dose, a meal), so a row that
-                logs something is told apart from one that doesn't. */}
-            {logChips.map(chip => (
-              <TouchableOpacity
-                key={chip.kind}
-                style={styles.logsChip}
-                disabled={!chip.editable}
-                onPress={() => { haptics.tap(); setShowDoseSheet(true); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole={chip.editable ? 'button' : undefined}
-                accessibilityLabel={chip.editable ? `${chip.text}. Change the amount` : chip.text}
-              >
-                <Ionicons
-                  name={chip.kind === 'dose' ? 'medkit-outline' : 'restaurant-outline'}
-                  size={iconSize.xs}
-                  color={colors.accentText}
-                />
-                <Text style={styles.logsChipLabel} numberOfLines={1}>
-                  {chip.text}
-                </Text>
-                {chip.editable && <Ionicons name="chevron-down" size={iconSize.xs} color={colors.accentText} />}
-              </TouchableOpacity>
-            ))}
-            {mealSlot !== null && (
-              <View style={styles.metaChip}>
-                <Ionicons
-                  name={MEAL_SLOT_ICONS[mealSlot] as keyof typeof Ionicons.glyphMap}
-                  size={iconSize.xs}
-                  color={colors.textSecondary}
-                />
-                <Text style={styles.mealSlotLabel} numberOfLines={1}>
-                  {MEAL_SLOT_LABELS[mealSlot]}
-                </Text>
-              </View>
-            )}
-            {windowActive && windowEnd && (
-              <View style={styles.metaChip}>
-                <Ionicons name="time" size={iconSize.xs} color={colors.red} />
-                <Text style={styles.windowLabel} numberOfLines={1}>
-                  {formatWindowRemaining(windowEnd)}
-                </Text>
-              </View>
-            )}
-            {!windowActive && windowExpired && (
-              <View style={styles.metaChip}>
-                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.windowLabelExpired} numberOfLines={1}>
-                  Expired at {formatHHMM(windowEnd ?? task.windowEnd!)}
-                </Text>
-              </View>
-            )}
-            {/* What this task is holding back — the only place the queue is
-                visible from a list, since the waiters themselves are hidden. */}
-            {waitingCount > 0 && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={`${waitingCount} ${waitingCount === 1 ? 'task is' : 'tasks are'} waiting on this`}
-              >
-                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
-                  {waitingCount} waiting
-                </Text>
-              </View>
-            )}
-            {/* The other side of the same relationship. Only reachable where a
-                blocked task is still listed — Search, and a project's own screen. */}
-            {notNeeded && (
-              <View style={styles.metaChip} accessibilityLabel="Not needed: another answer was picked">
-                <Ionicons name="remove-circle-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
-                  Not needed
-                </Text>
-              </View>
-            )}
-            {!!blockerTitle && (onEdit && blockerId ? (
-              // Opens the blocker so what this task is waiting on is one tap
-              // away, rather than something to go and find in the list.
-              <TouchableOpacity
-                style={[styles.metaChip, styles.waitingChip]}
-                onPress={() => {
-                  haptics.tap();
-                  onEdit(blockerId);
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`Waiting on ${blockerTitle}. Double tap to open it.`}
-              >
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
-                <Text style={styles.waitingLabel} numberOfLines={1}>
-                  After {blockerTitle}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={[styles.metaChip, styles.waitingChip]} accessibilityLabel={`Waiting on ${blockerTitle}`}>
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
-                <Text style={styles.waitingLabel} numberOfLines={1}>
-                  After {blockerTitle}
-                </Text>
-              </View>
-            ))}
-            {/* Tappable where the blocker chip above isn't, and that asymmetry
-                is the point (#2087): a task waiting on a task frees itself when
-                the blocker is ticked off, where nobody completes a person. This
-                chip is the way out, so it has to be here on the row and not
-                only in the editor. */}
-            {!!waitingPersonName && (
-              <TouchableOpacity
-                style={[styles.metaChip, styles.waitingChip]}
-                onPress={() => {
-                  haptics.tap();
-                  animateLayout();
-                  // One tap on a small chip is easy to make by accident, and
-                  // it drops the wait's start and follow-up day with it.
-                  const snapshot = { ...task };
-                  updateTask(task.id, { waitingOnPersonId: null });
-                  setLastAction({
-                    label: 'Stopped waiting',
-                    undo: () => updateTask(snapshot.id, snapshot),
-                    redo: redoRestoringRows([task.id]),
-                  });
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}
-              >
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
-                <Text style={styles.waitingLabel} numberOfLines={1}>
-                  Waiting on {waitingPersonName}
-                </Text>
-                {/* The same glyph the Waiting screen releases a row with,
-                    rather than a new bordered-chip treatment: without it this
-                    is pixel-identical to the blocker chip beside it, which is
-                    not a button, and the one way out of a wait nothing else
-                    ends would be undiscoverable. */}
-                <Ionicons name="close" size={iconSize.xs} color={colors.warningText} />
-              </TouchableOpacity>
-            )}
-            {/* How long this project has been silent — the one thing the
-                quiet-projects banner said that the row's own title doesn't.
-                Filled rather than a bare chip, which makes it the one thing in
-                the meta line with a shape: these rows are the app's own offers
-                sitting among tasks the user wrote, and at tertiary weight they
-                read as one more attribute and got skipped — the same finding
-                that made "Scheduled for you" the one accent chip here.
-                Deliberately not a "Review" badge before the title, which would
-                restate the title's own first word, and would have to take that
-                word *out* of it — leaving the row reading "Kitchen renovation"
-                on the widget, in Search and in the Logbook, none of which
-                render a meta line. This says the same thing with the fact the
-                row already had. */}
-            {quietDays !== null && (
-              <View style={[styles.metaChip, styles.quietChip]}>
-                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quietLabel} numberOfLines={1}>
-                  {describeProjectQuiet(quietDays)}
-                </Text>
-              </View>
-            )}
-            {/* A "Shop for Tue ragù" row's own size — one missing onion and a
-                twelve-line curry otherwise read identically. Filled the same
-                way the quiet-project chip is, per that chip's own finding
-                that tertiary weight here reads as one more attribute rather
-                than the app's own offer. Plain and literal per CLAUDE.md:
-                a count, not a figure of speech. */}
-            {/* Which calendar event a rule wrote this row for. The title is the
-                rule's own words ("Prep for interview"), so without this the row
-                appears with no hint of what asked for it. Filled like the two
-                chips above, for their finding that a plain chip reads as one
-                more attribute rather than the app's own offer. */}
-            {eventTaskContext !== null && (
-              <View style={[styles.metaChip, styles.quietChip]}>
-                <Ionicons name="calendar-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quietLabel} numberOfLines={1}>
-                  {eventTaskContext}
-                </Text>
-              </View>
-            )}
-            {/* When the event an on-call swap task is about is, or, in the warning
-                colour, that it no longer clashes: the swap was arranged or the
-                event moved. The row stays for the person to tick off, since the
-                app never removes a task they may have acted on. */}
-            {onCallSwap !== null && (onCallSwap.stale ? (
-              <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={onCallSwap.label}>
-                <Ionicons name="alert-circle-outline" size={iconSize.xs} color={colors.warningText} />
-                <Text style={styles.travelDisruptionLabel} numberOfLines={1}>
-                  {onCallSwap.label}
-                </Text>
-              </View>
-            ) : (
-              <View style={[styles.metaChip, styles.quietChip]}>
-                <Ionicons name="swap-horizontal-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quietLabel} numberOfLines={1}>
-                  {onCallSwap.label}
-                </Text>
-              </View>
-            ))}
-            {missingCount !== null && (
-              <View style={[styles.metaChip, styles.quietChip]}>
-                <Ionicons name="cart-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quietLabel} numberOfLines={1}>
-                  {missingCount} to buy
-                </Text>
-              </View>
-            )}
-            {/* The app dated this one, not the user (see Task.autoScheduledAt).
-                Its own chip rather than a variant of the project chip beside
-                it: that one answers "which project", this one answers "who put
-                this on my day", and folding them together made a row that had
-                been filed under a project by hand look auto-scheduled too.
-                Same icon as the project's "Keep it moving" toggle, so the row
-                points at the setting that caused it. */}
-            {autoScheduled && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={
-                  projectTitle
-                    ? `Scheduled automatically because ${projectTitle} had gone quiet`
-                    : 'Scheduled automatically because this project had gone quiet'
-                }
-              >
-                <Ionicons name="play-forward-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled automatically</Text>
-              </View>
-            )}
-            {showStreakChip && !nutrientRow && (
-              <Animated.View
-                style={[styles.metaChip, styles.streakChip, { transform: [{ scale: streakChipScale }] }]}
-                accessibilityLabel={
-                  // Same number, different thing counted: a negative habit's run
-                  // is days it survived, not times it was done.
-                  isNegative
-                    ? shownStreak > 0
-                      ? `${shownStreak} clean ${shownStreak === 1 ? 'day' : 'days'}${atRecord ? ', the longest this task has had' : ''}`
-                      : 'No clean days yet'
-                  : countsUnits(task)
-                    ? `Done ${shownStreak} ${shownStreak === 1 ? 'time' : 'times'}`
-                  : atRecord
-                    ? `${shownStreak} day streak, the longest this task has had`
-                    : shownStreak > 0
-                      ? `${shownStreak} day streak`
-                      : 'No streak yet'
-                }
-              >
-                <Ionicons
-                  name={chipStreak > 0 ? 'flame' : 'flame-outline'}
-                  size={iconSize.xs}
-                  color={chipStreak > 0 ? streakColor : colors.textSecondary}
-                />
-                <AnimatedNumber
-                  text={String(chipStreak)}
-                  value={chipStreak}
-                  style={[
-                    styles.streakChipText,
-                    chipStreak > 0 && styles.streakChipTextActive,
-                    atRecord && { color: streakColor },
-                  ]}
-                />
-              </Animated.View>
-            )}
-            {slipsLoggedToday > 0 && !nutrientRow && (
-              // Without this the second tap of the day changes nothing on the
-              // row: the shield is already red and the streak is already 0, so
-              // frequency logging ("how many, not whether") would be invisible
-              // at exactly the point it starts being the thing being recorded.
-              <View style={styles.metaChip}>
-                <Text style={styles.slipLabel} numberOfLines={1}>
-                  {slipAllowanceOf(task) > 0
-                    ? `${slipsLoggedToday} of ${slipAllowanceOf(task)} allowed slip${slipAllowanceOf(task) === 1 ? '' : 's'} today`
-                    : `${slipsLoggedToday} slip${slipsLoggedToday === 1 ? '' : 's'} today`}
-                </Text>
-              </View>
-            )}
-            {/* Same wording StuckScreen's own drift row uses ("Moved N times"),
-                so a task doesn't get a second way of saying the same thing. */}
-            {isDrifting && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={`Moved ${task.postponeCount} times`}
-              >
-                <Ionicons name="repeat-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
-                  Moved {task.postponeCount}×
-                </Text>
-              </View>
-            )}
-            {guardTitle !== null && (
-              <View style={styles.metaChip} accessibilityLabel={`Linked to ${rewardGuardTitle !== null ? 'the reward' : 'the unlock'} ${guardTitle}`}>
-                <CoinIcon size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
-                  Linked to {guardTitle}
-                </Text>
-              </View>
-            )}
-            {bountyCoins > 0 && (
-              <View
-                style={styles.metaChip}
-                accessibilityLabel={`Bounty, ${formatCoins(bountyCoins)} extra when done`}
-              >
-                <CoinIcon size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
-                  +{bountyCoins} bounty
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
+        {!compactLine && metaBlock}
         {isRotation && (
           <RotationPills
             task={task}
@@ -6043,6 +6065,7 @@ const TaskItemRow = React.memo(function TaskItem({
           ref={paintRowRef}
           style={[
             styles.itemWrapper,
+            compact && styles.itemWrapperCompact,
             shadows.card,
             { opacity: isActive ? 1 : rowOpacity },
             isActive && styles.itemWrapperActive,
@@ -6671,6 +6694,14 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     alignItems: 'center',
     gap: spacing.xsm,
   },
+  // The compact row (`compact`): the title takes what it needs and the line of
+  // details sits after it on the same line, giving way first.
+  itemWrapperCompact: { marginVertical: 1 },
+  rowCompact: { paddingVertical: spacing.xsm },
+  compactLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, minWidth: 0 },
+  compactTitle: { flexShrink: 1, flexGrow: 1, minWidth: 0 },
+  compactMeta: { flexShrink: 1, maxWidth: '55%', overflow: 'hidden', alignItems: 'flex-end' },
+  metaRowCompact: { flexWrap: 'nowrap', justifyContent: 'flex-end' },
   titleFlex: {
     flexShrink: 1,
   },

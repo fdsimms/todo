@@ -258,6 +258,12 @@ export interface SettingsEntry {
    * other half rather than a second meaning for the list.
    */
   requiresAll?: readonly string[];
+  /**
+   * Rendered only on a device that can have a wide window (`deviceHasWideWindows`:
+   * an iPad or a Mac), because what it sets is how the sidebar and two panes
+   * look. A phone never draws either, so it neither shows the row nor finds it.
+   */
+  wideWindowOnly?: boolean;
 }
 
 /**
@@ -496,6 +502,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['audio', 'chime', 'notes', 'all clear', 'finished', 'done', 'celebrate'] },
   { id: 'shakeToUndo', groupId: 'appearance', label: 'Shake to undo', section: 'Feedback',
     keywords: ['gesture', 'revert', 'mistake', 'accident', 'restore', 'take back'] },
+  { id: 'todayWideLayout', groupId: 'appearance', label: 'Today on a wide window', section: 'Wide windows', wideWindowOnly: true,
+    keywords: ['ipad', 'mac', 'board', 'columns', 'list', 'compact', 'dense', 'layout', 'split', 'pane', 'desktop'] },
+  { id: 'sidebarCollapsed', groupId: 'appearance', label: 'Icons only in the sidebar', section: 'Wide windows', wideWindowOnly: true,
+    keywords: ['ipad', 'mac', 'rail', 'collapse', 'narrow', 'menu', 'hide labels'] },
   { id: 'mirroringMode', groupId: 'appearance', label: 'iPhone Mirroring', section: 'Feedback',
     keywords: ['mac', 'laptop', 'computer', 'desktop', 'mouse', 'pointer', 'trackpad', 'click', 'continuity', 'keyboard', 'shortcuts', 'hotkeys'] },
   { id: 'tipsEnabled', groupId: 'appearance', label: 'Tips', section: 'Feedback',

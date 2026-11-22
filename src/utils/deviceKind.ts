@@ -17,3 +17,14 @@ export function setDeviceIsMac(value: boolean): void {
 export function deviceIsMac(): boolean {
   return onMac;
 }
+
+/**
+ * Whether this device can have a window wide enough for the sidebar and two
+ * panes: an iPad, or a Mac. A phone can't, so a setting about wide windows
+ * (Today's layout, the sidebar's rail) is neither shown nor found by search on
+ * one. `isPad` is `Platform.isPad`, which the caller reads, since this file stays
+ * free of native imports for the MCP's sake.
+ */
+export function deviceHasWideWindows(isPad: boolean): boolean {
+  return isPad || onMac;
+}

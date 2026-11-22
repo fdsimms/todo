@@ -80,8 +80,9 @@ export interface FabDragHandlers {
    * position rather than instead of it so the caller keeps one code path: it
    * still resolves a drop, it just resolves that one to a cancel.
    */
-  onMove: (pageY: number, home: FabHomeState) => void;
-  onEnd: (pageY: number, home: FabHomeState) => void;
+  /** `pageX` is for a list with columns (Today's board), where the row meant is the one under the button. */
+  onMove: (pageY: number, home: FabHomeState, pageX: number) => void;
+  onEnd: (pageY: number, home: FabHomeState, pageX: number) => void;
   /** Touch lost, app switched — the drag never happened. */
   onCancel: () => void;
 }
@@ -299,7 +300,7 @@ function FabButton({
         const y = grantOffsetRef.current.y + g.dy;
         dragX.setValue(x);
         dragY.setValue(y);
-        dragRef.current?.onMove(e.nativeEvent.pageY, readHome(x, y));
+        dragRef.current?.onMove(e.nativeEvent.pageY, readHome(x, y), e.nativeEvent.pageX);
       },
       onPanResponderRelease: (e, g) => {
         const x = grantOffsetRef.current.x + g.dx;
@@ -313,7 +314,7 @@ function FabButton({
         // the animation being requested and it actually kicking off, which
         // left the well's ring stuck at whatever opacity it had.
         settle();
-        dragRef.current?.onEnd(e.nativeEvent.pageY, home);
+        dragRef.current?.onEnd(e.nativeEvent.pageY, home, e.nativeEvent.pageX);
       },
       onPanResponderTerminate: () => {
         settle();
