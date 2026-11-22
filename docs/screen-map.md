@@ -26,7 +26,7 @@ components below.
 - `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, PressableScale, ScreenHeader, SearchField, SettingsFocus
 - `src/screens/BackfillScreen.tsx` — AllFieldsSheet, BirthdayPicker, CategoryPicker, CoinIcon, CountStepper, DeliverablePromptQueue, DetailHeader, EmptyState, FieldLabel, InlineAction, LazySheet, NumberPadAccessory, +10 more
 - `src/screens/BloodPressureScreen.tsx` — BloodPressureChart, EmptyState, HubPills, LogBloodPressureSheet, ScreenHeader, ScreenSettingsSheet, SegmentedControl
-- `src/screens/CalendarScreen.tsx` — CalendarAgenda, DayTimeline, DeliverablePromptQueue, EmptyNote, LazySheet, MultiDayTimeline, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, TaskEditor, +2 more
+- `src/screens/CalendarScreen.tsx` — CalendarAgenda, DayTimeline, DeliverablePromptQueue, EmptyNote, LazySheet, MultiDayTimeline, PeriodNav, QuickAddModal, QuickEventSheet, RotatingChevron, ScreenHeader, ScreenSettingsSheet, +3 more
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, WhichToUseSheet
 - `src/screens/CategoryDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, LazySheet, PaintSelection, PinIcon, QuickAddModal, ScrollToTopButton, SpotlightOverlay, TaskEditor, +1 more
 - `src/screens/CookModeScreen.tsx` — BlankPickerSheet, CardSheet, CheckPop, DetailHeader, EmptyState, InlineAction, NumberPadAccessory, ProgressBar, RecipeChoiceChips, RecipeScaleChips, RecipeTimerRow, RepeatTimerSheet, +5 more
