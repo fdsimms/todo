@@ -3291,11 +3291,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           addTask: draft => replica.createTask(draft as Partial<TaskDraft>),
           // A stub is a checklist line: no title rules, no category, no time-of-day seeding.
           addSubtask: (parentId, title) => {
-            const siblings = db.dbGetAllTasks().filter(t => t.parentId === parentId);
+            // One indexed query, not every task row once per checklist line.
+            const lastSibling = probe.getFirstSync<{ m: number | null }>('SELECT MAX(sort_order) AS m FROM tasks WHERE parent_id = ?', [parentId])?.m ?? 0;
             const stub = taskDraft.newTaskFromDraft(
               { title, parentId } as Partial<TaskDraft>,
               new Date().toISOString(),
-              siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+              Math.max(lastSibling, 0) + 1,
               false
             );
             db.dbInsertTask(stub);
@@ -3322,12 +3323,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           updateProject: (id, patch) => projectStore().updateProject(id, patch),
           homeSection: (sectionId, projectId, checklist) => groupStore().updateGroup(sectionId, { projectId, checklist }),
           setAnswerGate: (taskId, gate) => {
-            const task = db.dbGetAllTasks().find(t => t.id === taskId);
+            const task = db.dbGetTasksByIds([taskId])[0];
             if (task) db.dbUpdateTask({ ...task, answerGate: gate });
             refresh();
           },
           setBlockers: (taskId, ids) => {
-            const task = db.dbGetAllTasks().find(t => t.id === taskId);
+            const task = db.dbGetTasksByIds([taskId])[0];
             if (task) db.dbUpdateTask({ ...task, ...blocking.blockerFields(ids) });
             refresh();
           },
@@ -3339,10 +3340,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // A 'task' container is the parent every item was filed under.
     const parentId = created.find(t => t.parentId)?.parentId;
     if (parentId) {
-      const parent = db.dbGetAllTasks().find(t => t.id === parentId);
+      const parent = db.dbGetTasksByIds([parentId])[0];
       if (parent) onContainer({ kind: 'task', id: parent.id, name: parent.title });
     }
-    return created.map(t => db.dbGetAllTasks().find(x => x.id === t.id) ?? t);
+    // The rows as stored, read once by id rather than every task once per row.
+    const stored = new Map(db.dbGetTasksByIds(created.map(t => t.id)).map(t => [t.id, t]));
+    return created.map(t => stored.get(t.id) ?? t);
   }
 
   /** The Person columns a PersonFields names, validated. A birthday of null clears all three. */

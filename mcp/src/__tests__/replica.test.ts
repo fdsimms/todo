@@ -1042,6 +1042,27 @@ describe('the replica', () => {
         expect(replica.tasks().filter(x => x.groupId === stack.id)).toHaveLength(2);
       });
 
+      // The bug: each checklist line and each created row read every task, which
+      // on a long history made one template run take minutes.
+      it('does not read every task once per checklist line or created row', () => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const db = require('../../../src/db/database') as typeof import('../../../src/db/database');
+        const spy = jest.spyOn(db, 'dbGetAllTasks');
+        try {
+          const t = replica.createTemplate({
+            name: 'Many lines',
+            items: [1, 2, 3, 4].map(n => ({ title: `Step ${n}`, category: 'Home', subtasks: [{ id: `a${n}`, title: `Line ${n}a` }, { id: `b${n}`, title: `Line ${n}b` }] })),
+          });
+          spy.mockClear();
+          const result = replica.applyTemplate(t.id, {});
+          expect(result.tasks).toHaveLength(4);
+          expect(replica.tasks().filter(x => x.title.startsWith('Line'))).toHaveLength(8);
+          expect(spy.mock.calls.length).toBeLessThan(4);
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
       // The default selection names leaves; the run has to find its way into
       // a nested template by itself or everything inside one is dropped.
       it('creates the items of a nested template', () => {
