@@ -6,7 +6,7 @@ import {
   sinkShortcuts,
   windowTitleFor,
 } from '../utils/macMenu';
-import { KEY_SHORTCUTS, MENU_SHORTCUTS, chordKey, describeShortcuts } from '../utils/keyShortcuts';
+import { GO_SHORTCUTS, KEY_SHORTCUTS, MENU_SHORTCUTS, chordKey, describeShortcuts, goRouteFor, shortcutKeys } from '../utils/keyShortcuts';
 import { visibleMenuRows, type NavMenuOptions } from '../utils/navHubs';
 
 const options: NavMenuOptions = {
@@ -62,6 +62,27 @@ describe('buildMenuItems', () => {
     expect(sink).not.toContain('textLarger');
   });
 
+  it('puts ⌥⌘1 to ⌥⌘6 on the screens people jump between, by screen rather than position', () => {
+    const chorded = items.filter(i => i.menu === 'go' && i.input !== '');
+    expect(chorded.map(i => [i.id, `${i.modifiers.length}${i.input}`])).toEqual([
+      ['go:Today', '21'],
+      ['go:Projects', '22'],
+      ['go:Groceries', '23'],
+      ['go:Recipes', '24'],
+      ['go:MealPlan', '25'],
+      ['go:Kitchen', '26'],
+    ]);
+    expect(items.find(i => i.id === 'go:Today')?.modifiers).toEqual(['option', 'command']);
+  });
+
+  it('drops the kitchen chords with the kitchen screens, and keeps the others where they are', () => {
+    const noKitchen = buildMenuItems(visibleMenuRows({ ...options, kitchenEnabled: false }), [
+      'goGroceries', 'goRecipes', 'goMealPlan', 'goPantry',
+    ]);
+    expect(noKitchen.find(i => i.id === 'go:Projects')).toMatchObject({ input: '2' });
+    expect(noKitchen.find(i => i.id === 'go:Groceries')).toBeUndefined();
+  });
+
   it('has a Settings item with ⌘,', () => {
     expect(items.find(i => i.menu === 'settings')).toMatchObject({ title: 'Settings…', input: ',', modifiers: ['command'] });
   });
@@ -106,6 +127,22 @@ describe('MENU_SHORTCUTS', () => {
     const text = describeShortcuts([], shortcutsWithMenuBar());
     expect(text).toContain('1 or ⌘1: Today');
     expect(text).toContain('⌘,: Settings');
+  });
+});
+
+describe('Go chords', () => {
+  it('has one shortcut per route, and a route for each action', () => {
+    for (const go of GO_SHORTCUTS) {
+      expect(MENU_SHORTCUTS.find(s => s.id === go.shortcutId)?.action).toBe(go.action);
+      expect(goRouteFor(go.action)).toBe(go.route);
+    }
+    expect(goRouteFor('search')).toBeNull();
+  });
+
+  it('is listed in the shortcuts list, and left out for a hidden action', () => {
+    expect(describeShortcuts([], shortcutsWithMenuBar())).toContain('⌥⌘3: Go to Groceries');
+    expect(describeShortcuts(['goGroceries'], shortcutsWithMenuBar())).not.toContain('Groceries');
+    expect(shortcutKeys(MENU_SHORTCUTS.find(s => s.id === 'menuGoTasks')!)).toBe('⌥⌘1');
   });
 });
 

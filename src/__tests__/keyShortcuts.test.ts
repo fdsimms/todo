@@ -67,6 +67,18 @@ describe('KEY_SHORTCUTS', () => {
   });
 });
 
+describe('⌘T and ⌘[', () => {
+  const chord = (action: string) => KEY_SHORTCUTS.filter(s => s.action === action).map(shortcutKeys);
+
+  it('opens search with ⌘T as well as ⌘F and /', () => {
+    expect(chord('search')).toEqual(['/', '⌘F', '⌘T']);
+  });
+
+  it('steps back with ⌘[ as well as Escape', () => {
+    expect(chord('closeSheet')).toEqual(['Esc', '⌘[']);
+  });
+});
+
 describe('shortcutById', () => {
   it('finds a known id and refuses an unknown one', () => {
     expect(shortcutById('undo')?.action).toBe('undo');

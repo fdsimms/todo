@@ -12,7 +12,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { isAppLocked } from '../store/useAppLockStore';
-import { KEY_SHORTCUTS, describeShortcuts, shortcutById, type KeyShortcut, type ShortcutAction } from '../utils/keyShortcuts';
+import { KEY_SHORTCUTS, describeShortcuts, goRouteFor, shortcutById, type KeyShortcut, type ShortcutAction } from '../utils/keyShortcuts';
 import { buildMenuItems, shortcutsWithMenuBar, sinkShortcuts } from '../utils/macMenu';
 import { latestRedoHistory, latestUndoHistory } from '../utils/undoHistory';
 import { anySheetOpen } from '../utils/sheetModal';
@@ -24,6 +24,7 @@ import { featureHidden } from '../utils/simpleMode';
 import {
   openQuickAddFromKeyboard,
   openQuickSearchFromKeyboard,
+  navigateToTab,
   openSettingsFromKeyboard,
   showTodayViewModeFromKeyboard,
 } from '../navigation/navigationRef';
@@ -45,7 +46,11 @@ function undoHistories() {
 }
 
 export function hiddenActions(): ShortcutAction[] {
-  return featureHidden('unscheduledLens', useSettingsStore.getState().simpleMode) ? ['viewUnscheduled'] : [];
+  const { simpleMode, kitchenEnabled } = useSettingsStore.getState();
+  const hidden: ShortcutAction[] = featureHidden('unscheduledLens', simpleMode) ? ['viewUnscheduled'] : [];
+  // The kitchen screens are gone from the menu bar and the side menu with it, so their chords are too.
+  if (!kitchenEnabled) hidden.push('goGroceries', 'goRecipes', 'goMealPlan', 'goPantry');
+  return hidden;
 }
 
 /** Whether a text field has focus, so a key that acts on a row should leave the field to it. */
@@ -97,6 +102,16 @@ export function runShortcut(shortcut: KeyShortcut): void {
     case 'viewUnscheduled': showTodayViewModeFromKeyboard('unscheduled'); return;
     case 'viewInbox': showTodayViewModeFromKeyboard('inbox'); return;
     case 'openSettings': openSettingsFromKeyboard(); return;
+    case 'goTasks':
+    case 'goProjects':
+    case 'goGroceries':
+    case 'goRecipes':
+    case 'goMealPlan':
+    case 'goPantry': {
+      const route = goRouteFor(shortcut.action);
+      if (route) navigateToTab(route);
+      return;
+    }
     case 'textLarger':
     case 'textSmaller': {
       const { textSize, setTextSize } = useSettingsStore.getState();

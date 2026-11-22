@@ -306,7 +306,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/keyActions.ts` — registerEscapeHandler, runEscape, registerCommit, runCommit, ScreenKey, ScreenKeyHandlers, registerScreenKeys, runScreenKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
-- `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, MENU_SHORTCUTS, shortcutById, chordKey, shortcutKeys, describeShortcuts
+- `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, MENU_SHORTCUTS, GO_SHORTCUTS, goRouteFor, shortcutById, chordKey, shortcutKeys, +1 more
 - `src/utils/keyboardDone.ts` — DONE_ACCESSORY_ID, DoneBarKind, doneBarKind, setFloatingDoneFocus, floatingDoneWanted, subscribeFloatingDone, resetFloatingDone
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, PORTION_LABEL, KitchenEntry, KitchenSection, +5 more
