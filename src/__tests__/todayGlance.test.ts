@@ -1,61 +1,44 @@
-import { glanceEvents } from '../utils/todayGlance';
-import type { BusyEvent } from '../utils/calendarBusy';
+import { DAY_TIMELINE_MIN_HOURS, dayTimeline } from '../utils/todayGlance';
 
-const event = (id: string, start: string, end: string, extra: Partial<BusyEvent> = {}): BusyEvent => ({
-  id,
-  title: `Event ${id}`,
-  start,
-  end,
-  allDay: false,
-  calendarId: 'cal',
-  location: null,
-  status: 'confirmed',
-  availability: 'busy',
-  ...extra,
-});
+describe('dayTimeline', () => {
+  const now = new Date(2026, 10, 22, 14, 20);
+  const dayEnd = new Date(2026, 10, 23, 0, 0);
+  const at = (h: number, m = 0, day = 22) => new Date(2026, 10, day, h, m);
 
-const NOW = new Date(2026, 9, 28, 11, 0);
-const at = (hour: number, minute = 0) => new Date(2026, 9, 28, hour, minute).toISOString();
-const clock = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-const none = () => false;
-
-describe('glanceEvents', () => {
-  it('lists what is still ahead, in the order given, with its start time', () => {
-    const list = glanceEvents([event('a', at(13), at(14)), event('b', at(15, 30), at(16))], NOW, none, clock);
-    expect(list.map(e => [e.title, e.time])).toEqual([['Event a', '13:00'], ['Event b', '15:30']]);
+  it('runs from the hour now is in, for at least the minimum, when the day is quiet', () => {
+    const hours = dayTimeline([], now, dayEnd);
+    expect(hours).toHaveLength(DAY_TIMELINE_MIN_HOURS);
+    expect(hours[0].start).toEqual(at(14));
+    expect(hours[5].start).toEqual(at(19));
   });
 
-  it('keeps one that is on now and drops one that has ended', () => {
-    const list = glanceEvents([event('over', at(9), at(10)), event('now', at(10, 30), at(11, 30))], NOW, none, clock);
-    expect(list.map(e => e.title)).toEqual(['Event now']);
+  it('runs on to the last hour something starts in', () => {
+    const hours = dayTimeline([{ key: 'late', title: 'Call', kind: 'event', at: at(22, 30) }], now, dayEnd);
+    expect(hours[hours.length - 1].start).toEqual(at(22));
+    expect(hours[hours.length - 1].entries.map(e => e.key)).toEqual(['late']);
   });
 
-  it('drops one that ends at this very minute', () => {
-    expect(glanceEvents([event('edge', at(10), at(11))], NOW, none, clock)).toEqual([]);
+  it('puts each entry in the hour it starts in, in time order', () => {
+    const hours = dayTimeline([
+      { key: 'b', title: 'B', kind: 'task', at: at(15, 40) },
+      { key: 'a', title: 'A', kind: 'event', at: at(15, 5) },
+    ], now, dayEnd);
+    expect(hours[1].entries.map(e => e.key)).toEqual(['a', 'b']);
   });
 
-  it('keeps an all-day event, and says so instead of giving a clock time', () => {
-    const allDay = event('d', at(0), at(0), { allDay: true });
-    expect(glanceEvents([allDay], NOW, none, clock)).toEqual([{ key: `d-${at(0)}`, title: 'Event d', time: 'All day' }]);
+  it('shows an event already under way in the current hour', () => {
+    const hours = dayTimeline([{ key: 'on', title: 'Meeting', kind: 'event', at: at(13, 30) }], now, dayEnd);
+    expect(hours[0].entries.map(e => e.key)).toEqual(['on']);
   });
 
-  it('leaves out an event the person hid from Today', () => {
-    const list = glanceEvents([event('a', at(13), at(14)), event('b', at(15), at(16))], NOW, e => e.id === 'a', clock);
-    expect(list.map(e => e.title)).toEqual(['Event b']);
-  });
-
-  it('stops at the limit, counting only what is shown', () => {
-    const many = ['a', 'b', 'c', 'd'].map((id, i) => event(id, at(12 + i), at(13 + i)));
-    const list = glanceEvents([event('hidden', at(11, 30), at(12)), ...many], NOW, e => e.id === 'hidden', clock, 3);
-    expect(list.map(e => e.title)).toEqual(['Event a', 'Event b', 'Event c']);
-  });
-
-  it('gives two occurrences of one repeating event different keys', () => {
-    const list = glanceEvents([event('r', at(12), at(13)), event('r', at(15), at(16))], NOW, none, clock);
-    expect(new Set(list.map(e => e.key)).size).toBe(2);
-  });
-
-  it('is empty for no events', () => {
-    expect(glanceEvents([], NOW, none, clock)).toEqual([]);
+  it('stops at the day’s end, keeping the small hours of a day that runs past midnight', () => {
+    const lateEnd = new Date(2026, 10, 23, 4, 0);
+    const hours = dayTimeline([
+      { key: 'night', title: 'Night', kind: 'task', at: at(1, 15, 23) },
+      { key: 'tomorrow', title: 'Tomorrow', kind: 'task', at: at(5, 0, 23) },
+    ], new Date(2026, 10, 22, 23, 10), lateEnd);
+    expect(hours).toHaveLength(5);
+    expect(hours[2].entries.map(e => e.key)).toEqual(['night']);
+    expect(hours.flatMap(h => h.entries).map(e => e.key)).not.toContain('tomorrow');
   });
 });

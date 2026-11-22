@@ -69,7 +69,7 @@ components below.
 - `src/screens/TemplateDetailScreen.tsx` — ApplyTemplateSheet, DetailHeader, EmptyState, Fab, FabDropZones, LazySheet, NestedTemplatePicker, PaintSelection, ReorderableList, RotatingChevron, SelectionDot, SwipeActionButtons, +7 more
 - `src/screens/TemplatesScreen.tsx` — ApplyTemplateSheet, EmptyState, Fab, FabDropZones, HubPills, ListBulkBar, PaintSelection, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, SearchField, +6 more
 - `src/screens/TipsScreen.tsx` — EmptyState, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SearchField, TipHost
-- `src/screens/TodayScreen.tsx` — AddTaskFab, AgentSuggestionCards, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BiostatsWidget, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, +56 more
+- `src/screens/TodayScreen.tsx` — AddTaskFab, AgentSuggestionCards, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BiostatsWidget, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, +58 more
 - `src/screens/UnattendedLogScreen.tsx` — ActivitySourceSheet, EmptyState, HubPills, InlineAction, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, WeightChart, WeightGoalSheet
 - `src/screens/WorkoutModeScreen.tsx` — ActionMenu, CardSheet, CheckPop, CountStepper, DescribeWorkoutSheet, EmptyNote, ExerciseDetailSheet, ExercisePhotos, ExercisePickerSheet, ExerciseRestSheet, GymWorkoutParts, GymsSheet, +18 more
@@ -360,7 +360,7 @@ Where each component can appear.
 - `src/components/PlaceReminderPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/PlanMealSheet.tsx` — on MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/PlateLine.tsx` — on WorkoutModeScreen
-- `src/components/PointerView.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, ExperimentsScreen, FoodLogScreen, GroceryScreen, JournalScreen, +29 more
+- `src/components/PointerView.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, ExperimentsScreen, FoodLogScreen, GroceryScreen, JournalScreen, +30 more
 - `src/components/PostponeCheckBanner.tsx` — on ArchivedScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoryDetailScreen, ExperimentDetailScreen, ExperimentsScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, +23 more
 - `src/components/PrepTaskSheet.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/PrepTasksReviewSheet.tsx` — on MealPlanScreen
@@ -472,6 +472,7 @@ Where each component can appear.
 - `src/components/ShoppingTripSheet.tsx` — on GroceryScreen
 - `src/components/SideMenuDrawer.tsx` — on app shell
 - `src/components/Sidebar.tsx` — on app shell
+- `src/components/SidebarRail.tsx` — on app shell
 - `src/components/SimpleBulkBar.tsx` — on ArchivedScreen, LogbookScreen, PeopleScreen
 - `src/components/SleepChart.tsx` — on SleepScreen
 - `src/components/SleepGoalSheet.tsx` — on SettingsGroupScreen, SleepScreen
@@ -537,6 +538,8 @@ Where each component can appear.
 - `src/components/TitleRulesSheet.tsx` — on SettingsGroupScreen
 - `src/components/TitleSuggestionBanner.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/TitleTokenAccessory.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
+- `src/components/TodayBoard.tsx` — on TodayScreen
+- `src/components/TodayDayPane.tsx` — on TodayScreen
 - `src/components/TodayEventsSheet.tsx` — on CalendarScreen, TodayScreen
 - `src/components/TodayGlance.tsx` — on TodayScreen
 - `src/components/TodayOptionsMenu.tsx` — on TodayScreen

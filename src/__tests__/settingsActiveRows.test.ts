@@ -72,14 +72,14 @@ describe('activeSettingsEntryIds', () => {
 
 describe('searchableSettingsEntries', () => {
   it('leaves out a row whose parent is off and keeps it once the parent is on', () => {
-    const off = searchableSettingsEntries('ios', settings(), noSync).map(e => e.id);
+    const off = searchableSettingsEntries('ios', settings(), noSync, false).map(e => e.id);
     expect(off).not.toContain('quietHoursStart');
-    const on = searchableSettingsEntries('ios', settings({ quietHoursStart: '22:00' }), noSync).map(e => e.id);
+    const on = searchableSettingsEntries('ios', settings({ quietHoursStart: '22:00' }), noSync, false).map(e => e.id);
     expect(on).toContain('quietHoursStart');
   });
 
   it('shows the workout write rows only while Log to Health and the Workouts area are both on', () => {
-    const ids = (o: Partial<SettingsGateState>) => searchableSettingsEntries('ios', settings(o), noSync).map(e => e.id);
+    const ids = (o: Partial<SettingsGateState>) => searchableSettingsEntries('ios', settings(o), noSync, false).map(e => e.id);
     expect(ids({ healthWriteEnabled: true } as Partial<SettingsGateState>)).not.toContain('workoutHealthWrite');
     expect(ids({ workoutsEnabled: true, workoutHealthWrite: true })).not.toContain('workoutHealthWrite');
     const both = { healthWriteEnabled: true, workoutsEnabled: true } as Partial<SettingsGateState>;
@@ -92,7 +92,7 @@ describe('searchableSettingsEntries', () => {
   // its rows carry no `requires` of their own and leave with the group.
   it('takes the Workouts group\'s rows away with the Workouts switch, on every platform', () => {
     const ids = (os: string, o: Partial<SettingsGateState>) =>
-      searchableSettingsEntries(os, settings(o), noSync).filter(e => e.groupId === 'workouts').map(e => e.id);
+      searchableSettingsEntries(os, settings(o), noSync, false).filter(e => e.groupId === 'workouts').map(e => e.id);
     expect(ids('ios', {})).toEqual([]);
     expect(ids('ios', { workoutsEnabled: true })).toEqual(
       ['workoutUnit', 'dumbbellEntry', 'defaultRestSeconds', 'workoutBodyweightKg', 'exerciseImagesEnabled', 'workoutLiveActivity', 'maxHeartRate']);
@@ -101,8 +101,18 @@ describe('searchableSettingsEntries', () => {
   });
 
   it('takes the kitchen rows away with the kitchen', () => {
-    const withKitchen = searchableSettingsEntries('ios', settings(), noSync).length;
-    const without = searchableSettingsEntries('ios', settings({ kitchenEnabled: false }), noSync).length;
+    const withKitchen = searchableSettingsEntries('ios', settings(), noSync, false).length;
+    const without = searchableSettingsEntries('ios', settings({ kitchenEnabled: false }), noSync, false).length;
     expect(without).toBeLessThan(withKitchen);
+  });
+});
+
+describe('rows for a wide window', () => {
+  it('are found only on a device that can have one', () => {
+    const on = searchableSettingsEntries('ios', settings(), noSync, true).map(e => e.id);
+    const off = searchableSettingsEntries('ios', settings(), noSync, false).map(e => e.id);
+    expect(on).toEqual(expect.arrayContaining(['todayWideLayout', 'sidebarCollapsed']));
+    expect(off).not.toContain('todayWideLayout');
+    expect(off).not.toContain('sidebarCollapsed');
   });
 });

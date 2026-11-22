@@ -33,7 +33,7 @@ import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { runAfterPaint, runAfterTransition } from '../utils/afterPaint';
 import { landingFor, taskHomeFor } from '../utils/taskHome';
-import { isTaskNew, isTaskVisible, isDismissedToday, isRelevantToGroupToday, groupRoster, isQuotaTask, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
+import { isTaskNew, isTaskVisible, isDismissedToday, isRelevantToGroupToday, groupRoster, isQuotaTask, isRecurrenceNotYetDue, displayTitleFor, getVisibleAt } from '../utils/visibilityUtils';
 import { sameGroupsApartFromFold } from '../utils/groupFold';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
@@ -124,6 +124,9 @@ import { useStore } from 'zustand';
 import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, editorChangedSummary, editorHasUnsavedChanges, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { nextLayoutHold } from '../utils/twoPane';
+import { boardReadingOrder, boardSections, dealBoardSections } from '../utils/todayBoard';
+import { TodayBoard, type BoardDrop, type BoardTarget } from '../components/TodayBoard';
+import { useTodayPaneStore } from '../store/useTodayPaneStore';
 import { runningOnMac } from '../utils/runningOnMac';
 import { confirmDeleteTask } from '../utils/confirmDeleteTask';
 import { isNegativeTask } from '../utils/negativeHabits';
@@ -252,7 +255,8 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { useAskClaudeReady } from '../hooks/useAskClaudeReady';
 import { useAskClaudeStore } from '../store/useAskClaudeStore';
 import { EmptyState } from '../components/EmptyState';
-import { TodayGlance } from '../components/TodayGlance';
+import { TodayGlanceLine } from '../components/TodayGlance';
+import { TodayDayPane } from '../components/TodayDayPane';
 import { AgentSuggestionCards, useSuggestionCount } from '../components/AgentSuggestionCards';
 import { AllClearMark } from '../components/AllClearMark';
 import { CompletionCollapse } from '../components/CompletionCollapse';
@@ -282,10 +286,11 @@ import { projectMoveTargets } from '../utils/projectList';
 import { emitNowTick } from '../utils/nowTick';
 import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
-import { glanceEvents } from '../utils/todayGlance';
+import { dayTimeline, type DayEntry } from '../utils/todayGlance';
 import { LazySheet } from '../components/LazySheet';
 import { TwoPane } from '../components/TwoPane';
 import { useTwoPane } from '../hooks/useTwoPane';
+import { deviceIsMac } from '../utils/deviceKind';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { useLingering } from '../hooks/useLingering';
@@ -870,6 +875,17 @@ export function TodayScreen() {
   const nextHold = nextLayoutHold(layoutHold, lastRoomForTwoPane, roomForTwoPane, editorStore.getState().visible);
   if (nextHold !== layoutHold) setLayoutHold(nextHold);
   const twoPane = layoutHold ?? roomForTwoPane;
+  // Today as a board on a wide window (`todayWideLayout`, docs/arch/wide-layout.md,
+  // "Today's board"): its sections in columns, and the editor in a pane at the right
+  // only while a task is open. Later, Unscheduled and Inbox are lists, so they keep
+  // the list beside a pane.
+  const todayWideLayout = useSettingsStore(s => s.todayWideLayout);
+  const boardLayout = twoPane && todayWideLayout === 'board';
+  // Today as a list on a wide window draws one-line rows, on a Mac only: a pointer
+  // doesn't need a touch-sized target, and an iPad held in a hand does.
+  const compactRows = twoPane && todayWideLayout === 'list' && deviceIsMac();
+  // How many columns the board settled on for its width, for the keyboard's reading order.
+  const [boardColumns, setBoardColumns] = useState(1);
   const navigation = useNavigation();
   const syncProblem = useSyncStore(selectSyncBannerProblem);
   const dismissSyncProblem = useSyncStore(s => s.dismissProblem);
@@ -3406,7 +3422,7 @@ export function TodayScreen() {
   // (it's the list's header) and registers its own 'pinned' zone directly —
   // see PINNED_DROP_ZONE where the block is rendered.
   const todayListData = draggableData;
-  // ==== drag-and-drop drop zones (see resolveDrop in src/utils/reorder.ts) ====
+  // ==== drag-and-drop drop zones (see resolveDrop in src/utils/taskGrouping.ts) ====
   const zoneByKey = useMemo(() => {
     const categoriesFor = categoriesByIndex(
       todayListData.map(item =>
@@ -3908,6 +3924,7 @@ export function TodayScreen() {
         showCategory={opts?.showCategory}
         onOpenCategory={handleOpenCategory}
         duplicateRow={opts?.duplicateRow}
+        compact={compactRows}
         // Unconditional, unlike showCategory: Today's sections *are* the
         // categories, so a category chip only earns its place on a row outside
         // them (the pinned section). Nothing on this screen says which project
@@ -5044,6 +5061,159 @@ export function TodayScreen() {
   const [openLaterStacks, setOpenLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
   const [expandedLaterStacks, setExpandedLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
 
+  // ==== Today's board (`TodayBoard`) ====
+  const boardActive = boardLayout && viewMode === 'today';
+  // The editor's pane beside the board shows only while a task is in it, so the
+  // floating bars outside the navigator need to know where the board ends.
+  const setBoardPane = useTodayPaneStore(st => st.setBoard);
+  useEffect(() => {
+    setBoardPane(boardActive ? (editorVisible ? 'open' : 'closed') : null);
+  }, [boardActive, editorVisible, setBoardPane]);
+  useEffect(() => () => setBoardPane(null), [setBoardPane]);
+  // Stable, so the board's memoized dealing isn't redone on every render.
+  const boardWeightOf = useCallback((item: ListItem): number => {
+    if (item.type !== 'group') return 1;
+    return liveGroupById.get(item.group.id)?.collapsed === true ? 1 : 1 + item.children.length;
+  }, [liveGroupById]);
+  const canDragOnBoard = (item: ListItem) => !selectionMode && (item.type === 'task' || item.type === 'group');
+  const canJoinOnBoard = (dragged: ListItem, target: ListItem) => dragged.type === 'task' && target.type === 'group';
+  const canPinOnBoard = (dragged: ListItem) => dragged.type === 'task' && !dragged.task.pinned;
+  // A task's card is its row, drawn as the column's drag draws it. A stack's is its
+  // title alone: a second tray would register its rows a second time.
+  const renderBoardDragCard = (item: ListItem) => {
+    if (item.type === 'task') return renderTaskRow(item.task, { isActive: true });
+    if (item.type !== 'group') return null;
+    return (
+      <View style={styles.boardDragStack}>
+        <Ionicons name="layers-outline" size={iconSize.sm} color={colors.textSecondary} />
+        <Text style={styles.boardDragStackTitle} numberOfLines={1}>{liveGroup(item.group).title}</Text>
+      </View>
+    );
+  };
+
+  // ==== committing a drop on Today, from the column and the board alike ====
+  // The flat list as a drop left it, filed through `resolveDrop`: each row takes
+  // the category of the nearest header above it. `ReorderableList` hands it over
+  // as it lets go of a row, and `TodayBoard` builds the same list from the seam
+  // it was aimed at (`moveListItem`), so the two file a drop the same way.
+  const commitTodayReorder = (reordered: ListItem[]) => {
+    // Context rows ride along in the list but never in a drop — see
+    // withoutContextRows, and settleWithContext for the way back.
+    const dropped = withoutContextRows(reordered);
+
+    const joinedTaskId = joinedTaskIdRef.current;
+    joinedTaskIdRef.current = null;
+    const pinnedTaskId = pinnedTaskIdRef.current;
+    pinnedTaskIdRef.current = null;
+    // The two are mutually exclusive (the card can only be over one
+    // drop target at release), but read both defensively rather than
+    // assuming it.
+    const absorbedTaskId = joinedTaskId ?? pinnedTaskId;
+
+    // A task dragged onto a group, or onto the Pinned Tasks block
+    // (see onDragMove), has already been handled in onDragEnd — drop
+    // it from the normal placement pass so resolveDrop never assigns
+    // it a category/order of its own.
+    if (absorbedTaskId !== null) {
+      const withoutJoined = dropped.filter(
+        item => !(item.type === 'task' && item.task.id === absorbedTaskId),
+      );
+      const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutJoined, {
+        isUpcoming: id => upcomingTaskIds.has(id),
+        showUpcoming,
+        categoryOrder: allCategories,
+      });
+      groupUpdates.forEach(u => {
+        updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder });
+        applyGroupCategory(u.id, u.category);
+      });
+      setDraggableData(settleWithContext(settled));
+      reorderWithCategoryUpdates(taskOrders, categoryUpdates);
+      return;
+    }
+
+    const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
+      isUpcoming: id => upcomingTaskIds.has(id),
+      showUpcoming,
+      categoryOrder: allCategories,
+    });
+
+    const commitDrop = (scope?: 'occurrence' | 'series') => {
+      // Show the final grouped layout immediately to avoid a flash; the
+      // effect then reconciles to the store-derived `data` (structurally
+      // identical) once the store write lands.
+      setDraggableData(settleWithContext(settled));
+      groupUpdates.forEach(u => {
+        updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder });
+        applyGroupCategory(u.id, u.category);
+      });
+      reorderWithCategoryUpdates(taskOrders, categoryUpdates, scope ? { scope } : undefined);
+      offerGeneratedCategoryWriteBack(categoryUpdates);
+    };
+
+    // Dragging a recurring task into a new category is a content-field
+    // edit like any other (category is a CONTENT_FIELD) and needs the
+    // same "just this task or this and future occurrences" choice as
+    // editing it through the editor. Cancel has to hand the list a
+    // fresh copy of the pre-drag order: ReorderableList keeps showing
+    // the dropped order it committed locally until its `data` prop
+    // changes by reference, so leaving draggableData untouched left
+    // the task sitting in the new category with nothing saved.
+    const recategorizedRecurring = categoryUpdates.some(u => {
+      const task = taskById(allTasks, u.id);
+      return task && task.recurrenceType !== 'none';
+    });
+    // A follow-up task repeats nothing itself, but the ones its rule
+    // adds later are filed where the rule's draft says, so a drag
+    // gets the same question with the wording for that.
+    const recategorizedFollowUp = !recategorizedRecurring && categoryUpdates.some(u => {
+      const task = taskById(allTasks, u.id);
+      return task && hasFollowUpSource(task, allTasks);
+    });
+    if (recategorizedFollowUp) {
+      confirmFollowUpScope('this category change', commitDrop, { onCancel: () => setDraggableData([...draggableData]) });
+      return;
+    }
+    if (recategorizedRecurring) {
+      Alert.alert(
+        'Update recurring task',
+        'This task repeats. Apply this category change to this task, or to this and future tasks?',
+        [
+          { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => setDraggableData([...draggableData]) },
+          { text: 'This task', onPress: () => commitDrop('occurrence') },
+          { text: 'This and future tasks', onPress: () => commitDrop('series') },
+        ],
+      );
+      return;
+    }
+
+    commitDrop();
+  };
+
+  /** A row let go of on the board: into a stack, onto the Pinned Tasks block, or at a place in the list. */
+  const handleBoardDrop = ({ dragged, reordered, join, pin }: BoardDrop<ListItem>) => {
+    if (join?.type === 'group' && dragged.type === 'task') {
+      addExistingToGroup(dragged.task.id, join.group.id);
+      haptics.success();
+      return;
+    }
+    if (pin && dragged.type === 'task') {
+      updateTask(dragged.task.id, { pinned: true });
+      haptics.success();
+      return;
+    }
+    if (reordered) commitTodayReorder(reordered);
+  };
+
+  /** What the board's drag is aimed at, lit up the way the column's drag lights it. */
+  const handleBoardTarget = (target: BoardTarget<ListItem>) => {
+    dropTargetChannel.publish(
+      target === null ? null
+        : target.kind === 'pin' ? PINNED_DRAG_TARGET
+          : target.item.type === 'group' ? target.item.group.id : null,
+    );
+  };
+
   // ==== the keyboard: a row cursor, and what the keys do to it ====
   // A hardware keyboard (a Mac, an iPad with one) steps a cursor down the rows the view draws and
   // acts on the row it is on. The cursor is a place and nothing more: it opens, completes or selects
@@ -5055,16 +5225,23 @@ export function TodayScreen() {
     const groupOpen = (group: { id: string }) => liveGroupById.get(group.id)?.collapsed !== true;
     if (viewMode === 'today') {
       if (!restVisible) return NO_ROWS;
+      // On the board the rows are read down each column in turn, the order they are drawn in.
+      const drawn = boardActive
+        ? boardReadingOrder(
+            boardSections(draggableData),
+            dealBoardSections(boardSections(draggableData).map(sec => sec.items.reduce((sum, item) => sum + boardWeightOf(item), 0)), boardColumns),
+          )
+        : data;
       return todayRowOrder(
         projectBands.bands.filter(band => !collapsedBands.has(band.project.id)).map(band => band.items),
-        data as readonly OrderableRow[],
+        drawn as readonly OrderableRow[],
         groupOpen,
       );
     }
     if (viewMode === 'later') return laterRowOrder(laterData, openLaterStacks, expandedLaterStacks, LATER_STACK_PREVIEW);
     if (viewMode === 'unscheduled') return unscheduledRowOrder(unscheduledTasks);
     return flatRowOrder(inboxData as readonly OrderableRow[], groupOpen);
-  }, [viewMode, restVisible, projectBands, collapsedBands, data, laterData, openLaterStacks, expandedLaterStacks, unscheduledTasks, inboxData, liveGroupById]);
+  }, [viewMode, restVisible, projectBands, collapsedBands, data, laterData, openLaterStacks, expandedLaterStacks, unscheduledTasks, inboxData, liveGroupById, boardActive, draggableData, boardWeightOf, boardColumns]);
 
   // The cursor follows its row when the list changes under it. A task that was just completed or
   // moved hands it to the one below, so a run of Space presses clears a list from the top.
@@ -5305,17 +5482,26 @@ export function TodayScreen() {
           .join(' · ')
       : undefined;
 
-  // What the empty right-hand pane shows beside the list (TodayGlance): the
-  // events still ahead, off the same read as the "events left" figure above.
-  const glanceEventList = useMemo(
-    () => glanceEvents(
-      todayCalendarEvents,
-      new Date(),
-      isEventHidden,
-      at => formatTimeOfDay(at, use24HourTime),
-    ),
-    [todayCalendarEvents, isEventHidden, use24HourTime, minuteTick],
-  );
+  // The pane beside Today as a list (`TodayDayPane`): the rest of the day an hour a row, with
+  // the events the glance would list and the tasks still to surface later today. Read off the
+  // same events and the same Later Today tasks the list draws, so the two can't disagree.
+  const dayPaneData = useMemo(() => {
+    if (!twoPane || todayWideLayout !== 'list') return null;
+    const now = new Date();
+    const entries: DayEntry[] = [];
+    const allDay: string[] = [];
+    for (const event of todayCalendarEvents) {
+      if (isEventHidden(event)) continue;
+      if (event.allDay) { allDay.push(event.title); continue; }
+      if (new Date(event.end).getTime() <= now.getTime()) continue;
+      entries.push({ key: `e-${event.id}-${event.start}`, title: event.title, kind: 'event', at: new Date(event.start) });
+    }
+    for (const task of upcomingTodayTasks) {
+      entries.push({ key: `t-${task.id}`, title: displayTitleFor(task), kind: 'task', at: getVisibleAt(task) });
+    }
+    return { hours: dayTimeline(entries, now, todayCalendarDayEnd), allDay };
+  }, [twoPane, todayWideLayout, todayCalendarEvents, isEventHidden, upcomingTodayTasks, todayCalendarDayEnd, minuteTick]);
+  const formatPaneTime = useCallback((at: Date) => formatTimeOfDay(at, use24HourTime), [use24HourTime]);
 
 
   const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
@@ -5469,7 +5655,11 @@ export function TodayScreen() {
           />
         )}
 
-        {workloadLine && <Text style={styles.workloadLine}>{workloadLine}</Text>}
+        {boardActive && completedToday.length + visibleTasks.length > 0 ? (
+          <View style={styles.boardGlance}>
+            <TodayGlanceLine done={completedToday.length} left={visibleTasks.length} summary={workloadLine} />
+          </View>
+        ) : workloadLine && <Text style={styles.workloadLine}>{workloadLine}</Text>}
 
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
@@ -5535,7 +5725,10 @@ export function TodayScreen() {
           onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
         >
         <ViewSwitchVeil channel={viewSwitchChannel}>
-        <PaintSelectionProvider {...paintProps}>
+        {/* Painting a run of rows finds them by height alone (`rowIdAtY`), which
+            columns side by side would confuse, so on the board rows are picked
+            one tap at a time. */}
+        <PaintSelectionProvider {...paintProps} enabled={paintProps.enabled && !boardActive}>
         <FabDropZoneProvider
           ref={dropZonesRef}
           onIntentChange={fabIntentChannel.publish}
@@ -5682,7 +5875,43 @@ export function TodayScreen() {
           />
         )}
 
-        {viewMode === 'today' && (
+        {viewMode === 'today' && boardActive && (
+          <TodayBoard
+            data={draggableData}
+            keyExtractor={listItemKey}
+            // No FabDropZone here: the add button's drop targets are found by height
+            // alone (`zoneAtY`), which rows side by side would confuse, so dragging
+            // the button onto the board adds as tapping it does.
+            renderItem={renderListItem}
+            renderDragCard={renderBoardDragCard}
+            canDrag={canDragOnBoard}
+            weightOf={boardWeightOf}
+            canJoin={canJoinOnBoard}
+            canPin={canPinOnBoard}
+            header={todayListHeader}
+            footer={listFooter(filtered.length === 0 && data.length === 0)}
+            empty={emptyComponent}
+            scrollEnabled={!painting && !draggingStackChildGroupId && !draggingSubtask && !draggingPin && !draggingBand}
+            // As the column's: an empty day centers its empty state.
+            contentContainerStyle={
+              filtered.length === 0 && data.length === 0
+                ? styles.emptyContainer
+                : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
+            }
+            rowScrollerRef={todayRowScroller}
+            onColumnsChange={setBoardColumns}
+            // A stack dragged here keeps its rows open, unlike in the column: the
+            // board measures every row as the drag starts and aims by those
+            // places, so nothing may change height under it until the drop.
+            onDragBegin={() => {
+              setExpandedTaskId(null);
+              dropTargetChannel.publish(null);
+            }}
+            onTargetChange={handleBoardTarget}
+            onDrop={handleBoardDrop}
+          />
+        )}
+        {viewMode === 'today' && !boardActive && (
           <ReorderableList
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
@@ -5791,99 +6020,7 @@ export function TodayScreen() {
               return [0, rangeData.length - 1];
             }}
             placeholderStyle={styles.dropSlot}
-            onReorder={reordered => {
-              // Context rows ride along in the list but never in a drop — see
-              // withoutContextRows, and settleWithContext for the way back.
-              const dropped = withoutContextRows(reordered);
-
-              const joinedTaskId = joinedTaskIdRef.current;
-              joinedTaskIdRef.current = null;
-              const pinnedTaskId = pinnedTaskIdRef.current;
-              pinnedTaskIdRef.current = null;
-              // The two are mutually exclusive (the card can only be over one
-              // drop target at release), but read both defensively rather than
-              // assuming it.
-              const absorbedTaskId = joinedTaskId ?? pinnedTaskId;
-
-              // A task dragged onto a group, or onto the Pinned Tasks block
-              // (see onDragMove), has already been handled in onDragEnd — drop
-              // it from the normal placement pass so resolveDrop never assigns
-              // it a category/order of its own.
-              if (absorbedTaskId !== null) {
-                const withoutJoined = dropped.filter(
-                  item => !(item.type === 'task' && item.task.id === absorbedTaskId),
-                );
-                const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutJoined, {
-                  isUpcoming: id => upcomingTaskIds.has(id),
-                  showUpcoming,
-                  categoryOrder: allCategories,
-                });
-                groupUpdates.forEach(u => {
-                  updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder });
-                  applyGroupCategory(u.id, u.category);
-                });
-                setDraggableData(settleWithContext(settled));
-                reorderWithCategoryUpdates(taskOrders, categoryUpdates);
-                return;
-              }
-
-              const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
-                isUpcoming: id => upcomingTaskIds.has(id),
-                showUpcoming,
-                categoryOrder: allCategories,
-              });
-
-              const commitDrop = (scope?: 'occurrence' | 'series') => {
-                // Show the final grouped layout immediately to avoid a flash; the
-                // effect then reconciles to the store-derived `data` (structurally
-                // identical) once the store write lands.
-                setDraggableData(settleWithContext(settled));
-                groupUpdates.forEach(u => {
-                  updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder });
-                  applyGroupCategory(u.id, u.category);
-                });
-                reorderWithCategoryUpdates(taskOrders, categoryUpdates, scope ? { scope } : undefined);
-                offerGeneratedCategoryWriteBack(categoryUpdates);
-              };
-
-              // Dragging a recurring task into a new category is a content-field
-              // edit like any other (category is a CONTENT_FIELD) and needs the
-              // same "just this task or this and future occurrences" choice as
-              // editing it through the editor. Cancel has to hand the list a
-              // fresh copy of the pre-drag order: ReorderableList keeps showing
-              // the dropped order it committed locally until its `data` prop
-              // changes by reference, so leaving draggableData untouched left
-              // the task sitting in the new category with nothing saved.
-              const recategorizedRecurring = categoryUpdates.some(u => {
-                const task = taskById(allTasks, u.id);
-                return task && task.recurrenceType !== 'none';
-              });
-              // A follow-up task repeats nothing itself, but the ones its rule
-              // adds later are filed where the rule's draft says, so a drag
-              // gets the same question with the wording for that.
-              const recategorizedFollowUp = !recategorizedRecurring && categoryUpdates.some(u => {
-                const task = taskById(allTasks, u.id);
-                return task && hasFollowUpSource(task, allTasks);
-              });
-              if (recategorizedFollowUp) {
-                confirmFollowUpScope('this category change', commitDrop, { onCancel: () => setDraggableData([...draggableData]) });
-                return;
-              }
-              if (recategorizedRecurring) {
-                Alert.alert(
-                  'Update recurring task',
-                  'This task repeats. Apply this category change to this task, or to this and future tasks?',
-                  [
-                    { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => setDraggableData([...draggableData]) },
-                    { text: 'This task', onPress: () => commitDrop('occurrence') },
-                    { text: 'This and future tasks', onPress: () => commitDrop('series') },
-                  ],
-                );
-                return;
-              }
-
-              commitDrop();
-            }}
+            onReorder={commitTodayReorder}
             contentContainerStyle={
               // `data.length` as well as `filtered.length`: a day with no tasks
               // but something on the calendar still has rows to lay out, and
@@ -6496,16 +6633,20 @@ export function TodayScreen() {
   return (
     <TwoPane
       twoPane={twoPane}
+      // Later, Unscheduled and Inbox keep the list beside a pane; only Today is a board.
+      board={boardActive ? { open: editorVisible } : undefined}
       list={screenBody}
       detail={(
         <>
-          {!editorVisible && (
-            viewMode === 'today' && completedToday.length + visibleTasks.length > 0 ? (
-              <TodayGlance
+          {!editorVisible && !boardActive && (
+            viewMode === 'today' && completedToday.length + visibleTasks.length > 0 && dayPaneData ? (
+              <TodayDayPane
                 done={completedToday.length}
                 left={visibleTasks.length}
                 summary={workloadLine}
-                events={glanceEventList}
+                hours={dayPaneData.hours}
+                allDay={dayPaneData.allDay}
+                formatTime={formatPaneTime}
               />
             ) : (
               <EmptyState
@@ -6533,6 +6674,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   workloadLine: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs, fontSize: font.xs, color: colors.textSecondary },
+  boardGlance: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
@@ -6645,6 +6787,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   emptyContainer: { flexGrow: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
+  boardDragStack: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginHorizontal: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
+    borderRadius: radius.md, backgroundColor: colors.bgTertiary,
+  },
+  boardDragStackTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   hiddenSection: { paddingTop: spacing.sm },
   hiddenToggle: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

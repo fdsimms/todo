@@ -1,6 +1,8 @@
 import React from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useFocusedRouteStore } from '../store/useFocusedRouteStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useTodayPaneStore } from '../store/useTodayPaneStore';
 import { floatingLayerInsetFor } from '../utils/twoPane';
 
 /**
@@ -21,9 +23,11 @@ import { floatingLayerInsetFor } from '../utils/twoPane';
 export function FloatingLayer({ children }: { children: React.ReactNode }) {
   const route = useFocusedRouteStore(s => s.route);
   const { width } = useWindowDimensions();
+  const sidebarCollapsed = useSettingsStore(s => s.sidebarCollapsed);
+  const todayBoardPane = useTodayPaneStore(s => s.board);
   // A number in every case, never `undefined`: a style prop that goes from a
   // number to unset can leave a native view on its old value (see `AppFrame`).
-  const right = floatingLayerInsetFor(width, route);
+  const right = floatingLayerInsetFor(width, route, sidebarCollapsed, todayBoardPane);
   return (
     <View pointerEvents="box-none" style={[styles.layer, { right }]}>
       {children}

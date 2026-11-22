@@ -840,9 +840,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - `confirmBeforeDeleting`, `tipsEnabled` — how much the app interrupts on
  *   this device, alongside `shakeToUndoEnabled`. Someone who wants a confirm
  *   on the phone in their pocket may not on the iPad on their desk.
- * - `tabRoutes`, `menuArrangement` — how this device's screen is laid out. An
- *   iPad's sidebar and a phone's tab bar are different shapes of the same
- *   menu, so each keeps its own.
+ * - `tabRoutes`, `menuArrangement`, `todayWideLayout`, `sidebarCollapsed` — how
+ *   this device's screen is laid out. An iPad's sidebar and a phone's tab bar are
+ *   different shapes of the same menu, so each keeps its own, and a Mac on a desk
+ *   may want Today as a board where an iPad on a lap wants a list.
  * - `appLockEnabled`, `appLockGraceSeconds`, `journalLockEnabled`, `lockedProjectIds` — syncing these would let a
  *   device turn the lock off on another one. Security settings are per-device
  *   by design.

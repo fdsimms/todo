@@ -43,7 +43,8 @@ export type ShortcutAction =
   | 'viewUnscheduled'
   | 'viewInbox'
   | 'showShortcuts'
-  | 'openSettings';
+  | 'openSettings'
+  | 'toggleSidebar';
 
 export interface KeyShortcut {
   /** Sent to native and back, so it must be unique. */
@@ -102,6 +103,8 @@ export const MENU_SHORTCUTS: readonly KeyShortcut[] = [
   { id: 'menuViewLater', action: 'viewLater', input: '2', modifiers: ['command'], screenOnly: true },
   { id: 'menuViewUnscheduled', action: 'viewUnscheduled', input: '3', modifiers: ['command'], screenOnly: true },
   { id: 'menuViewInbox', action: 'viewInbox', input: '4', modifiers: ['command'], screenOnly: true },
+  // A Mac app's own chord for its sidebar. Not screen-only: folding the menu while a sheet is up harms nothing.
+  { id: 'menuToggleSidebar', action: 'toggleSidebar', input: 's', modifiers: ['control', 'command'], screenOnly: false },
 ];
 
 /** The shortcut an id names, menu-only ones included, or null for one this build doesn't know. */
@@ -159,6 +162,7 @@ const ACTION_LABELS: Record<ShortcutAction, string> = {
   viewInbox: 'Inbox',
   showShortcuts: 'Show this list',
   openSettings: 'Settings',
+  toggleSidebar: 'Collapse or expand the sidebar',
 };
 
 /**

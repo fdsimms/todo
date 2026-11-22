@@ -29,8 +29,8 @@ const TWO_PANE_LIST_SHARE = 0.4;
  * with the window; at the breakpoint it is still 400, which is what leaves the
  * page a phone's width there.
  */
-export function twoPaneListWidthFor(windowWidth: number): number {
-  const room = windowWidth - sidebarWidthFor(windowWidth);
+export function twoPaneListWidthFor(windowWidth: number, sidebarCollapsed: boolean): number {
+  const room = windowWidth - sidebarWidthFor(windowWidth, sidebarCollapsed);
   return Math.min(TWO_PANE_LIST_MAX_WIDTH, Math.max(TWO_PANE_LIST_WIDTH, Math.round(room * TWO_PANE_LIST_SHARE)));
 }
 
@@ -72,13 +72,70 @@ export function nextLayoutHold(
 /**
  * How far in from the column's right edge the floating bars' layer ends
  * (`FloatingLayer`): none, except on a two-pane screen, where the layer ends at
- * the list pane so a bar sits over the list and beside the add button instead of
+ * the list so a bar sits over the list and beside the add button instead of
  * stretching across the page too. The uncapped column is the window less the
  * sidebar, which is what the list's width comes off.
+ *
+ * Today as a board (`todayBoardPane`, null while Today isn't drawing one) has
+ * no list pane: the board is the whole column while nothing is open, and the
+ * column less the task pane while a task is, so the layer follows that instead.
  */
-export function floatingLayerInsetFor(windowWidth: number, route: string | null | undefined): number {
+export function floatingLayerInsetFor(
+  windowWidth: number,
+  route: string | null | undefined,
+  sidebarCollapsed: boolean,
+  todayBoardPane: TodayBoardPane | null,
+): number {
   if (!columnUncappedFor(windowWidth, route)) return 0;
-  return Math.max(0, windowWidth - sidebarWidthFor(windowWidth) - twoPaneListWidthFor(windowWidth));
+  if (route === 'Today' && todayBoardPane !== null) {
+    return todayBoardPane === 'open' ? boardPaneWidthFor(windowWidth, sidebarCollapsed) : 0;
+  }
+  return Math.max(0, windowWidth - sidebarWidthFor(windowWidth, sidebarCollapsed) - twoPaneListWidthFor(windowWidth, sidebarCollapsed));
+}
+
+/**
+ * Today's board (`todayWideLayout: 'board'`, docs/arch/wide-layout.md, "Today's
+ * board"): its sections dealt into columns across the window, with the task
+ * editor in a pane at the right only while a task is open.
+ */
+
+/** Whether the board's task pane is showing a task. */
+export type TodayBoardPane = 'open' | 'closed';
+
+/** The task pane beside the board at the two-pane breakpoint, and the narrowest it gets: a phone's width and a margin. */
+export const BOARD_PANE_WIDTH = 420;
+
+/** The widest the board's task pane gets. The editor is a phone-shaped form, so past this it only spreads its rows. */
+export const BOARD_PANE_MAX_WIDTH = 520;
+
+/**
+ * The narrowest a board column gets, so a two-line row's title and meta still
+ * fit. It includes the 16pt margin a task card keeps on each side, which is
+ * also what separates two columns.
+ */
+export const BOARD_COLUMN_MIN_WIDTH = 320;
+
+/** The most columns a board deals into, so a section is never a sliver on a 32-inch display. */
+export const BOARD_MAX_COLUMNS = 4;
+
+/** Space between two board columns beyond the cards' own margins: none, since those already make a 32pt gutter. */
+export const BOARD_COLUMN_GAP = 0;
+
+/** The task pane's width beside the board: a third of the room, between the two widths above. */
+export function boardPaneWidthFor(windowWidth: number, sidebarCollapsed: boolean): number {
+  const room = windowWidth - sidebarWidthFor(windowWidth, sidebarCollapsed);
+  return Math.min(BOARD_PANE_MAX_WIDTH, Math.max(BOARD_PANE_WIDTH, Math.round(room / 3)));
+}
+
+/**
+ * How many columns a board `boardWidth` wide deals its sections into: as many as
+ * fit at `BOARD_COLUMN_MIN_WIDTH` with the gaps between them, at least one and
+ * at most `BOARD_MAX_COLUMNS`. `boardWidth` is the board's own content width,
+ * after its side padding and any task pane.
+ */
+export function boardColumnsFor(boardWidth: number): number {
+  const fit = Math.floor((boardWidth + BOARD_COLUMN_GAP) / (BOARD_COLUMN_MIN_WIDTH + BOARD_COLUMN_GAP));
+  return Math.max(1, Math.min(BOARD_MAX_COLUMNS, fit));
 }
 
 /**

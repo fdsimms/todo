@@ -31,6 +31,8 @@ import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from './ActionMenu';
 import type { CardAnchor } from './CardSheet';
 import { haptics } from '../utils/haptics';
+import { PointerView } from './PointerView';
+import { deviceHasWideWindows } from '../utils/deviceKind';
 
 interface Props {
   /**
@@ -139,7 +141,7 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
     if (!onOpenSettingsEntry || terms.length === 0) return [];
     return searchElsewhere({
       destinations: [],
-      settingsEntries: searchableSettingsEntries(Platform.OS, useSettingsStore.getState(), useSyncStore.getState()),
+      settingsEntries: searchableSettingsEntries(Platform.OS, useSettingsStore.getState(), useSyncStore.getState(), deviceHasWideWindows(Platform.OS === 'ios' && Platform.isPad)),
       settingsGroupTitle: id => settingsGroup(id)?.title ?? 'Settings',
       people: [],
       recipes: [],
@@ -493,18 +495,35 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
           </ItemAppear>
         )}
         <ItemAppear animate={animate} index={menuRows.length + (askClaudeReady ? 1 : 0)}>
-          <TouchableOpacity
-            style={rowStyle(compact, false, colors)}
-            onPress={onOpenSettings}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Settings"
-          >
-            <View style={iconWrapStyle(compact, false, colors)}>
-              <Ionicons name="settings-outline" size={compact ? COMPACT_ICON : 20} color={colors.textSecondary} />
-            </View>
-            <Text style={[styles.itemLabel, { color: colors.text }]}>Settings</Text>
-          </TouchableOpacity>
+          <View style={styles.settingsLine}>
+            <TouchableOpacity
+              style={[rowStyle(compact, false, colors), styles.settingsRow]}
+              onPress={onOpenSettings}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+            >
+              <View style={iconWrapStyle(compact, false, colors)}>
+                <Ionicons name="settings-outline" size={compact ? COMPACT_ICON : 20} color={colors.textSecondary} />
+              </View>
+              <Text style={[styles.itemLabel, { color: colors.text }]}>Settings</Text>
+            </TouchableOpacity>
+            {/* The sidebar folds to its icon rail (`SidebarRail`), which unfolds it
+                again from the same corner. The drawer has nothing to fold. */}
+            {variant === 'sidebar' && (
+              <PointerView toolTip="Collapse sidebar (⌃⌘S)">
+                <TouchableOpacity
+                  style={styles.collapseButton}
+                  onPress={() => { haptics.tap(); useSettingsStore.getState().setSidebarCollapsed(true); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Collapse sidebar"
+                >
+                  <Ionicons name="chevron-back" size={COMPACT_ICON} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </PointerView>
+            )}
+          </View>
         </ItemAppear>
       </View>
       {/* Inside the drawer's own Modal when this is the drawer, so the menu
@@ -827,6 +846,9 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   itemBody: { flex: 1, minWidth: 0 },
+  settingsLine: { flexDirection: 'row', alignItems: 'center' },
+  settingsRow: { flex: 1 },
+  collapseButton: { width: 36, height: 36, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
   itemLabel: {
     fontSize: font.md,
     fontWeight: fontWeight.medium,

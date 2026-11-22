@@ -45,8 +45,8 @@ export const DASHBOARD_ROUTES: ReadonlySet<string> = new Set(['Stats', 'Mood', '
 export const UNCAPPED_WIDTH = 100000;
 
 /** How many columns a dashboard's cards go in, in a window this wide. */
-export function dashboardColumnsFor(windowWidth: number): 1 | 2 {
-  const room = Math.min(windowWidth - sidebarWidthFor(windowWidth), DASHBOARD_CONTENT_WIDTH);
+export function dashboardColumnsFor(windowWidth: number, sidebarCollapsed: boolean): 1 | 2 {
+  const room = Math.min(windowWidth - sidebarWidthFor(windowWidth, sidebarCollapsed), DASHBOARD_CONTENT_WIDTH);
   return room >= DASHBOARD_TWO_COLUMN_MIN_WIDTH ? 2 : 1;
 }
 
@@ -54,10 +54,10 @@ export function dashboardColumnsFor(windowWidth: number): 1 | 2 {
  * The widest the app's column gets for `route` in a window `windowWidth` wide.
  * `route` is the focused route, which is null for a sheet's own frame.
  */
-export function columnCapFor(windowWidth: number, route: string | null | undefined): number {
+export function columnCapFor(windowWidth: number, route: string | null | undefined, sidebarCollapsed: boolean): number {
   if (columnUncappedFor(windowWidth, route)) return UNCAPPED_WIDTH;
-  if (route == null || sidebarWidthFor(windowWidth) === 0) return MAX_CONTENT_WIDTH;
+  if (route == null || sidebarWidthFor(windowWidth, sidebarCollapsed) === 0) return MAX_CONTENT_WIDTH;
   if (WIDE_LIST_ROUTES.has(route)) return LIST_CONTENT_WIDTH;
-  if (DASHBOARD_ROUTES.has(route) && dashboardColumnsFor(windowWidth) === 2) return DASHBOARD_CONTENT_WIDTH;
+  if (DASHBOARD_ROUTES.has(route) && dashboardColumnsFor(windowWidth, sidebarCollapsed) === 2) return DASHBOARD_CONTENT_WIDTH;
   return MAX_CONTENT_WIDTH;
 }

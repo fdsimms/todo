@@ -170,7 +170,8 @@ export function CalendarScreen() {
   const screenSettings = useScreenSettings('Calendar', 'Calendar settings');
   const textScaleFactor = useTextScale();
   const { width: windowWidth } = useWindowDimensions();
-  const cellSize = monthCellSizeFor(windowWidth, spacing.md);
+  const sidebarCollapsed = useSettingsStore(s => s.sidebarCollapsed);
+  const cellSize = monthCellSizeFor(windowWidth, spacing.md, sidebarCollapsed);
   const styles = useMemo(
     () => makeStyles(colors, textScaleFactor, cellSize),
     [colors, textScaleFactor, cellSize],

@@ -96,6 +96,11 @@ export function runShortcut(shortcut: KeyShortcut): void {
     case 'viewUnscheduled': showTodayViewModeFromKeyboard('unscheduled'); return;
     case 'viewInbox': showTodayViewModeFromKeyboard('inbox'); return;
     case 'openSettings': openSettingsFromKeyboard(); return;
+    case 'toggleSidebar': {
+      const settings = useSettingsStore.getState();
+      settings.setSidebarCollapsed(!settings.sidebarCollapsed);
+      return;
+    }
     case 'showShortcuts': {
       // With a menu bar the menu's own chords (⌘, and ⌘1 to ⌘4) work too.
       const listed = isMenuBarAvailable() ? shortcutsWithMenuBar() : KEY_SHORTCUTS;

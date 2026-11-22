@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { deviceHasWideWindows } from '../utils/deviceKind';
 import {
   View, Text, TouchableOpacity, StyleSheet, Platform, ScrollView,
 } from 'react-native';
@@ -77,7 +78,7 @@ export function SettingsScreen() {
   // Search must not turn up a row that isn't rendered — see
   // searchableSettingsEntries, which the app-wide search reads too.
   const entries = useMemo(
-    () => searchableSettingsEntries(Platform.OS, settings, sync),
+    () => searchableSettingsEntries(Platform.OS, settings, sync, deviceHasWideWindows(Platform.OS === 'ios' && Platform.isPad)),
     [settings, sync]
   );
   const results = useMemo(() => searchSettings(entries, query.trim()), [entries, query]);

@@ -2,7 +2,8 @@ import React from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { useTwoPane } from '../hooks/useTwoPane';
-import { twoPaneListWidthFor } from '../utils/twoPane';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { boardPaneWidthFor, twoPaneListWidthFor } from '../utils/twoPane';
 import { MAX_CONTENT_WIDTH } from '../utils/frameWidth';
 
 interface Props {
@@ -15,6 +16,13 @@ interface Props {
    * form is open in it, so a resize can't swap the form's host out from under it.
    */
   twoPane?: boolean;
+  /**
+   * The list is a board (Today's, `todayWideLayout: 'board'`): it takes the
+   * width, and the detail is a fixed pane at the right (`boardPaneWidthFor`)
+   * drawn only while `open`. Kept mounted while closed, so the form inside it
+   * isn't rebuilt on each open.
+   */
+  board?: { open: boolean };
 }
 
 /**
@@ -23,25 +31,37 @@ interface Props {
  * in both, so crossing the breakpoint keeps its scroll position, its search
  * and a selection in progress instead of remounting it.
  */
-export function TwoPane({ list, detail, twoPane: held }: Props) {
+export function TwoPane({ list, detail, twoPane: held, board }: Props) {
   const colors = useColors();
   const roomForTwoPane = useTwoPane();
   const twoPane = held ?? roomForTwoPane;
   const { width: windowWidth } = useWindowDimensions();
+  const sidebarCollapsed = useSettingsStore(s => s.sidebarCollapsed);
   // The page beside the list is a phone-shaped form or screen. In a 1,200pt pane its
   // rows put a label at one end and its value a thousand points away, so it takes
   // the app's column width, centered, like every other screen on a wide window.
+  // One shape in every case, the list first, so switching between a list, two
+  // panes and a board restyles the list's box rather than remounting it.
+  const boardOn = twoPane && !!board;
   return (
     <View style={twoPane ? styles.row : styles.single}>
       <View
-        style={twoPane
-          ? [styles.list, { width: twoPaneListWidthFor(windowWidth), borderRightColor: colors.separator }]
-          : styles.single}
+        style={!twoPane || boardOn
+          ? styles.single
+          : [styles.list, { width: twoPaneListWidthFor(windowWidth, sidebarCollapsed), borderRightColor: colors.separator }]}
       >
         {list}
       </View>
       {twoPane && (
-        <View style={[styles.detail, { backgroundColor: colors.bg }]}>
+        <View
+          style={boardOn
+            ? [
+                styles.boardPane,
+                { width: boardPaneWidthFor(windowWidth, sidebarCollapsed), borderLeftColor: colors.separator, backgroundColor: colors.bg },
+                !board!.open && styles.hidden,
+              ]
+            : [styles.detail, { backgroundColor: colors.bg }]}
+        >
           <View style={styles.detailColumn}>{detail}</View>
         </View>
       )}
@@ -55,4 +75,6 @@ const styles = StyleSheet.create({
   list: { borderRightWidth: StyleSheet.hairlineWidth },
   detail: { flex: 1, minWidth: 0, alignItems: 'center' },
   detailColumn: { flex: 1, width: '100%', maxWidth: MAX_CONTENT_WIDTH },
+  boardPane: { borderLeftWidth: StyleSheet.hairlineWidth },
+  hidden: { display: 'none' },
 });

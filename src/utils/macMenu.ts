@@ -97,6 +97,7 @@ export function buildMenuItems(rows: readonly NavMenuRow[], hiddenActions: reado
     if (hiddenActions.includes(view.action)) continue;
     items.push(shortcutItem(view.id, view.title, 'view'));
   }
+  items.push(shortcutItem('menuToggleSidebar', 'Toggle Sidebar', 'view'));
   for (const row of rows) {
     if (row.kind === 'screen') {
       items.push(goItem(row.destination.route, row.destination.label));

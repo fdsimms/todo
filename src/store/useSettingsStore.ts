@@ -240,6 +240,16 @@ export type WeekStart = 0 | 1;
 export type FabHand = 'right' | 'left';
 
 /**
+ * How Today is laid out on a window wide enough for two panes (`twoPaneFor`).
+ * `'board'` deals its sections into columns across the window and opens a task
+ * in a pane beside them; `'list'` keeps one column of one-line rows beside a pane
+ * that shows the rest of the day. A phone, and any window below two panes, has
+ * neither: it is the list it always was. See docs/arch/wide-layout.md, "Today's
+ * board".
+ */
+export type TodayWideLayout = 'board' | 'list';
+
+/**
  * Which app a directions button opens (an event's or a task's location). iOS
  * has no default-maps setting that a link can follow, so a link always opens
  * Apple Maps unless the app asks for another. Each value builds a universal
@@ -744,6 +754,18 @@ interface SettingsStore {
    * this phone is being held, not a preference another device should inherit.
    */
   mirroringMode: boolean;
+  /**
+   * Today's layout on a wide window (`TodayWideLayout`). Device-local, like
+   * `tabRoutes`: it describes how this window is laid out, and a Mac on a desk and
+   * an iPad on a lap are different shapes.
+   */
+  todayWideLayout: TodayWideLayout;
+  /**
+   * Whether the sidebar is folded to its icon rail (`SIDEBAR_RAIL_WIDTH`) instead
+   * of its full width. Only means anything while a sidebar shows. Device-local,
+   * for `todayWideLayout`'s reason.
+   */
+  sidebarCollapsed: boolean;
   /**
    * Whether a tip may surface itself as a banner on a hub screen (`TipHost`).
    * Off means the app never volunteers one; the Tips screen still lists every
@@ -2448,6 +2470,8 @@ interface SettingsStore {
   setSimpleMode: (on: boolean) => void;
   setHideHelpText: (on: boolean) => void;
   setMirroringMode: (on: boolean) => void;
+  setTodayWideLayout: (layout: TodayWideLayout) => void;
+  setSidebarCollapsed: (on: boolean) => void;
   setTipsEnabled: (on: boolean) => void;
   setReopenLastScreen: (on: boolean) => void;
   setFirstRunDone: (done: boolean) => void;
@@ -2858,6 +2882,8 @@ const DEFAULT_SETTINGS = {
   simpleMode: false,
   hideHelpText: false,
   mirroringMode: false,
+  todayWideLayout: 'board' as TodayWideLayout,
+  sidebarCollapsed: false,
   // Only the on/off switch is a default. seenTips and lastTipShown are
   // progress, and are cleared by resetTips rather than by a settings reset —
   // see their notes on the interface above.
@@ -3319,6 +3345,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   simpleMode: false,
   hideHelpText: false,
   mirroringMode: false,
+  todayWideLayout: 'board',
+  sidebarCollapsed: false,
   tipsEnabled: true,
   reopenLastScreen: true,
   seenTips: [],
@@ -3755,6 +3783,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // set once from outside was read back as the stored `false` by the first of those.
     const storedMirroring = dbGetSetting('mirroringMode');
     const mirroringMode = storedMirroring === 'true' || shouldDefaultMirroringOn(storedMirroring, deviceIsMac());
+    const todayWideLayout: TodayWideLayout = dbGetSetting('todayWideLayout') === 'list' ? 'list' : 'board';
+    const sidebarCollapsed = dbGetSetting('sidebarCollapsed') === 'true';
     // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
     // hapticsEnabled/shakeToUndoEnabled above.
     const timerLiveActivity = dbGetSetting('timerLiveActivity') !== 'false';
@@ -4662,6 +4692,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       shakeToUndoEnabled,
       shortNightMinutes,
       shortNightNoteEnabled,
+      sidebarCollapsed,
       simpleMode,
       simpleTaskForm,
       sleepGoalMinutes,
@@ -4685,6 +4716,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       timerLiveActivity,
       tipsEnabled,
       titleRules,
+      todayWideLayout,
       transitAlerts,
       transitLines,
       travelArriveEarlyMinutes,
@@ -6280,6 +6312,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMirroringMode(on: boolean) {
     dbSetSetting('mirroringMode', on ? 'true' : 'false');
     set({ mirroringMode: on });
+  },
+
+  setTodayWideLayout(layout: TodayWideLayout) {
+    dbSetSetting('todayWideLayout', layout);
+    set({ todayWideLayout: layout });
+  },
+
+  setSidebarCollapsed(on: boolean) {
+    dbSetSetting('sidebarCollapsed', on ? 'true' : 'false');
+    set({ sidebarCollapsed: on });
   },
 
   setTipsEnabled(on: boolean) {
