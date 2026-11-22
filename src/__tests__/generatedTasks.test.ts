@@ -16,6 +16,7 @@ import {
   generatorSwitchedOn,
   stoppableGenerator,
   hasAnyGeneratedTask,
+  latestOfferedDayKey,
   isNoticeTask,
   canPinTask,
   isUseUpKind,
@@ -623,5 +624,29 @@ describe('matchesAutomationQuery', () => {
 
   it('looks across all the text it is given', () => {
     expect(matchesAutomationQuery('shelf life', 'Pantry checks', 'once its usual shelf life has passed')).toBe(true);
+  });
+});
+
+describe('latestOfferedDayKey', () => {
+  const row = (kind: GeneratedKind, sourceId: string | null) =>
+    ({ generatedKind: kind, generatedSourceId: sourceId }) as Task;
+  const bySource = (t: Task) => t.generatedSourceId;
+
+  it('is the local mark when no synced row is newer', () => {
+    expect(latestOfferedDayKey('2026-08-20', [row('pantryReview', '2026-08-10')], 'pantryReview', bySource))
+      .toBe('2026-08-20');
+  });
+
+  it('is a synced row\'s day when it is newer than the local mark', () => {
+    expect(latestOfferedDayKey('2026-08-01', [row('pantryReview', '2026-08-22')], 'pantryReview', bySource))
+      .toBe('2026-08-22');
+    expect(latestOfferedDayKey(null, [row('pantryReview', '2026-08-22')], 'pantryReview', bySource))
+      .toBe('2026-08-22');
+  });
+
+  it('ignores other kinds, rows that name no day, and values that are not day keys', () => {
+    const tasks = [row('birthday', '2026-09-01'), row('pantryReview', null), row('pantryReview', 'not-a-day')];
+    expect(latestOfferedDayKey('2026-08-01', tasks, 'pantryReview', bySource)).toBe('2026-08-01');
+    expect(latestOfferedDayKey(null, tasks, 'pantryReview', bySource)).toBeNull();
   });
 });

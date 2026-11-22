@@ -8295,6 +8295,27 @@ describe('checkMoodTasks', () => {
       expect(tasksOfKind('moodNudge')).toHaveLength(0);
     });
 
+    it('holds off within the cooldown when only a synced row, not this device\'s mark, says it fired', () => {
+      // Another device offered it three days ago and the person finished it. Its
+      // mark did not travel, but the completed row did.
+      useSettingsStore.getState.mockReturnValue(nudgeOn());
+      useTaskStore.getState().checkMoodTasks();
+      setLogs(lowRun(10));
+      useSettingsStore.getState.mockReturnValue(nudgeOn({ moodNudgeLastDayKey: '2026-08-15' }));
+      jest.setSystemTime(new Date(2026, 7, 22, 9, 0, 0));
+      useTaskStore.getState().checkMoodTasks();
+      useTaskStore.setState({
+        tasks: useTaskStore.getState().tasks.map(t => (t.generatedKind === 'moodNudge' ? { ...t, completed: true } : t)),
+      });
+      expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'moodNudge')).toHaveLength(1);
+
+      jest.setSystemTime(NOW);
+      useSettingsStore.getState.mockReturnValue(nudgeOn());
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'moodNudge')).toHaveLength(1);
+    });
+
     it('offers again once the cooldown has passed', () => {
       useSettingsStore.getState.mockReturnValue(nudgeOn({ moodNudgeLastDayKey: '2026-08-15' }));
       setLogs(lowRun(10));
@@ -9218,14 +9239,14 @@ describe('checkMealPlanNudge', () => {
         makeTask({
           id: 'done-1',
           generatedKind: 'mealPlanNudge',
-          generatedSourceId: '2025-08-16',
+          generatedSourceId: '2025-08-09',
           completed: true,
-          completedAt: '2025-08-16T00:00:00.000Z',
+          completedAt: '2025-08-09T00:00:00.000Z',
         }),
         makeTask({
           id: 'archived-1',
           generatedKind: 'mealPlanNudge',
-          generatedSourceId: '2025-08-15',
+          generatedSourceId: '2025-08-08',
           archived: true,
         }),
       ],
@@ -9238,6 +9259,28 @@ describe('checkMealPlanNudge', () => {
     expect(tasks.find(t => t.id === 'archived-1')).toBeDefined();
     expect(tasks.filter(t => t.generatedKind === 'mealPlanNudge' && !t.completed && !t.archived))
       .toHaveLength(7);
+  });
+
+  it("does not lay a second set down when this week's was already finished, as after a sync", () => {
+    // The week mark is this device's own, so only the finished row says so.
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' }));
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'done-this-week',
+          generatedKind: 'mealPlanNudge',
+          generatedSourceId: '2025-08-12',
+          completed: true,
+          completedAt: '2025-08-12T00:00:00.000Z',
+        }),
+      ],
+    });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealPlanNudge' && !t.completed))
+      .toHaveLength(0);
   });
 
   it('fires again once last week\'s nudge task has been completed', () => {

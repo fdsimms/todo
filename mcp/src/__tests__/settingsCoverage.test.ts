@@ -42,7 +42,9 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // so it doesn't ask again. State, not a choice the person makes in Settings.
   'machinery the app maintains': [
     'leftoverPromptOptOuts', 'limitWarningDeclined', 'goalTargetDeclined', 'medication_summary_last',
-    'medication_milestone_dismissed', 'vacationEndedAt',
+    'medication_milestone_dismissed', 'vacationEndedAt', 'waterShortfallDeclinedDayKey',
+    'snackNudgeDeclinedDayKey', 'produceNudgeDeclinedDayKey', 'produceFloorDeclinedWeekKey',
+    'weighInDeclinedDayKey', 'bloodPressureDeclinedDayKey',
   ],
 };
 

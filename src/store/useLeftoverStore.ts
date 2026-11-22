@@ -18,7 +18,7 @@ import {
   leftoverPurgeCutoff,
   sortLeftovers,
 } from '../utils/leftovers';
-import { plannedMealRowFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
+import { finishedLeftoverUseUpFor, plannedMealRowFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { mealStripCoversMeal } from '../utils/mealStrip';
@@ -245,14 +245,18 @@ interface LeftoverStore extends UndoHistoryActions {
  *
  * No `blocksOnFinished`, for the reason groceries don't have it either: a
  * container logged today is not last week's container, even where the two share
- * a title.
+ * a title. `finishedLeftoverUseUpFor` is the narrower check that keeps a ticked
+ * task from coming back for the same keep-until day.
  */
 function reconcileLeftoverTask(leftover: Leftover): void {
   const { leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap } = useSettingsStore.getState();
   reconcileGeneratedTask({
     kind: 'leftoverUseUp',
     sourceId: leftover.id,
-    wanted: wantsUseUpTask(leftover, leftoverUseUpTasks, eatenAsPlanned(leftover)),
+    // Not while a finished task already answers this keep-until day: it may have
+    // been ticked on another device before this one saw the leftover closed.
+    wanted: wantsUseUpTask(leftover, leftoverUseUpTasks, eatenAsPlanned(leftover))
+      && !finishedLeftoverUseUpFor(useTaskStore.getState().tasks, leftover),
     drift: existing => useUpTaskDrift(existing, leftover),
     draft: () => useUpTaskDraft(leftover, leftoverUseUpTaskCategory),
     useUpCap: useUpTaskCap,

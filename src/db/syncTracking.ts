@@ -608,7 +608,19 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // birthday tasks on one device left the other filing them under the
   // default, and an agent's set_automation category never reached the phone
   // at all. The per-day marks and handled-event records beside them
-  // (…LastDayKey, …Handled, …DeclinedDayKey) are state and stay off.
+  // (…LastDayKey, …Handled) are state and stay off; the six …DeclinedDayKey and
+  // …DeclinedWeekKey marks below are the exception.
+  // The declined marks of the day- and week-keyed nudges, which are a day or
+  // week key and nothing else. A task swiped away here must stay away on the
+  // other device too, or the delete has to be repeated on every one. (Unlike
+  // the …LastDayKey cadence marks, which only say a day was considered and
+  // which a synced finished row now covers.)
+  'waterShortfallDeclinedDayKey',
+  'snackNudgeDeclinedDayKey',
+  'produceNudgeDeclinedDayKey',
+  'produceFloorDeclinedWeekKey',
+  'weighInDeclinedDayKey',
+  'bloodPressureDeclinedDayKey',
   'birthdayTaskCategory',
   'birthdayLeadDays',
   'birthdayGiftTaskCategory',

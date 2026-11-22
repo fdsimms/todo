@@ -317,6 +317,25 @@ export function mealPlanNudgeSuppressed(
 }
 
 /**
+ * Whether the target week already has a nudge a person finished or filed away.
+ * `partitionMealPlanNudgeTasks` sees live rows only, and the week's mark is
+ * local, so another device that syncs after every nudge was ticked would
+ * otherwise lay a second set down.
+ */
+export function mealPlanNudgeFinishedFor<
+  T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
+>(
+  tasks: readonly T[],
+  due: Pick<MealPlanNudgeDue, 'targetWeekStartKey' | 'targetWeekEndKey'>
+): boolean {
+  return tasks.some(task => {
+    if (!(task.completed || task.archived)) return false;
+    const dayKey = mealPlanNudgeDayKey(task);
+    return !!dayKey && isKeyInRange(dayKey, due.targetWeekStartKey, due.targetWeekEndKey);
+  });
+}
+
+/**
  * True when a previous firing's nudge task is still live — incomplete and
  * not archived.
  *

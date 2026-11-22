@@ -5,6 +5,7 @@ import {
   dueMealPlanNudge,
   mealPlanNudgeSuppressed,
   partitionMealPlanNudgeTasks,
+  mealPlanNudgeFinishedFor,
   countPlannedSlots,
   mealPlanNudgeDayKey,
   mealPlanNudgeLinkUrl,
@@ -372,5 +373,22 @@ describe('dueMealPlanNudge under a day start after midnight', () => {
     const due = dueMealPlanNudge(new Date(2025, 7, 4, 2, 30, 0), 0, 0, '02:00', null);
     expect(due).not.toBeNull();
     expect(due!.weekKey).toBe('2025-08-03');
+  });
+});
+
+describe('mealPlanNudgeFinishedFor', () => {
+  const due = { targetWeekStartKey: '2025-08-10', targetWeekEndKey: '2025-08-16' };
+  const nudge = (generatedSourceId: string, overrides: Partial<Task> = {}) =>
+    ({ generatedKind: 'mealPlanNudge', generatedSourceId, completed: false, archived: false, ...overrides }) as Task;
+
+  it('is true for a finished or archived nudge in the target week', () => {
+    expect(mealPlanNudgeFinishedFor([nudge('2025-08-11', { completed: true })], due)).toBe(true);
+    expect(mealPlanNudgeFinishedFor([nudge('2025-08-16', { archived: true })], due)).toBe(true);
+  });
+
+  it('is false for live rows, another week\'s finished rows, and other kinds', () => {
+    expect(mealPlanNudgeFinishedFor([nudge('2025-08-11')], due)).toBe(false);
+    expect(mealPlanNudgeFinishedFor([nudge('2025-08-04', { completed: true })], due)).toBe(false);
+    expect(mealPlanNudgeFinishedFor([nudge('2025-08-11', { completed: true, generatedKind: 'birthday' })], due)).toBe(false);
   });
 });

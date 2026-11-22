@@ -1,5 +1,5 @@
 import type { Leftover, MealPlanEntry, MealSlot, Task, TaskDraft } from '../types';
-import { generatedBy, wantsGeneratedTask } from './generatedTasks';
+import { generatedBy, generatedSourceOf, wantsGeneratedTask } from './generatedTasks';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { needsAttention } from './leftovers';
 import { resolveOffsetDate } from './templateUtils';
@@ -190,6 +190,24 @@ function onKeepUntil(deadline: string | null, keepUntil: string): boolean {
   if (!deadline || !deadline.includes('T')) return false;
   const d = new Date(deadline);
   return !Number.isNaN(d.getTime()) && dayKeyOf(d) === keepUntil;
+}
+
+/**
+ * Whether this leftover's use-up task for its current keep-until day was already
+ * finished (completed or archived). A leftover not yet closed when another
+ * device syncs would otherwise get a second task beside the ticked one. A new
+ * keep-until day is a new answer and gets its own, the rule
+ * `finishedUseUpFor` (groceryExpiry.ts) applies to a grocery item.
+ */
+export function finishedLeftoverUseUpFor(
+  tasks: readonly Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived' | 'deadline'>[],
+  leftover: Pick<Leftover, 'id' | 'keepUntil'>
+): boolean {
+  return tasks.some(task =>
+    (task.completed || task.archived)
+    && generatedSourceOf(task, 'leftoverUseUp') === leftover.id
+    && onKeepUntil(task.deadline, leftover.keepUntil)
+  );
 }
 
 export function useUpTaskDrift(
