@@ -97,6 +97,18 @@ describe('dryRun', () => {
     expect(replica.taskById(task.id)!.title).toBe('Real task');
   });
 
+  // The bug: a preview emptied the task cache, so the next read reloaded every
+  // row (seconds on a long history), and the confirm after it did the same.
+  it('leaves the task cache as it was, so the next read does not reload every row', () => {
+    replica.createTask({ title: 'Real task' });
+    replica.refresh();
+    const before = replica.tasks();
+    replica.dryRun(() => replica.createTask({ title: 'Only a preview' }));
+    replica.refresh();
+    expect(replica.tasks()).toBe(before);
+    expect(replica.tasks().map(t => t.title)).not.toContain('Only a preview');
+  });
+
   it('lets a refused write throw as it would for real', () => {
     expect(() => replica.dryRun(() => replica.updateTask('nope', { title: 'x' }))).toThrow(/No task/);
   });
