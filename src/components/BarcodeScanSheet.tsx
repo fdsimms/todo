@@ -467,14 +467,23 @@ function StatusChip({
  * whole width.
  */
 function FieldInput({
-  styles, label, style, ...input
+  styles, label, accessory, style, ...input
 }: {
   styles: ReturnType<typeof makeStyles>;
   label: string;
+  /** A control on the label's line, at the trailing edge (the Item/Flavor swap). */
+  accessory?: React.ReactNode;
 } & React.ComponentProps<typeof TextField>) {
   return (
     <View>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      {accessory ? (
+        <View style={styles.fieldLabelRow}>
+          <Text style={styles.fieldLabelInRow}>{label}</Text>
+          {accessory}
+        </View>
+      ) : (
+        <Text style={styles.fieldLabel}>{label}</Text>
+      )}
       <TextField
         style={[styles.fieldInput, style]}
         // Shelf words, not prose: see the name field below.
@@ -1483,21 +1492,23 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           </View>
                         )}
                       </View>
-                      {/* Flavor sits right under Item, with the swap between them, so the
-                          button can't read as swapping Brand. */}
-                      <View style={styles.swapRow}>
-                        <InlineAction
-                          icon="swap-vertical"
-                          variant="neutral"
-                          disabled={!canSwap}
-                          onPress={swapItemAndFlavor}
-                          haptic
-                          accessibilityLabel="Swap Item and Flavor"
-                        />
-                      </View>
+                      {/* Flavor sits right under Item, with the swap on its label's
+                          line, so the button can't read as swapping Brand and
+                          doesn't take a row of its own. */}
                       <FieldInput
                         styles={styles}
                         label="FLAVOR"
+                        accessory={
+                          <InlineAction
+                            icon="swap-vertical"
+                            variant="neutral"
+                            disabled={!canSwap}
+                            onPress={swapItemAndFlavor}
+                            haptic
+                            accessibilityLabel="Swap Item and Flavor"
+                            style={styles.confirmPill}
+                          />
+                        }
                         value={shownVariant}
                         placeholder="e.g. Chili lime"
                         placeholderTextColor={colors.textTertiary}
@@ -1774,7 +1785,20 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       marginBottom: spacing.sm,
     },
-    swapRow: { alignItems: 'center' },
+    // A label with a control at its trailing edge; the control sets the line's
+    // height, so the gap to the input moves here from the label.
+    fieldLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.xs,
+    },
+    fieldLabelInRow: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+    },
     fieldInput: {
       color: colors.text,
       fontSize: font.md,
