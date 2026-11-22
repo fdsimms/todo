@@ -120,6 +120,31 @@ describe('batchUpdateTasks', () => {
       }
     });
 
+    it('does it at most once for a batch of defers or completions too', () => {
+      const deferred = Array.from({ length: 6 }, (_, i) => replica.createTask({ title: `Later ${i}` }));
+      const habits = Array.from({ length: 6 }, (_, i) =>
+        replica.createTask({ title: `Habit ${i}`, recurrenceType: 'daily', dueDate: day(0) }));
+      replica.tasks();
+      const loads = jest.spyOn(db(), 'dbGetAllTasks');
+      try {
+        const done = batchUpdateTasks(replica, {
+          apply: true,
+          changes: [
+            ...deferred.map(r => ({ id: r.id, action: 'defer' as const, date: keyOf(day(4)) })),
+            ...habits.map(r => ({ id: r.id, action: 'complete' as const })),
+          ],
+        });
+        expect(done.applied).toBe(true);
+        expect(loads.mock.calls.length).toBeLessThanOrEqual(1);
+      } finally {
+        loads.mockRestore();
+      }
+      // Each completion inserted the next day's row, and the cache placed it
+      // where a reload would.
+      expect(replica.tasks()).toEqual(db().dbGetAllTasks());
+      expect(replica.tasks().filter(t => t.title.startsWith('Habit') && !t.completed)).toHaveLength(6);
+    });
+
     it('leaves the cached list exactly as a fresh read would, in the same order', () => {
       const a = replica.createTask({ title: 'A' });
       const b = replica.createTask({ title: 'B' });

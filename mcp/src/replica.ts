@@ -3660,9 +3660,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * `refresh()` empties the cache, and the next reader then rebuilds it from
    * every row. In a batch edit that is one full reload per row (about 2.8s each
    * at 5,500 tasks, so 54 rows ran past the client's 60s limit); this makes it
-   * one per request. Left empty instead when a named row is gone or its place in
-   * the list moved (`sortOrder`, `createdAt`), since a patched copy would then
-   * be in a different order than a reload.
+   * one per request. A named row not in `before` was inserted, and goes where
+   * `dbGetAllTasks`' `ORDER BY sort_order, created_at` puts it. Left empty
+   * instead when a named row is gone, an existing one's place in the list moved
+   * (`sortOrder`, `createdAt`), or an inserted one ties another row on both,
+   * since a patched copy could then be in a different order than a reload.
    */
   const keepTasksAfterWrite = (before: readonly Task[], ids: readonly string[]): void => {
     const wanted = [...new Set(ids)];
@@ -3673,10 +3675,27 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const next = before.map(t => {
       const row = byId.get(t.id);
       if (!row) return t;
+      byId.delete(t.id);
       if (row.sortOrder !== t.sortOrder || row.createdAt !== t.createdAt) moved = true;
       return row;
     });
-    if (!moved) taskCache = next;
+    if (moved) return;
+    const sortsBefore = (a: Task, b: Task) =>
+      a.sortOrder < b.sortOrder || (a.sortOrder === b.sortOrder && a.createdAt < b.createdAt);
+    for (const row of byId.values()) {
+      if (typeof row.sortOrder !== 'number' || typeof row.createdAt !== 'string') return;
+      let lo = 0;
+      let hi = next.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (sortsBefore(next[mid], row)) lo = mid + 1;
+        else hi = mid;
+      }
+      const at = next[lo];
+      if (at && at.sortOrder === row.sortOrder && at.createdAt === row.createdAt) return;
+      next.splice(lo, 0, row);
+    }
+    taskCache = next;
   };
   // The reward store reads a wish list goal's item through this, as the app's task store does.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -4122,12 +4141,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const id = task.id;
     const missed = mode === 'missed';
     const settings = useSettingsStore.getState();
+    const before = tasks();
     const built = completion.buildCompletion(task, missed ? { missed: true } : mode === 'neutral' ? { ...options, neutral: true } : mode === 'other' ? { byOther: true } : options, {
       dayResetTime: settings.dayResetTime,
       vacationMode: settings.vacationMode,
       now: new Date(),
-      allTasks: tasks(),
-      subtasks: tasks().filter(t => t.parentId === id),
+      allTasks: before,
+      subtasks: before.filter(t => t.parentId === id),
     });
     // Unreachable: completionRefusal above is the same guard buildCompletion
     // runs. Narrowing rather than asserting, so a rule added to one and not
@@ -4135,15 +4155,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (!built) throw new Error('That task cannot be completed.');
 
     db.dbUpdateTask(built.completed);
-    for (const row of [
+    const inserted = [
       ...(built.nextTask ? [built.nextTask] : []),
       ...built.nextSubtasks,
       ...(built.followUpTask ? [built.followUpTask] : []),
       ...built.followUpSubtasks,
       ...built.rolledOver,
-    ]) {
-      db.dbInsertTask(row);
-    }
+    ];
+    for (const row of inserted) db.dbInsertTask(row);
+    const written = [id, ...inserted.map(r => r.id)];
+    // The task list has to show these writes before cookMeal below reads it:
+    // reading the list from before them, it found this task still open and
+    // completed it a second time.
+    taskCache = null;
+    keepTasksAfterWrite(before, written);
 
     // The one cross-store write kept, because it is a record rather than a
     // device effect: a dose taken is a fact about the person, and dropping
@@ -4182,12 +4207,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // a meal slot's chain. Never on a miss. `cookMeal` stamps the meal before
     // it completes anything, so the tasks it finishes in turn find it cooked
     // and stop here.
+    // A cooking completes other tasks of its own, which this list doesn't name,
+    // so after one the cache is left empty for a full reload.
+    let cooked = false;
     if (mode === 'completed') {
       const entryId = generatedSourceOf(task, 'mealCook') ?? (completesMealSlot(task) ? mealSlotEntryIdOf(task) : null);
-      if (entryId) cookMeal(entryId);
+      if (entryId) cooked = cookMeal(entryId) !== null;
     }
 
     refresh();
+    if (!cooked) keepTasksAfterWrite(before, written);
     return {
       completed: built.completed,
       nextTask: built.nextTask,
@@ -6758,7 +6787,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
 
     deferTask(id: string, date: Date | null): Task {
-      const task = tasks().find(t => t.id === id);
+      const before = tasks();
+      const task = before.find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
       if (task.completed) throw new Error('That task is already completed, so there is nothing to reschedule.');
 
@@ -6773,6 +6803,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       db.dbUpdateTask(moved);
       refresh();
+      keepTasksAfterWrite(before, [moved.id]);
       return moved;
     },
 
