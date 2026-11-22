@@ -1,4 +1,5 @@
 import {
+  finishedLeftoverUseUpFor,
   plannedMealRowFor,
   useUpTaskDraft,
   useUpTaskDrift,
@@ -258,5 +259,30 @@ describe('useUpTaskDrift', () => {
   it('never returns a day, so a task the user re-dated stays where they put it', () => {
     const moved = { ...chilli, title: 'Katsu curry', keepUntil: '2026-08-20' };
     expect(useUpTaskDrift({ ...inStep, linkUrl: null }, moved)).not.toHaveProperty('dueDate');
+  });
+});
+
+describe('finishedLeftoverUseUpFor', () => {
+  const task = (id: string, overrides: Record<string, unknown> = {}) => ({
+    generatedKind: 'leftoverUseUp' as const,
+    generatedSourceId: id,
+    completed: true,
+    archived: false,
+    deadline: localIso('2026-08-14T12:00'),
+    ...overrides,
+  });
+
+  it('is true for a finished task naming the same leftover and keep-until day', () => {
+    const l = leftover();
+    expect(finishedLeftoverUseUpFor([task(l.id)], l)).toBe(true);
+    expect(finishedLeftoverUseUpFor([task(l.id, { completed: false, archived: true })], l)).toBe(true);
+  });
+
+  it('is false for a live task, another leftover, another keep-until day or another kind', () => {
+    const l = leftover();
+    expect(finishedLeftoverUseUpFor([task(l.id, { completed: false })], l)).toBe(false);
+    expect(finishedLeftoverUseUpFor([task('other')], l)).toBe(false);
+    expect(finishedLeftoverUseUpFor([task(l.id, { deadline: localIso('2026-08-20T12:00') })], l)).toBe(false);
+    expect(finishedLeftoverUseUpFor([task(l.id, { generatedKind: 'groceryUseUp' })], l)).toBe(false);
   });
 });

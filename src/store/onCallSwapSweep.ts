@@ -42,6 +42,10 @@ export function checkOnCallSwapTasks(): void {
     reconcileGeneratedTask({
       kind: 'onCallSwap',
       sourceId: match.sourceId,
+      // A finished row blocks a second one. The marks that keep this device
+      // from repeating itself are local, so another device only learns it
+      // was answered from the synced completed row.
+      blocksOnFinished: true,
       wanted: true,
       // The date is today's and the user may defer it; chasing the event would
       // overwrite that (#1953, `docs/arch/generated-tasks.md`).

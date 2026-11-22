@@ -137,6 +137,7 @@ import {
   dueMealPlanNudge,
   mealPlanNudgeLinkUrl,
   mealPlanNudgeSuppressed,
+  mealPlanNudgeFinishedFor,
   partitionMealPlanNudgeTasks,
 } from '../utils/mealPlanNudge';
 // Imports this module back, like useMealPlanStore does — inert for the same
@@ -149,7 +150,7 @@ import { reopenBlockedByLater, reopenedTask } from '../utils/taskReopen';
 import { planQuotaRollover, planVacationEndQuotas, type QuotaRolloverPlan } from '../utils/quotaRollover';
 import { forgiveVacationStreaks, forgivePausedProjectStreaks as pausedStreaksForgiven } from '../utils/vacationStreaks';
 import { pauseEndsOn, registerPauseEndListener } from '../utils/projectPause';
-import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, stoppableGenerator } from '../utils/generatedTasks';
+import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, latestOfferedDayKey, liveGeneratedTask, liveGeneratedTasksOfKind, stoppableGenerator } from '../utils/generatedTasks';
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
@@ -6607,6 +6608,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { current, stale } = partitionMealPlanNudgeTasks(get().tasks, due);
     stale.forEach(task => deleteGeneratedTaskQuietly(task.id));
     if (current.length > 0) return;
+    // A set already ticked or filed away, perhaps on another device whose week mark
+    // is its own, is an answer for this week.
+    if (mealPlanNudgeFinishedFor(get().tasks, due)) return;
 
     const plannedEntries = dbGetMealPlanEntries(due.targetWeekStartKey, due.targetWeekEndKey);
     if (mealPlanNudgeSuppressed(due, plannedEntries, settings.mealPlanNudgeSlots)) return;
@@ -6834,6 +6838,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reconcileGeneratedTask({
         kind: 'birthday',
         sourceId: want.sourceId,
+        // A finished row blocks a second one. The marks that keep this device
+        // from repeating itself are local, so another device only learns it
+        // was answered from the synced completed row.
+        blocksOnFinished: true,
         // Never false: the not-wanted half is decided over the whole set at
         // once and was handled by the drop pass above. A `false` here would
         // delete through deleteTask and stamp the person as opted out.
@@ -6911,6 +6919,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reconcileGeneratedTask({
         kind: 'birthdayGift',
         sourceId: want.sourceId,
+        // A finished row blocks a second one. The marks that keep this device
+        // from repeating itself are local, so another device only learns it
+        // was answered from the synced completed row.
+        blocksOnFinished: true,
         wanted: true,
         drift: existing => birthdayGiftDrift(existing, want),
         draft: () => ({
@@ -6963,6 +6975,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reconcileGeneratedTask({
         kind: 'personDate',
         sourceId: want.sourceId,
+        // A finished row blocks a second one. The marks that keep this device
+        // from repeating itself are local, so another device only learns it
+        // was answered from the synced completed row.
+        blocksOnFinished: true,
         // Never false, for the reason checkBirthdayTasks gives.
         wanted: true,
         drift: existing => personDateDrift(existing, want),
@@ -7580,7 +7596,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const todayStart = getCurrentDayStart();
     const todayKey = dayKeyOf(todayStart);
     for (const area of BACKFILL_AREAS) {
-      if (!backfillCadenceElapsed(settings.backfillLastDayKeys[area], todayStart)) continue;
+      // The row's own creation day stands in for the other device's mark.
+      const lastOffered = latestOfferedDayKey(
+        settings.backfillLastDayKeys[area], get().tasks, 'backfill',
+        t => (backfillAreaOf(t) === area ? dayKeyOf(new Date(t.createdAt)) : null));
+      if (!backfillCadenceElapsed(lastOffered, todayStart)) continue;
       // One per pool at a time: a row from last week still sitting there means
       // the offer was ignored or deferred, and a second is the pile-up every
       // generator here has a rule against.
@@ -7655,7 +7675,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // calendar rather than about a shelf.
     const todayStart = getCurrentDayStart();
     const todayKey = dayKeyOf(todayStart);
-    if (!pantryReviewCadenceElapsed(settings.pantryReviewLastDayKey, todayStart)) return;
+    const lastOffered = latestOfferedDayKey(
+      settings.pantryReviewLastDayKey, tasks, 'pantryReview', t => t.generatedSourceId);
+    if (!pantryReviewCadenceElapsed(lastOffered, todayStart)) return;
     // Recorded before the deck is judged, and unconditionally: a day already
     // considered — offered, or found not doubtful enough — must not be
     // re-diagnosed on every later sweep, and with no source row this mark is
@@ -8184,6 +8206,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     reconcileGeneratedTask({
       kind: 'calendarReview',
       sourceId: tomorrowKey,
+      // A finished row blocks a second one. The marks that keep this device
+      // from repeating itself are local, so another device only learns it
+      // was answered from the synced completed row.
+      blocksOnFinished: true,
       // Never false: the clear pass above already handles "not wanted".
       wanted: true,
       // The title never varies, so nothing to chase.
@@ -8263,6 +8289,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     reconcileGeneratedTask({
       kind: 'eventDetails',
       sourceId: todayKey,
+      // A finished row blocks a second one. The marks that keep this device
+      // from repeating itself are local, so another device only learns it
+      // was answered from the synced completed row.
+      blocksOnFinished: true,
       wanted: true,
       // Retitled above, on the row this pass keeps.
       drift: () => null,
@@ -8705,6 +8735,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reconcileGeneratedTask({
         kind: 'eventTask',
         sourceId: match.sourceId,
+        // A finished row blocks a second one. The marks that keep this device
+        // from repeating itself are local, so another device only learns it
+        // was answered from the synced completed row.
+        blocksOnFinished: true,
         // Never false: the clear pass above already handles "not wanted", and
         // a match that should not fire never reaches this loop.
         wanted: true,
@@ -8842,6 +8876,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reconcileGeneratedTask({
         kind: 'travel',
         sourceId: match.sourceId,
+        // A finished row blocks a second one. The marks that keep this device
+        // from repeating itself are local, so another device only learns it
+        // was answered from the synced completed row.
+        blocksOnFinished: true,
         wanted: true,
         // The title and the reminder follow the feed and the lead. The date is
         // the occurrence's own and never moves (a moved event is a new key),
@@ -8927,6 +8965,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reconcileGeneratedTask({
         kind: 'wakeUp',
         sourceId: match.sourceId,
+        // A finished row blocks a second one. The marks that keep this device
+        // from repeating itself are local, so another device only learns it
+        // was answered from the synced completed row.
+        blocksOnFinished: true,
         wanted: true,
         // The title follows the leads and the getting-ready time. The date is
         // the occurrence's own and never moves (a moved event is a new key).
@@ -9330,6 +9372,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             kind: 'moodLog',
             sourceId,
             wanted: true,
+            // A finished check-in for this slot blocks a second one. The mood
+            // log is off iCloud, so another device can't see that it was
+            // answered, but the completed row syncs and says so.
+            blocksOnFinished: true,
             // The title never varies, so nothing to chase.
             drift: () => null,
             draft: () => ({
@@ -9361,7 +9407,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // task in the app would rebuild a categories index on every foreground
       // for nothing.
       const days = buildMoodDays(logs, [], settings.dayResetTime);
-      if (wantsMoodNudge(days, todayKey, settings.moodNudgeAfterDays, settings.moodNudgeLastDayKey)) {
+      if (wantsMoodNudge(days, todayKey, settings.moodNudgeAfterDays,
+        latestOfferedDayKey(settings.moodNudgeLastDayKey, get().tasks, 'moodNudge', t => t.generatedSourceId))) {
         // Stamped before the create, like the check-in's mark above: a nudge
         // swiped away must not return on the next foreground of the same bad
         // day, which is the one place in the app where handing the row back
@@ -9371,6 +9418,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         reconcileGeneratedTask({
           kind: 'moodNudge',
           sourceId: todayKey,
+          // A finished row blocks a second one. The marks that keep this device
+          // from repeating itself are local, so another device only learns it
+          // was answered from the synced completed row.
+          blocksOnFinished: true,
           wanted: true,
           drift: () => null,
           draft: () => ({
@@ -9433,6 +9484,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         kind: generatedKind,
         sourceId,
         wanted: true,
+        // Same as the mood check-in: the entries stay off iCloud, the
+        // completed row is what another device can see.
+        blocksOnFinished: true,
         drift: () => null,
         draft: () => ({
           title,
@@ -10012,6 +10066,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     reconcileGeneratedTask({
       kind: 'weekendNudge',
       sourceId: window.saturdayKey,
+      // A finished row blocks a second one. The marks that keep this device
+      // from repeating itself are local, so another device only learns it
+      // was answered from the synced completed row.
+      blocksOnFinished: true,
       wanted: true,
       drift: () => null,
       draft: () => ({
@@ -10119,6 +10177,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     reconcileGeneratedTask({
       kind: 'weighIn',
       sourceId: todayKey,
+      // A finished row blocks a second one. The marks that keep this device
+      // from repeating itself are local, so another device only learns it
+      // was answered from the synced completed row.
+      blocksOnFinished: true,
       wanted: true,
       // Title and notes are both derived from the settings alone, and the
       // window they describe cannot change under a live row without the day
@@ -10213,6 +10275,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     reconcileGeneratedTask({
       kind: 'bloodPressureLog',
       sourceId: todayKey,
+      // A finished row blocks a second one. The marks that keep this device
+      // from repeating itself are local, so another device only learns it
+      // was answered from the synced completed row.
+      blocksOnFinished: true,
       wanted: true,
       drift: () => null,
       draft: () => ({

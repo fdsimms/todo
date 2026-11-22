@@ -1643,6 +1643,34 @@ export function generatedTaskCountOf(
 }
 
 /**
+ * The later of a device-local "last offered" day key and the newest day a
+ * synced row of this kind says it was offered.
+ *
+ * The marks behind a cadence (`pantryReviewLastDayKey`, `backfillLastDayKeys`,
+ * `moodNudgeLastDayKey`) stay on the device, so a second device would start its
+ * own count and raise its own offer. The rows themselves sync, live or
+ * finished, and each one is evidence of a day the offer was made. `dayKeyOf`
+ * says which day a row stands for, or null for one that says nothing (another
+ * pool's, or a value that isn't a day key). Day keys sort as text.
+ */
+export function latestOfferedDayKey(
+  local: string | null | undefined,
+  tasks: readonly Task[],
+  kind: GeneratedKind,
+  dayKeyOf: (task: Task) => string | null
+): string | null {
+  let best = local && DAY_KEY.test(local) ? local : null;
+  for (const t of tasks) {
+    if (t.generatedKind !== kind) continue;
+    const key = dayKeyOf(t);
+    if (key !== null && DAY_KEY.test(key) && (best === null || key > best)) best = key;
+  }
+  return best;
+}
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
  * The source row this task was generated from, but only if it came from the
  * generator asked about — null for every other task.
  *
