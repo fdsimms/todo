@@ -467,12 +467,14 @@ function StatusChip({
  * whole width.
  */
 function FieldInput({
-  styles, label, style, onLowercase, ...input
+  styles, label, style, onLowercase, accessory, ...input
 }: {
   styles: ReturnType<typeof makeStyles>;
   label: string;
   /** Shows a "lowercase" pill beside the label; called with the lowercased text. */
   onLowercase?: (text: string) => void;
+  /** A control on the label's line, at the trailing edge (the Item/Flavor swap). */
+  accessory?: React.ReactNode;
 } & React.ComponentProps<typeof TextField>) {
   const text = typeof input.value === 'string' ? input.value : '';
   const lowered = text.toLowerCase();
@@ -480,17 +482,20 @@ function FieldInput({
     <View>
       <View style={styles.fieldLabelRow}>
         <Text style={styles.fieldLabel}>{label}</Text>
-        {!!onLowercase && input.editable !== false && (
-          <InlineAction
-            label="lowercase"
-            variant="neutral"
-            disabled={lowered === text}
-            onPress={() => onLowercase(lowered)}
-            haptic
-            accessibilityLabel={`Make ${label.toLowerCase()} lowercase`}
-            style={styles.confirmPill}
-          />
-        )}
+        <View style={styles.fieldLabelActions}>
+          {!!onLowercase && input.editable !== false && (
+            <InlineAction
+              label="lowercase"
+              variant="neutral"
+              disabled={lowered === text}
+              onPress={() => onLowercase(lowered)}
+              haptic
+              accessibilityLabel={`Make ${label.toLowerCase()} lowercase`}
+              style={styles.confirmPill}
+            />
+          )}
+          {accessory}
+        </View>
       </View>
       <TextField
         style={[styles.fieldInput, style]}
@@ -1505,21 +1510,23 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           </View>
                         )}
                       </View>
-                      {/* Flavor sits right under Item, with the swap between them, so the
-                          button can't read as swapping Brand. */}
-                      <View style={styles.swapRow}>
-                        <InlineAction
-                          icon="swap-vertical"
-                          variant="neutral"
-                          disabled={!canSwap}
-                          onPress={swapItemAndFlavor}
-                          haptic
-                          accessibilityLabel="Swap Item and Flavor"
-                        />
-                      </View>
+                      {/* Flavor sits right under Item, with the swap on its label's
+                          line, so the button can't read as swapping Brand and
+                          doesn't take a row of its own. */}
                       <FieldInput
                         styles={styles}
                         label="FLAVOR"
+                        accessory={
+                          <InlineAction
+                            icon="swap-vertical"
+                            variant="neutral"
+                            disabled={!canSwap}
+                            onPress={swapItemAndFlavor}
+                            haptic
+                            accessibilityLabel="Swap Item and Flavor"
+                            style={styles.confirmPill}
+                          />
+                        }
                         value={shownVariant}
                         placeholder="e.g. Chili lime"
                         placeholderTextColor={colors.textTertiary}
@@ -1803,7 +1810,8 @@ function makeStyles(colors: Colors) {
       justifyContent: 'space-between',
       marginBottom: spacing.sm,
     },
-    swapRow: { alignItems: 'center' },
+    // The label's pills sit together at its trailing edge.
+    fieldLabelActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     fieldInput: {
       color: colors.text,
       fontSize: font.md,
