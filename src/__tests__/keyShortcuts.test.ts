@@ -44,6 +44,19 @@ describe('KEY_SHORTCUTS', () => {
     for (const s of KEY_SHORTCUTS.filter(k => rowKeys.includes(k.action))) expect(s.screenOnly).toBe(true);
   });
 
+  it('answers ⌘+, ⌘= and ⌘- for the text size, and ⌘0 for its default', () => {
+    const chord = (action: string) => KEY_SHORTCUTS.filter(s => s.action === action).map(shortcutKeys);
+    expect(chord('textLarger')).toEqual(['⌘+', '⌘=']);
+    expect(chord('textSmaller')).toEqual(['⌘-']);
+    expect(chord('textReset')).toEqual(['⌘0']);
+  });
+
+  it('keeps the text size chords on for any keyboard, and nothing else', () => {
+    const always = KEY_SHORTCUTS.filter(s => s.always);
+    expect(always.map(s => s.action).sort()).toEqual(['textLarger', 'textLarger', 'textReset', 'textSmaller']);
+    for (const s of always) expect(s.modifiers).toContain('command');
+  });
+
   it('keeps the chords a Mac window is expected to answer to on whatever mirroring mode says', () => {
     const onMac = KEY_SHORTCUTS.filter(s => s.onMac).map(s => s.action);
     expect(onMac).toEqual(expect.arrayContaining(['undo', 'redo', 'closeSheet', 'commit']));

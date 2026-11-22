@@ -480,6 +480,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['dark', 'light', 'black', 'night', 'oled', 'purple', 'system', 'colour', 'color'] },
   { id: 'fabHand', groupId: 'appearance', label: 'Add button', section: 'Theme',
     keywords: ['corner', 'left', 'right', 'handed', 'plus', 'fab'] },
+  { id: 'textSize', groupId: 'appearance', label: 'Text size', section: 'Text size',
+    keywords: ['font', 'bigger', 'larger', 'zoom', 'accessibility', 'dynamic type', 'mac', 'ipad', 'command', 'shortcut'] },
   { id: 'typeface', groupId: 'appearance', label: 'Typeface', section: 'Typeface',
     keywords: ['font', 'bricolage', 'space grotesk', 'nunito', 'outfit', 'serif', 'mono'] },
   { id: 'appFontRandomize', groupId: 'appearance', label: 'Randomize', section: 'Typeface',

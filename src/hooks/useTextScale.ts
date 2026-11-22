@@ -1,9 +1,10 @@
 import { useWindowDimensions } from 'react-native';
 import { textScale } from '../theme';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { clampTextScale } from '../utils/textScale';
 
 /**
- * The system text size as a multiplier, clamped to what text in this app can
+ * The system text size times the app's own (`textSize.ts`) as a multiplier, clamped to what text in this app can
  * actually reach (`textScale.max`, applied to every `Text` by `AppFont.tsx`)
  * and never below 1.
  *
@@ -16,5 +17,6 @@ import { clampTextScale } from '../utils/textScale';
  */
 export function useTextScale(): number {
   const { fontScale } = useWindowDimensions();
-  return clampTextScale(fontScale, textScale.max);
+  const appSize = useSettingsStore(s => s.textSize);
+  return clampTextScale(fontScale * appSize, textScale.max);
 }

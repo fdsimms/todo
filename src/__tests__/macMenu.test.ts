@@ -54,6 +54,14 @@ describe('buildMenuItems', () => {
     expect(noKitchen.find(i => i.title === 'Unscheduled')).toBeUndefined();
   });
 
+  it('puts the text size in View, and leaves ⌘= to the key sink', () => {
+    const view = items.filter(i => i.menu === 'view' && i.id.startsWith('shortcut:text'));
+    expect(view.map(i => i.title)).toEqual(['Increase Text Size', 'Decrease Text Size', 'Default Text Size']);
+    const sink = sinkShortcuts(items).map(s => s.id);
+    expect(sink).toContain('textLargerEquals');
+    expect(sink).not.toContain('textLarger');
+  });
+
   it('has a Settings item with ⌘,', () => {
     expect(items.find(i => i.menu === 'settings')).toMatchObject({ title: 'Settings…', input: ',', modifiers: ['command'] });
   });

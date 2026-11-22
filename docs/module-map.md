@@ -699,6 +699,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/textScale.ts` — clampTextScale, scaledTextBox
 - `src/utils/textSelection.ts` — TextSelection, clampSelection, caretAtEnd, spliceAtSelection
 - `src/utils/textSimilar.ts` — MIN_SIMILAR_LENGTH, withinOneEdit, isSingleTransposition
+- `src/utils/textSize.ts` — TextSizeStep, TEXT_SIZE_STEPS, DEFAULT_TEXT_SIZE, parseTextSize, stepTextSize, sizeForCap, scaleTextStyle
 - `src/utils/timeBlock.ts` — TimeBlockFields, TimeBlockContext, canTimeBlock, proposeTimeBlockStart, timeBlockFieldsFor, timeBlockUpdateFor
 - `src/utils/timer.ts` — TimerState, isTimedTask, isTimerRunning, timerElapsed, timerRemaining, timerProgress, isTimerReady
 - `src/utils/timerSegments.ts` — TimerSegment, SegmentPhase, SegmentSource, segmentMinutesOf, timerSegments, apportionedMinutes, activeSegmentIndex, activeSegment, segmentPhase, segmentRemaining
