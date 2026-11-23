@@ -1501,6 +1501,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // which sits inside a SwipeableRow and so has to stay opaque, and rather than
   // a border, which would make the row taller than its neighbors.
   rowPaneActive: {
+    borderRadius: radius.md,
     outlineWidth: 2,
     outlineColor: colors.accent,
     outlineOffset: -2,
