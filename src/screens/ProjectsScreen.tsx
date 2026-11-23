@@ -1182,7 +1182,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // The row whose page is open beside the list: an outline, so it stays opaque
   // inside a SwipeableRow and doesn't make the row taller than its neighbors.
+  // The card around it clips to `radius.md`, so the row itself needs the same
+  // radius or the square outline's corners are cut off by the clip.
   projectRowPaneActive: {
+    borderRadius: radius.md,
     outlineWidth: 2,
     outlineColor: colors.accent,
     outlineOffset: -2,
