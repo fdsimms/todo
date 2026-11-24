@@ -19,47 +19,47 @@ export interface BiostatsMark {
 }
 
 export interface BiostatsCollapsed {
-  /** The day's calories as a ring, when a calorie target has a row. */
-  ring: {
-    fraction: number;
-    /** The percentage inside the ring. */
-    label: string;
-    /** What the ring measures ("Calories") and the figure against its goal ("0 of 2,000"). */
-    name: string;
-    detail: string;
-  } | null;
-  /** At most two bars, the ones most worth a glance. */
+  /**
+   * The marks the folded card draws, in order: the day's calories first when a
+   * calorie target has a row, then the two most worth a glance.
+   */
   bars: BiostatsMark[];
   /**
-   * What the card says when there is no ring and no bar (active calories with
-   * no Move goal, or only the Activity rings): the rows' own titles, joined.
+   * What the card says when there is no bar (active calories with no Move goal,
+   * or only the Activity rings): the rows' own titles, joined.
    */
   text: string;
 }
 
-const MAX_BARS = 2;
+/** How many marks follow calories. */
+const MAX_OTHER_BARS = 2;
 
 /** 2 over its limit, 1 close to it, 0 within. */
 const toneRank = (tone: ContextRow['tone']): number => (tone === 'over' ? 2 : tone === 'near' ? 1 : 0);
 
 /**
- * What the collapsed card draws, chosen from the rows it holds (design B: a
- * calorie ring and the two bars most worth a glance).
+ * What the collapsed card draws, chosen from the rows it holds: calories as a
+ * labeled bar, then the two marks most worth a glance.
  *
- * **The bars are picked by urgency, not by a fixed order.** The old summary was
+ * **Calories were a bare ring once.** A "96%" in a circle never said what it was
+ * a percentage of, so calories are a bar with the same label and value shape as
+ * every other mark, and the card has no unlabeled figure on it.
+ *
+ * **The rest are picked by urgency, not by a fixed order.** The old summary was
  * one sentence in a fixed order and lost whatever came last to an ellipsis, so
  * a limit nearly used up could be the very figure that was cut off. A limit that
  * is over or close goes first, then steps, then the fullest remaining limit.
- * Calories are the ring, so they never repeat as a bar.
+ * Calories never repeat among them.
  */
 export function biostatsCollapsed(rows: readonly ContextRow[]): BiostatsCollapsed {
   const calorie = rows.find(r => r.nutrientKey === 'calorieKcal' && r.visual?.type === 'bar');
-  const ring = calorie && calorie.visual?.type === 'bar'
+  const calorieMark: BiostatsMark | null = calorie && calorie.visual?.type === 'bar'
     ? {
+        id: calorie.id,
+        label: calorie.reading?.label ?? 'Calories',
+        value: calorie.tone === 'over' ? 'Over' : `${Math.round(calorie.visual.fraction * 100)}%`,
         fraction: calorie.visual.fraction,
-        label: `${Math.round(calorie.visual.fraction * 100)}%`,
-        name: calorie.reading?.label ?? 'Calories',
-        detail: calorie.reading ? (calorie.reading.of ? `${calorie.reading.figure} of ${calorie.reading.of}` : calorie.reading.figure) : '',
+        ...(calorie.tone ? { tone: calorie.tone } : {}),
       }
     : null;
 
@@ -85,9 +85,10 @@ export function biostatsCollapsed(rows: readonly ContextRow[]): BiostatsCollapse
 
   const urgent = limits.filter(m => toneRank(m.tone) > 0);
   const quiet = limits.filter(m => toneRank(m.tone) === 0);
-  const bars = [...urgent, ...(steps ? [steps] : []), ...quiet].slice(0, MAX_BARS);
+  const others = [...urgent, ...(steps ? [steps] : []), ...quiet].slice(0, MAX_OTHER_BARS);
+  const bars = calorieMark ? [calorieMark, ...others] : others;
 
-  return { ring, bars, text: rows.map(r => r.title).join(' · ') };
+  return { bars, text: rows.map(r => r.title).join(' · ') };
 }
 
 /**

@@ -1670,8 +1670,8 @@ ordering, dragging or section header, while paying for all of it. The widget
 also carries the Stay under and Aim for rows (`limitContextRows`,
 `goalContextRows`), so the day's figures sit in one place.
 
-It folds to a calorie ring and the two bars most worth a glance (an over or close
-limit first, then steps), chosen by `biostatsCollapsed` in
+It folds to calories as a labeled bar, then the two marks most worth a glance (an
+over or close limit first, then steps), chosen by `biostatsCollapsed` in
 `src/utils/biostatsWidget.ts`, and opens to a tile per reading. The fold is
 persisted (`biostatsCollapsed`, folded by default). A tile for a nutrient opens
 its food contribution sheet; steps and the rings have nowhere to go, since this

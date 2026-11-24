@@ -185,6 +185,20 @@ describe('proposeNext, rep range (double)', () => {
     expect(proposeNext(input({ history }))!.move).toBe('up');
   });
 
+  it('moves from the weight you dropped to when a heavier set fell short of the range', () => {
+    // 40 for 5, then 35 for 5, against a 6 to 8 range: 40 was given up on.
+    const history = [done('s5', 0, 40, 5, { kind: 'amrap' }), done('s5', 1, 35, 5, { kind: 'amrap' })];
+    const p = proposeNext(input({ history }))!;
+    expect(p.move).toBe('same');
+    expect(p.lastKg).toBe(35);
+    expect(p.sets.every(x => x.weightKg === 35)).toBe(true);
+  });
+
+  it('keeps the heaviest weight when a lighter set was a back-off after sets that reached the range', () => {
+    const history = [done('s5', 0, 80, 8), done('s5', 1, 80, 8), done('s5', 2, 60, 10)];
+    expect(proposeNext(input({ history }))!.sets[0].weightKg).toBe(82.5);
+  });
+
   it('steps a dumbbell by the increment from wherever it was', () => {
     const history = [done('s5', 0, 22, 12), done('s5', 1, 22, 12)];
     const p = proposeNext(input({ history, item: item('double', range(10, 12, 2)), load: dumbbell }))!;
