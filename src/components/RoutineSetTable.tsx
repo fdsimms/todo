@@ -33,6 +33,7 @@ import {
   withSetReps, withSetWeight,
 } from '../utils/workoutRoutine';
 import type { WeightUnit } from '../utils/weightLog';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   item: WorkoutRoutineItem;
@@ -191,7 +192,7 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
         return (
           <View key={index} style={styles.row}>
             <View style={styles.colBadge}>
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.badgeBox}
                 onPress={open(index)}
                 activeOpacity={interaction.activeOpacity}
@@ -200,7 +201,7 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
                 accessibilityLabel={`${name}. Change its type, duplicate or remove it`}
               >
                 <Text style={lettered ? styles.badgeLetter : styles.badgeNumber}>{label}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
             {fields.map(f => {
               const text = cellText(t, f);

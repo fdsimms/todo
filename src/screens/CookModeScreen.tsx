@@ -86,6 +86,7 @@ import { ingredientWeightText, weightLookups as buildWeightLookups } from '../ut
 import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 
 interface Props {
@@ -653,7 +654,7 @@ function CookModeBody({
           backAccessibilityLabel="Leave cook mode"
           actions={
             <View style={styles.headerActions}>
-              <TouchableOpacity
+              <HoverTouchable
                 onPress={() => setTextSizeOpen(true)}
                 activeOpacity={interaction.activeOpacity}
                 hitSlop={8}
@@ -662,7 +663,7 @@ function CookModeBody({
                 accessibilityHint="Changes how big the step is drawn"
               >
                 <Ionicons name="text-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
               {/* Only when it says something: at 1× the recipe is being read as
                   written, and a chip repeating that is chrome. When it isn't, this
                   is the one thing on screen explaining why the amounts in the panel
@@ -670,7 +671,7 @@ function CookModeBody({
                   Tappable when the screen lets the factor change from here, and
                   then always shown, since it is the only way to reach the picker. */}
               {(!isUnscaled(scale) || onScaleChange) && (
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.scaleChip}
                   disabled={!onScaleChange}
                   onPress={() => setScaleOpen(true)}
@@ -681,11 +682,11 @@ function CookModeBody({
                   accessibilityHint={onScaleChange ? 'Changes how much the recipe makes' : undefined}
                 >
                   <Text style={styles.scaleChipText}>{formatScale(scale)}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
               {/* Only once a cook is underway (the timer has time on it). */}
               {cookUnderway && (
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={cancelCook}
                   activeOpacity={interaction.activeOpacity}
                   hitSlop={8}
@@ -694,7 +695,7 @@ function CookModeBody({
                   accessibilityHint="Stops the timer without logging a cook time and closes cook mode"
                 >
                   <Ionicons name="trash-outline" size={iconSize.md} color={colors.textSecondary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
             </View>
           }

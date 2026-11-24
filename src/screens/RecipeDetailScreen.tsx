@@ -167,6 +167,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
 import { NameSheet, type NameRequest } from '../components/NameSheet';
 import { choiceGroupRenameTaken } from '../utils/nameTaken';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 type RootStackParamList = {
   /**
@@ -1709,7 +1710,7 @@ export function RecipeDetailScreen() {
                   <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.splitPillText}>Split into {splitInto}…</Text>
                 </PressableScale>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => dismissSplitPill(ingredient.id, ingredient.name)}
                   hitSlop={8}
@@ -1718,7 +1719,7 @@ export function RecipeDetailScreen() {
                   accessibilityHint="Leaves the line as it is"
                 >
                   <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
             {/* The "and" form of the signpost above, and the same pill: it opens
@@ -1737,7 +1738,7 @@ export function RecipeDetailScreen() {
                   <Ionicons name="copy-outline" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.splitPillText}>Split into {andInto} lines…</Text>
                 </PressableScale>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => dismissSplitPill(ingredient.id, ingredient.name)}
                   hitSlop={8}
@@ -1746,7 +1747,7 @@ export function RecipeDetailScreen() {
                   accessibilityHint="Leaves the line as it is"
                 >
                   <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
             {/* The same signpost the split pill is, for the same reason: it
@@ -1770,7 +1771,7 @@ export function RecipeDetailScreen() {
                     {catalogSuggestion.suggestedName}?
                   </Text>
                 </PressableScale>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     if (catalogSuggestion.suggestedName) {
@@ -1785,14 +1786,14 @@ export function RecipeDetailScreen() {
                   accessibilityHint="Leaves the line as it is"
                 >
                   <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
             {stackQty && qtyGroup}
           </View>
           {!stackQty && qtyGroup}
           {!selectionMode && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => confirmRemove(ingredient)}
               hitSlop={10}
@@ -1800,7 +1801,7 @@ export function RecipeDetailScreen() {
               accessibilityLabel={`Remove ${ingredient.name}`}
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
           <SwipeActionButtons enabled={!selectionMode && !isDragging} selectAction={swipeSelect} />
           {/* In the slot the × gives up while selecting, so nothing moves
@@ -1853,7 +1854,7 @@ export function RecipeDetailScreen() {
             {isTarget ? 'Drop here' : 'Drag an ingredient here'}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); removeEmptySection(recipe.id, row.name); }}
           hitSlop={10}
@@ -1861,7 +1862,7 @@ export function RecipeDetailScreen() {
           accessibilityLabel={`Remove ${row.name} heading`}
         >
           <Ionicons name="close" size={iconSize.sm} color={isTarget ? colors.accent : colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
     );
   };
@@ -2010,7 +2011,7 @@ export function RecipeDetailScreen() {
           </View>
           {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
           {!marker && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => confirmRemoveComponent(resolved)}
               hitSlop={10}
@@ -2018,7 +2019,7 @@ export function RecipeDetailScreen() {
               accessibilityLabel={`Remove ${label} from this recipe`}
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </TouchableOpacity>
       </View>
@@ -2095,7 +2096,7 @@ export function RecipeDetailScreen() {
       <View style={styles.qtyPill}>
         <Text style={styles.qtyText} numberOfLines={1}>{formatOffsetLabel(prepTask.offsetDays)}</Text>
       </View>
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={() => confirmRemovePrepTask(prepTask)}
         hitSlop={10}
@@ -2103,7 +2104,7 @@ export function RecipeDetailScreen() {
         accessibilityLabel={`Remove ${prepTask.title}`}
       >
         <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-      </TouchableOpacity>
+      </HoverTouchable>
     </TouchableOpacity>
   );
 
@@ -2174,7 +2175,7 @@ export function RecipeDetailScreen() {
             open-for-editing block below, same division as the timer length. */}
         {!!step.note && <Text style={styles.stepNote}>{step.note}</Text>}
       </TouchableOpacity>
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
@@ -2183,8 +2184,8 @@ export function RecipeDetailScreen() {
         accessibilityLabel={`Reorder step ${stepNumber}`}
       >
         <Ionicons name="reorder-three" size={iconSize.sm} color={colors.textTertiary} />
-      </TouchableOpacity>
-      <TouchableOpacity
+      </HoverTouchable>
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={() => confirmRemoveStep(step)}
         hitSlop={10}
@@ -2192,7 +2193,7 @@ export function RecipeDetailScreen() {
         accessibilityLabel={`Remove step ${stepNumber}`}
       >
         <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-      </TouchableOpacity>
+      </HoverTouchable>
     </View>
     );
   };
@@ -2233,7 +2234,7 @@ export function RecipeDetailScreen() {
             {isTarget ? 'Drop here' : 'Drag a step here'}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); removeEmptyStepSection(recipe.id, row.name); }}
           hitSlop={10}
@@ -2241,7 +2242,7 @@ export function RecipeDetailScreen() {
           accessibilityLabel={`Remove ${row.name} heading`}
         >
           <Ionicons name="close" size={iconSize.sm} color={isTarget ? colors.accent : colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
     );
   };
@@ -2302,7 +2303,7 @@ export function RecipeDetailScreen() {
                 the paste fill, copying the ingredients) lives in this menu, so
                 the title keeps its row. */}
             {!selectionMode && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={handleMoreMenu}
                 hitSlop={8}
@@ -2310,7 +2311,7 @@ export function RecipeDetailScreen() {
                 accessibilityLabel="More actions for this recipe"
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         }
@@ -2454,7 +2455,7 @@ export function RecipeDetailScreen() {
           <View style={styles.plannedRow}>
             <Text style={styles.plannedLabel}>Planned</Text>
             {plannedMeals.map(entry => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={entry.id}
                 style={styles.plannedChip}
                 onPress={() => { haptics.tap(); resetToMealPlan(entry.date); }}
@@ -2464,7 +2465,7 @@ export function RecipeDetailScreen() {
               >
                 <Ionicons name="restaurant-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.plannedChipText}>{plannedMealLabel(entry, dayKeyOf(getLogicalToday()))}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         )}
@@ -2824,7 +2825,7 @@ export function RecipeDetailScreen() {
             >
               <Text style={styles.pasteBannerAction}>Review</Text>
             </TouchableOpacity>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); animateLayout(); setPasteResult(null); }}
               hitSlop={8}
@@ -2832,7 +2833,7 @@ export function RecipeDetailScreen() {
               accessibilityLabel="Dismiss the pasted ingredients"
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         )}
 
@@ -2966,7 +2967,7 @@ export function RecipeDetailScreen() {
           actions={(
             <>
               {editingStepId && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={cancelEditStep}
                   hitSlop={10}
@@ -2974,7 +2975,7 @@ export function RecipeDetailScreen() {
                   accessibilityLabel="Cancel editing this step"
                 >
                   <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
               <InlineAction
                 label={editingStepId ? BUTTON_LABEL.save : 'Add'}

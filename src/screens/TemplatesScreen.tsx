@@ -62,6 +62,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { templateHasBrokenRefs, templateHasMissingRefs } from '../utils/templateUtils';
 import type { TaskTemplate } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 // The add button, naming what a release right now would do.
 function AddTemplateFabWithDropLabel({
@@ -574,7 +575,7 @@ const TemplateRow = React.memo(function TemplateRow({
           each of these acts on one template and would fight the bar. */}
       {!selectionMode && (
         <>
-          <TouchableOpacity
+          <HoverTouchable
             onPress={() => onEdit(template)}
             style={styles.rowButton}
             activeOpacity={interaction.activeOpacity}
@@ -583,8 +584,8 @@ const TemplateRow = React.memo(function TemplateRow({
             accessibilityLabel={`Edit ${template.name}`}
           >
             <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
-          <TouchableOpacity
+          </HoverTouchable>
+          <HoverTouchable
             onPress={() => onApply(template)}
             style={styles.rowButton}
             activeOpacity={interaction.activeOpacity}
@@ -593,7 +594,7 @@ const TemplateRow = React.memo(function TemplateRow({
             accessibilityLabel={`Apply template ${template.name}`}
           >
             <Ionicons name="chevron-down-circle-outline" size={18} color={colors.accent} />
-          </TouchableOpacity>
+          </HoverTouchable>
           <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
           <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
         </>

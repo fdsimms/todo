@@ -41,6 +41,7 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_START = '09:00';
@@ -295,9 +296,9 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
         <View style={styles.header}>
           <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} disabled={nameTaken} />
           <Text style={styles.headerTitle}>Edit category</Text>
-          <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete category ${category}`}>
+          <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete category ${category}`}>
             <Ionicons name="trash-outline" size={20} color={colors.red} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
 
         <ScrollView
@@ -354,7 +355,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                   {DAY_LABELS.map((label, day) => {
                     const active = days.includes(day);
                     return (
-                      <TouchableOpacity
+                      <HoverTouchable
                         key={day}
                         style={[styles.dayPill, active && styles.dayPillActive]}
                         onPress={() => toggleDay(day)}
@@ -364,12 +365,12 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                         accessibilityLabel={FULL_DAY_NAMES[day]}
                       >
                         <Text maxFontSizeMultiplier={textScale.badge} style={[styles.dayPillText, active && styles.dayPillTextActive]}>{label}</Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     );
                   })}
                 </View>
                 <View style={styles.timePillRow}>
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={[styles.timePill, picker === 'start' && styles.timePillActive]}
                     onPress={() => openPicker('start')}
                     activeOpacity={interaction.activeOpacity}
@@ -378,8 +379,8 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                   >
                     <Text style={styles.timePillLabel}>From</Text>
                     <Text style={styles.timePillValue}>{formatScheduleTime(start)}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </HoverTouchable>
+                  <HoverTouchable
                     style={[styles.timePill, picker === 'end' && styles.timePillActive]}
                     onPress={() => openPicker('end')}
                     activeOpacity={interaction.activeOpacity}
@@ -388,7 +389,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                   >
                     <Text style={styles.timePillLabel}>Until</Text>
                     <Text style={styles.timePillValue}>{formatScheduleTime(end)}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
                 {picker !== null && (
                   <InlineTimePicker
@@ -490,7 +491,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                 {TIME_SEGMENTS.map(seg => {
                   const active = defaultSegments.includes(seg);
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={seg}
                       style={[styles.segmentPill, active && styles.segmentPillActive]}
                       onPress={() => {
@@ -505,7 +506,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
                       <Text style={[styles.segmentPillText, active && styles.segmentPillTextActive]}>
                         {capitalize(seg)}
                       </Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
               </View>

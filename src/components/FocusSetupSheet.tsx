@@ -75,6 +75,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -570,7 +571,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.swapBtn}
           onPress={() => swap(task)}
           disabled={!canSwap}
@@ -580,9 +581,9 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           accessibilityHint="Replaces this suggestion with the next best task"
         >
           <Ionicons name="refresh" size={iconSize.sm} color={canSwap ? colors.textSecondary : colors.bgQuaternary} />
-        </TouchableOpacity>
+        </HoverTouchable>
 
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onLongPress={drag}
           delayLongPress={interaction.delayLongPress}
@@ -592,7 +593,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           accessibilityLabel={`Reorder ${title}`}
         >
           <Ionicons name="reorder-three" size={iconSize.md} color={colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
     );
   };
@@ -696,7 +697,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
                     : ` of ${MAX_SUGGESTED_FOCUS}`}
                 </Text>
               </View>
-              <TouchableOpacity
+              <HoverTouchable
                 onPress={openSettings}
                 style={styles.settingsBtn}
                 activeOpacity={interaction.activeOpacity}
@@ -704,7 +705,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
                 accessibilityLabel="Focus session settings"
               >
                 <Ionicons name="settings-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           </View>
 
@@ -737,7 +738,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
               value the stepper can also reach. */}
           {suggestedWindow !== null && (
             <View style={styles.suggestedRow}>
-              <TouchableOpacity
+              <HoverTouchable
                 style={[
                   styles.windowPill,
                   windowMinutes === suggestedWindow.minutes && styles.windowPillOn,
@@ -761,7 +762,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
                 >
                   {`Until ${formatTimeOfDay(suggestedWindow.startsAt)}`}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
               <Text style={styles.suggestedCaption} numberOfLines={1}>
                 {suggestedWindow.title}
               </Text>
@@ -955,7 +956,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
             </View>
           )}
 
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.confirmBtn, selected.length === 0 && styles.confirmBtnDisabled]}
             onPress={handleStart}
             disabled={selected.length === 0}
@@ -968,7 +969,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
                 ? 'Nothing selected'
                 : `Start ${selected.length} task${selected.length === 1 ? '' : 's'} · ${formatDuration(totals.totalMinutes)}`}
             </Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">

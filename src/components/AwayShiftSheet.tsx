@@ -29,6 +29,7 @@ import {
 } from '../utils/awayShift';
 import type { Task } from '../types';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * "The trip moved. Do these move with it?"
@@ -216,7 +217,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
             })}
           </ScrollView>
 
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.applyBtn, selectedCount === 0 && styles.applyBtnOff]}
             onPress={handleApply}
             activeOpacity={interaction.activeOpacity}
@@ -228,7 +229,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
                 ? 'Nothing selected'
                 : `Move ${selectedCount} task${selectedCount === 1 ? '' : 's'}`}
             </Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">

@@ -6,9 +6,7 @@ import {
   Platform,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  TextInput, View,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
@@ -31,6 +29,7 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { TextField } from './TextField';
 import { cleanPastedLines } from '../utils/pastedLines';
 import { overlayCard } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 /** Same short labels the main quick add uses, so the two priority rows read alike. */
 const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
@@ -276,7 +275,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               onSubmitEditing={createItem}
               blurOnSubmit={false}
             />
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+            <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
               style={[styles.addBtn, !trimmedTitle && styles.addBtnDisabled]}
               onPress={createItem}
               disabled={!trimmedTitle}
@@ -284,13 +283,13 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               accessibilityLabel="Add item"
             >
               <Ionicons name="arrow-up" size={18} color={trimmedTitle ? colors.onAccent : colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
 
           {/* Attribute toolbar — icon only until a value is set, then the value
               takes the chip's place. */}
           <View style={styles.toolbar}>
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.toolChip, activePanel === 'when' && styles.toolChipActive, dueOffsetDays !== null && styles.toolChipSet]}
               onPress={() => togglePanel('when')}
               activeOpacity={interaction.activeOpacity}
@@ -311,9 +310,9 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
                   {formatOffsetWithAnchor(dueOffsetDays, anchor, tripTemplate)}
                 </Text>
               )}
-            </TouchableOpacity>
+            </HoverTouchable>
 
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
               onPress={() => togglePanel('priority')}
               activeOpacity={interaction.activeOpacity}
@@ -326,10 +325,10 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
                   {PRIORITY_LABELS_SHORT[priority]}
                 </Text>
               )}
-            </TouchableOpacity>
+            </HoverTouchable>
 
             {allCategories.length > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
                 onPress={() => togglePanel('category')}
                 activeOpacity={interaction.activeOpacity}
@@ -346,12 +345,12 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
                     {categoryLabel(category, categories)}
                   </Text>
                 )}
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
 
             {/* A toggle rather than a panel, so it keeps its word at all times —
                 there's no glyph that says "skippable when the template runs". */}
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.toolChip, optional && styles.toolChipSet]}
               onPress={() => { haptics.tap(); setOptional(v => !v); }}
               activeOpacity={interaction.activeOpacity}
@@ -366,7 +365,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
                 color={optional ? colors.accent : colors.textTertiary}
               />
               <Text style={[styles.toolChipText, optional && styles.toolChipTextSet]}>Optional</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
 
           {/* Inline panels */}
@@ -395,23 +394,23 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               />
               {dueOffsetDays !== null && (
                 <View style={styles.intervalRow}>
-                  <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+                  <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
                     style={styles.intervalBtn}
                     onPress={() => { haptics.tap(); setDueOffsetDays(d => (d ?? 0) - 1); }}
                     accessibilityRole="button"
                     accessibilityLabel="One day earlier"
                   >
                     <Ionicons name="remove" size={16} color={colors.text} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                   <Text style={styles.offsetValue}>{formatOffsetWithAnchor(dueOffsetDays, anchor, tripTemplate)}</Text>
-                  <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+                  <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
                     style={styles.intervalBtn}
                     onPress={() => { haptics.tap(); setDueOffsetDays(d => (d ?? 0) + 1); }}
                     accessibilityRole="button"
                     accessibilityLabel="One day later"
                   >
                     <Ionicons name="add" size={16} color={colors.text} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
               )}
             </View>
@@ -432,15 +431,15 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
           {activePanel === 'category' && (
             <View style={styles.panel}>
               <View style={styles.presetRow}>
-                <TouchableOpacity
+                <HoverTouchable
                   style={[styles.presetChip, category === null && styles.presetChipActive]}
                   onPress={() => { haptics.tap(); setCategory(null); }}
                   activeOpacity={interaction.activeOpacity}
                 >
                   <Text style={[styles.presetChipText, category === null && styles.presetChipTextActive]}>None</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
                 {allCategories.map(cat => (
-                  <TouchableOpacity
+                  <HoverTouchable
                     key={cat}
                     style={[styles.presetChip, category === cat && styles.presetChipActive]}
                     onPress={() => { haptics.tap(); setCategory(prev => (prev === cat ? null : cat)); }}
@@ -449,7 +448,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
                     <Text style={[styles.presetChipText, category === cat && styles.presetChipTextActive]}>
                       {categoryLabel(cat, categories)}
                     </Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 ))}
               </View>
             </View>
@@ -457,7 +456,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
 
           {/* Secondary actions — spelled out, since neither is guessable from an icon. */}
           <View style={styles.moreRow}>
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.moreBtn}
               onPress={handleAddNested}
               activeOpacity={interaction.activeOpacity}
@@ -466,8 +465,8 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
             >
               <Ionicons name="git-branch-outline" size={15} color={colors.textSecondary} />
               <Text style={styles.moreBtnText}>Nest a template</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </HoverTouchable>
+            <HoverTouchable
               style={styles.moreBtn}
               onPress={handleOpenFull}
               activeOpacity={interaction.activeOpacity}
@@ -476,7 +475,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
             >
               <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
               <Text style={styles.moreBtnText}>More details</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         </Animated.View>
       </View>

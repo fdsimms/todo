@@ -37,6 +37,7 @@ import { CheckPop } from './CheckPop';
 import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
 import { runningOnMac } from '../utils/runningOnMac';
 import { menuTitleCase } from '../utils/macMenu';
+import { HoverTouchable } from './HoverTouchable';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
 // price this app allows (GROCERY_PRICE_MINOR_MAX) ever renders as.
@@ -517,7 +518,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           style={[StyleSheet.absoluteFill, styles.swapFlash, { opacity: flash }]}
         />
       )}
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={() => (selectionMode ? onSelect?.(item.id) : onToggle(item.id))}
         onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
@@ -547,7 +548,7 @@ export const GroceryRow = React.memo(function GroceryRow({
         >
           <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
         </CheckPop>
-      </TouchableOpacity>
+      </HoverTouchable>
 
       <TouchableOpacity
         style={styles.tapZone}
@@ -804,7 +805,7 @@ export const GroceryRow = React.memo(function GroceryRow({
             cart, so a labeled pill beside every item would be the row-level
             noise this was built to avoid. */}
         {tripPriceShown && !pricingActive && !priceRecorded && (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             style={styles.priceIconButton}
             onPress={startPricing}
@@ -815,7 +816,7 @@ export const GroceryRow = React.memo(function GroceryRow({
             accessibilityLabel={`Add a price for ${item.name}`}
           >
             <Ionicons name="pricetag-outline" size={iconSize.md} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </TouchableOpacity>
 
@@ -834,7 +835,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           open that same item sheet at its Substitutes field, which is a long
           editor in answer to a one-line question. */}
       {!selectionMode && !!onOpenSubstitutes && (
-        <TouchableOpacity
+        <HoverTouchable
           onPress={() => onOpenSubstitutes(item.id)}
           activeOpacity={interaction.activeOpacity}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -842,7 +843,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           accessibilityLabel={`What can I use instead of ${item.name}?`}
         >
           <Ionicons name="swap-horizontal-outline" size={iconSize.sm} color={colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
 
       {/* Long-press still opens the same sheet, but nothing on screen says so
@@ -850,7 +851,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           quiet trailing target is what makes that reachable without teaching
           a gesture. Hidden while selecting: editing isn't on offer there. */}
       {!selectionMode && (
-        <TouchableOpacity
+        <HoverTouchable
           onPress={() => onEdit(item.id)}
           activeOpacity={interaction.activeOpacity}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -858,7 +859,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           accessibilityLabel={`Edit ${item.name}`}
         >
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       <SwipeActionButtons enabled={!isActive && !selectionMode} selectAction={swipeSelect} />
 

@@ -7,6 +7,7 @@ import { spacing, radius, font, fontWeight, interaction, iconSize, type Colors }
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { describePool } from '../utils/weekPool';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** This week's pool, in order. */
@@ -49,7 +50,7 @@ export const WeekPoolCard = memo(function WeekPoolCard({ entries, onAdd, onPress
               <Text style={styles.title} numberOfLines={2}>{entry.title}</Text>
               <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
-            <TouchableOpacity
+            <HoverTouchable
               onPress={() => onRemove(entry)}
               hitSlop={8}
               activeOpacity={interaction.activeOpacity}
@@ -58,7 +59,7 @@ export const WeekPoolCard = memo(function WeekPoolCard({ entries, onAdd, onPress
               accessibilityLabel={`Remove ${entry.title} from this week`}
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         ))}
         {entries.length === 0 && (

@@ -10,6 +10,7 @@ import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TextField } from './TextField';
 import { useSecondTick } from '../hooks/useSecondTick';
 import { RotatingChevron } from './RotatingChevron';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** "Prep" or "Cook" — drives the idle copy ("Time this cook", "Time prep"). */
@@ -141,7 +142,7 @@ export function RecipeTimerRow({
             row: the three used to sit 8pt apart with overlapping hit areas,
             Reset right beside Pause. */}
         {inProgress && (
-          <TouchableOpacity
+          <HoverTouchable
             onPress={handleReset}
             style={styles.secondaryBtn}
             activeOpacity={interaction.activeOpacity}
@@ -149,10 +150,10 @@ export function RecipeTimerRow({
             accessibilityLabel={`Reset ${noun} timer`}
           >
             <Ionicons name="refresh" size={iconSize.sm} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
         {inProgress && (
-          <TouchableOpacity
+          <HoverTouchable
             onPress={onLog}
             style={styles.secondaryBtn}
             activeOpacity={interaction.activeOpacity}
@@ -160,9 +161,9 @@ export function RecipeTimerRow({
             accessibilityLabel={`Done, log this ${noun} time`}
           >
             <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
-        <TouchableOpacity
+        <HoverTouchable
           style={[styles.primaryBtn, running && styles.primaryBtnRunning]}
           activeOpacity={interaction.activeOpacity}
           onPress={onToggle}
@@ -172,7 +173,7 @@ export function RecipeTimerRow({
           }
         >
           <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.orangeText : colors.onAccent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
       {showDetails && (
         <View style={styles.details}>
@@ -193,7 +194,7 @@ export function RecipeTimerRow({
                 inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 accessibilityLabel={`${verb} time in minutes`}
               />
-              <TouchableOpacity
+              <HoverTouchable
                 onPress={submitManual}
                 disabled={!manualMinutes}
                 style={[styles.secondaryBtn, !manualMinutes && styles.manualLogBtnDisabled]}
@@ -202,7 +203,7 @@ export function RecipeTimerRow({
                 accessibilityLabel={`Log this ${verb.toLowerCase()} time`}
               >
                 <Ionicons name="checkmark" size={iconSize.sm} color={manualMinutes ? colors.accent : colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
         </View>

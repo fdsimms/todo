@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
@@ -40,6 +40,7 @@ import { RecipePickerSheet } from './RecipePickerSheet';
 import { NegativeHoldMenu } from './NegativeHoldMenu';
 import type { CardAnchor } from './CardSheet';
 import { openExternalUrl } from '../utils/openExternalUrl';
+import { HoverTouchable } from './HoverTouchable';
 
 export const TASK_CHECKBOX_SIZE = 20;
 
@@ -329,7 +330,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
 
   return (
     <>
-      <TouchableOpacity
+      <HoverTouchable
         onPress={handlePress}
         onLongPress={
           action === 'slip' && negativeHoldOffered(task, getCurrentDayStart())
@@ -407,7 +408,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
             </View>
           </View>
         </Animated.View>
-      </TouchableOpacity>
+      </HoverTouchable>
 
       {mountHoldMenu && (
         <NegativeHoldMenu

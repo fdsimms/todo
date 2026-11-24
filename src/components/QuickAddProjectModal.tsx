@@ -37,6 +37,7 @@ import { matchTemplate } from '../utils/templateMatch';
 import type { TaskTemplate } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayCard } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 /** How long a name left by tapping outside waits to be picked up. */
 const QUICK_PROJECT_KEEP_TITLE_MS = 10 * 60 * 1000;
@@ -373,7 +374,7 @@ export function QuickAddProjectModal({
               <View style={styles.seedChip}>
                 <Ionicons name="return-down-forward" size={13} color={colors.accent} />
                 <Text style={styles.seedChipText} numberOfLines={1}>{seedLabel}</Text>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     haptics.tap();
@@ -385,7 +386,7 @@ export function QuickAddProjectModal({
                   accessibilityLabel={`Remove placement ${seedLabel}`}
                 >
                   <Ionicons name="close" size={13} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             </View>
           ) : null}
@@ -404,7 +405,7 @@ export function QuickAddProjectModal({
               maxLength={TITLE_MAX_LENGTH}
               blurOnSubmit={false}
             />
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+            <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
               style={[styles.addBtn, !title.trim() && styles.addBtnDisabled]}
               onPress={handleAdd}
               disabled={!title.trim()}
@@ -412,7 +413,7 @@ export function QuickAddProjectModal({
               accessibilityLabel="Create project"
             >
               <Ionicons name="arrow-up" size={18} color={title.trim() ? colors.onAccent : colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
 
           {/* Attribute toolbar. Every chip always carries its label — an
@@ -420,7 +421,7 @@ export function QuickAddProjectModal({
               QuickAddModal's own toolbar: label until there's a value, then
               the value replaces it. */}
           <View style={styles.toolbar}>
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
               onPress={() => togglePanel('category')}
               activeOpacity={interaction.activeOpacity}
@@ -431,9 +432,9 @@ export function QuickAddProjectModal({
               <Text style={[styles.toolChipText, category !== null && styles.toolChipTextSet]} numberOfLines={1}>
                 {category ?? 'Category'}
               </Text>
-            </TouchableOpacity>
+            </HoverTouchable>
 
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.toolChip, deadline != null && styles.toolChipSet]}
               onPress={() => setDeadlinePickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
@@ -444,9 +445,9 @@ export function QuickAddProjectModal({
               <Text style={[styles.toolChipText, deadline != null && styles.toolChipTextSet]} numberOfLines={1}>
                 {deadline != null ? formatDeadlineDate(deadline.toISOString()) : 'Deadline'}
               </Text>
-            </TouchableOpacity>
+            </HoverTouchable>
 
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.toolChip, leaving != null && styles.toolChipSet]}
               onPress={() => setLeavingPickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
@@ -457,9 +458,9 @@ export function QuickAddProjectModal({
               <Text style={[styles.toolChipText, leaving != null && styles.toolChipTextSet]} numberOfLines={1}>
                 {leaving != null ? `Leaves ${formatDeadlineDate(leaving.toISOString())}` : 'Trip'}
               </Text>
-            </TouchableOpacity>
+            </HoverTouchable>
 
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.toolChip, draft && styles.toolChipSet]}
               onPress={() => { haptics.tap(); setDraft(v => !v); }}
               activeOpacity={interaction.activeOpacity}
@@ -469,10 +470,10 @@ export function QuickAddProjectModal({
             >
               <Ionicons name="create-outline" size={13} color={draft ? colors.accent : colors.textTertiary} />
               <Text style={[styles.toolChipText, draft && styles.toolChipTextSet]} numberOfLines={1}>Draft</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
 
             {templates.length > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.toolChip}
                 onPress={() => { haptics.tap(); Keyboard.dismiss(); setTemplatePickerVisible(true); }}
                 activeOpacity={interaction.activeOpacity}
@@ -481,7 +482,7 @@ export function QuickAddProjectModal({
               >
                 <Ionicons name="copy-outline" size={13} color={colors.textTertiary} />
                 <Text style={styles.toolChipText} numberOfLines={1}>Template</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
 
@@ -500,7 +501,7 @@ export function QuickAddProjectModal({
               >
                 <Text style={styles.templateAccept}>Use template</Text>
               </TouchableOpacity>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => setDismissedTemplateIds(prev => new Set(prev).add(templateOffer.id))}
                 hitSlop={8}
@@ -508,7 +509,7 @@ export function QuickAddProjectModal({
                 accessibilityLabel="Dismiss template suggestion"
               >
                 <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
 
@@ -523,10 +524,10 @@ export function QuickAddProjectModal({
             </View>
           )}
 
-          <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={interaction.activeOpacity}>
+          <HoverTouchable style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
             <Text style={styles.moreBtnText}>More details</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         </Animated.View>
       </View>
 

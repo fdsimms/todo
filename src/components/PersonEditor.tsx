@@ -47,6 +47,7 @@ import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } fro
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -242,9 +243,9 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           title={isNew ? 'New person' : 'Edit person'}
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
+            </HoverTouchable>
           }
         />
       }
@@ -427,7 +428,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
               // Off has no unit — leaving all three unlit is what says so.
               const active = cadence.count !== null && cadence.unit === unit;
               return (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   key={unit}
                   style={[styles.pill, active && styles.pillActiveNeutral]}
@@ -438,7 +439,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
                   <Text style={[styles.pillText, active && styles.pillTextActive]}>
                     {cadenceUnitLabel(unit)}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               );
             })}
           </View>

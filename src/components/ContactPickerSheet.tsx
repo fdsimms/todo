@@ -40,6 +40,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 /** How long the field sits still before a search runs. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -291,7 +292,7 @@ export function ContactPickerSheet({ visible, onPick, onClose, fillingPersonId }
                 : "Search your contacts to fill in a name, number and birthday. Nothing is copied until you pick a person."}
           </Text>
           {permission === 'denied' && (
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.permissionBtn}
               onPress={() => Linking.openSettings()}
               activeOpacity={interaction.activeOpacity}
@@ -299,10 +300,10 @@ export function ContactPickerSheet({ visible, onPick, onClose, fillingPersonId }
               accessibilityLabel="Open Settings"
             >
               <Text style={styles.permissionBtnText}>Open Settings</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
           {permission === 'undetermined' && (
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.permissionBtn}
               onPress={askPermission}
               activeOpacity={interaction.activeOpacity}
@@ -310,7 +311,7 @@ export function ContactPickerSheet({ visible, onPick, onClose, fillingPersonId }
               accessibilityLabel="Allow contacts access"
             >
               <Text style={styles.permissionBtnText}>Allow</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </View>
       )}

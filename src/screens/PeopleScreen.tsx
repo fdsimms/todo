@@ -53,6 +53,7 @@ import {
 } from '../utils/peopleList';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * The people list.
@@ -620,7 +621,7 @@ const PersonRow = React.memo(function PersonRow({
         {contactActions.length > 0 && (
           <View style={styles.contactRow}>
             {contactActions.map(action => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={action.kind}
                 style={styles.contactButton}
                 // 36pt drawn, 44pt touched. The row's 8pt gap is exactly the two slops.
@@ -631,7 +632,7 @@ const PersonRow = React.memo(function PersonRow({
                 accessibilityLabel={`${action.label} ${name}`}
               >
                 <Ionicons name={action.icon} size={iconSize.sm} color={colors.accent} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         )}

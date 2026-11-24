@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, interaction, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { shelfSuggestions } from '../utils/recipeProvenance';
 import type { Cookbook } from '../types';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   cookbooks: readonly Cookbook[];
@@ -31,7 +32,7 @@ export function CookbookShelfChips({ cookbooks, title, author, onPick }: Props) 
       <Text style={styles.label}>Your cookbooks</Text>
       <View style={styles.row}>
         {books.map(book => (
-          <TouchableOpacity
+          <HoverTouchable
             key={book.id}
             style={styles.chip}
             activeOpacity={interaction.activeOpacity}
@@ -42,7 +43,7 @@ export function CookbookShelfChips({ cookbooks, title, author, onPick }: Props) 
             <Text style={styles.chipText} numberOfLines={1}>
               {book.author ? `${book.title} · ${book.author}` : book.title}
             </Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         ))}
       </View>
     </View>

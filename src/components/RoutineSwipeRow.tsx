@@ -74,6 +74,7 @@ export function RoutineSwipeRow({ onArchive, archived, onDelete, name, children 
         renderRightActions={renderRight}
         overshootRight={false}
         friction={2}
+        enableTrackpadTwoFingerGesture
         // The panels are laid out behind the whole row, so the row needs a
         // solid face: an archived routine is drawn faded, and the panels
         // showed through it as it slid.

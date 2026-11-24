@@ -95,6 +95,7 @@ import { LazySheet } from '../components/LazySheet';
 import { BUTTON_LABEL } from '../copy/shared';
 import { isOpenEnded } from '../utils/listMode';
 import { explainRefusedDeletes } from '../utils/lockedDelete';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * How many projects a list holds before it grows a search bar. Below this the
@@ -999,7 +1000,7 @@ const ProjectRow = React.memo(function ProjectRow({
               ) : (
                 <>
                 {projectFilter === 'archived' && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => onQuickUnarchive(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1007,10 +1008,10 @@ const ProjectRow = React.memo(function ProjectRow({
                     accessibilityLabel={`Unarchive ${project.title}`}
                   >
                     <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
                 {projectFilter === 'completed' && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => onQuickUncomplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1018,10 +1019,10 @@ const ProjectRow = React.memo(function ProjectRow({
                     accessibilityLabel={`Restore ${project.title} to active`}
                   >
                     <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
                 {allDone && !locked && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1029,9 +1030,9 @@ const ProjectRow = React.memo(function ProjectRow({
                     accessibilityLabel={`Mark ${project.title} complete: every task is done`}
                   >
                     <Ionicons name="checkmark-circle" size={16} color={colors.done} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => onEdit(project)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1043,7 +1044,7 @@ const ProjectRow = React.memo(function ProjectRow({
                       the glyph's square sits low in its box, so its ink reads
                       lower than the other glyphs beside it. */}
                   <Ionicons name="create-outline" size={16} color={colors.textTertiary} style={{ marginTop: -1 }} />
-                </TouchableOpacity>
+                </HoverTouchable>
                 <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
                 </>
               )}

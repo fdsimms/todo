@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -16,6 +16,7 @@ import {
   diffPrograms, programDiffIsEmpty, programHistory, programSchemeText, programWeeksText, versionSpanText, workoutCountText,
   type ProgramVersionEntry,
 } from '../utils/routineVersions';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -166,14 +167,14 @@ export function ProgramVersionSheet({ visible, programId, versionId, onClose, on
 
             {!entry.current && (
               <View style={styles.actions}>
-                <TouchableOpacity
+                <HoverTouchable
                   style={[styles.button, styles.primary]}
                   onPress={() => { haptics.tap(); onRestore(entry.version); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                 >
                   <Text style={styles.primaryText}>{`Restore version ${entry.number}`}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
                 <HelpText style={styles.foot}>
                   Restoring puts this rotation, length and progression back in the editor. Saving makes it the newest version. Training maxes aren’t part of a version.
                 </HelpText>

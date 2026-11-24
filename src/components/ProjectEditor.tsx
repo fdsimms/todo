@@ -91,6 +91,7 @@ import { Toggle } from './Toggle';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { HoverTouchable } from './HoverTouchable';
 
 const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
   value: mode,
@@ -1077,7 +1078,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                 <Text style={styles.optionLabel} numberOfLines={1}>{link.label || linkHost(link.url)}</Text>
                 <Text style={styles.optionHint} numberOfLines={1}>{link.url}</Text>
               </View>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); setLinks(ls => ls.filter(l => l.id !== link.id)); }}
                 hitSlop={8}
@@ -1085,7 +1086,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                 accessibilityLabel={`Remove ${link.label || linkHost(link.url)}`}
               >
                 <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           </React.Fragment>
         ))}

@@ -53,6 +53,7 @@ import { keepTailTogether } from '../utils/titleWrap';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
+import { HoverTouchable } from './HoverTouchable';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -468,7 +469,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                 { label: 'Today', resolve: () => getLogicalToday(dayResetTime) },
                 { label: 'Tomorrow', resolve: () => getLogicalTomorrow(dayResetTime) },
               ].map(({ label, resolve }) => (
-                <TouchableOpacity
+                <HoverTouchable
                   key={label}
                   style={styles.pill}
                   onPress={() => pickDate(noonOf(resolve()))}
@@ -477,7 +478,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                   accessibilityLabel={label}
                 >
                   <Text style={styles.pillText}>{label}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               ))}
             </View>
             {datesStep && (
@@ -519,7 +520,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                   onPress: () => { haptics.tap(); setPickerOpen(true); },
                 },
               ].map(({ label, selected, onPress }) => (
-                <TouchableOpacity
+                <HoverTouchable
                   key={label}
                   style={[styles.pill, selected && styles.pillSelected]}
                   onPress={onPress}
@@ -529,7 +530,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                   accessibilityLabel={`Happened ${label}`}
                 >
                   <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{label}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               ))}
             </View>
           </>

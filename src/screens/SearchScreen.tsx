@@ -75,6 +75,7 @@ import {
 import { LazySheet } from '../components/LazySheet';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 // How long the field waits for typing to pause before the expensive
 // fuzzySearch recompute runs. The TextInput's own value/onChangeText stay
@@ -198,7 +199,7 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
           {/* Tappable: a result found on a list or project opened only the
               task, with no way from here to the list it lives on. */}
           {projectName && task.projectId && (
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.projectChip}
               onPress={() => onOpenProject(task.projectId!)}
               hitSlop={6}
@@ -218,7 +219,7 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
                 highlightStyle={styles.highlight}
                 numberOfLines={1}
               />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
           {/* Plain text with its emoji rather than a chip of its own: the
               project-chip-then-category pairing NewTasksBanner already uses.

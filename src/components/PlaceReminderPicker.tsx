@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
 import { HelpText } from './HelpText';
@@ -12,6 +12,7 @@ import { remindablePlaces } from '../utils/placeReminders';
 import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { alertPermissionOff } from '../utils/permissionAlert';
 import { isDemoModeActive } from '../utils/demoState';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   placeId: string | null;
@@ -101,7 +102,7 @@ export function PlaceReminderPicker({ placeId, on, onChange }: Props) {
           {places.map(place => {
             const active = place.id === placeId;
             return (
-              <TouchableOpacity
+              <HoverTouchable
                 key={place.id}
                 style={[styles.pill, active && styles.pillOn]}
                 onPress={() => { void pick(place.id); }}
@@ -110,7 +111,7 @@ export function PlaceReminderPicker({ placeId, on, onChange }: Props) {
                 accessibilityState={{ selected: active }}
               >
                 <Text style={[styles.pillText, active && styles.pillTextOn]}>{place.name}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             );
           })}
         </View>

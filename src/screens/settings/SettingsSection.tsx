@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Animated, TouchableOpacity, type GestureResponderEvent } from 'react-native';
+import { View, Text, Animated, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../../theme/ThemeContext';
 import { iconSize, interaction } from '../../theme';
@@ -9,6 +9,7 @@ import { LazySheet } from '../../components/LazySheet';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocusFlash } from './SettingsFocus';
+import { HoverTouchable } from '../../components/HoverTouchable';
 
 /** The long half of a section's explanation, shown in a popover from the header's help button. */
 export interface SectionExplanation {
@@ -75,7 +76,7 @@ export function SettingsSection({ label, entryId, footer, explain, children }: P
       {label != null && (hasExplain ? (
         <View style={styles.sectionLabelRow}>
           <Text style={styles.sectionLabelInRow}>{label}</Text>
-          <TouchableOpacity
+          <HoverTouchable
             onPress={openExplain}
             activeOpacity={interaction.activeOpacity}
             hitSlop={10}
@@ -83,7 +84,7 @@ export function SettingsSection({ label, entryId, footer, explain, children }: P
             accessibilityLabel={`About ${label}`}
           >
             <Ionicons name="help-circle-outline" size={iconSize.md} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
       ) : (
         <Text style={styles.sectionLabel}>{label}</Text>

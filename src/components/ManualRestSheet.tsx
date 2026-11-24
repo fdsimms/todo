@@ -12,6 +12,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
 import { REST_SECONDS_MAX, REST_SECONDS_MIN, formatRestSeconds } from '../utils/workoutData';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -91,7 +92,7 @@ export function ManualRestSheet({ visible, initialSeconds, restsOn, onRestsOnCha
           {REST_PRESETS.map(p => {
             const on = p === seconds;
             return (
-              <TouchableOpacity
+              <HoverTouchable
                 key={p}
                 style={[styles.preset, on && styles.presetOn]}
                 activeOpacity={interaction.activeOpacity}
@@ -101,7 +102,7 @@ export function ManualRestSheet({ visible, initialSeconds, restsOn, onRestsOnCha
                 accessibilityState={{ selected: on }}
               >
                 <Text style={[styles.presetText, on && styles.presetTextOn]}>{formatRestSeconds(p)}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             );
           })}
         </View>

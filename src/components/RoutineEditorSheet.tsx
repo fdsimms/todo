@@ -69,6 +69,7 @@ import { joinAnd, loadContextFor, rampSteps } from '../utils/workoutProgression'
 import { formatWeightNumber } from '../utils/workoutData';
 import type { WeightUnit } from '../utils/weightLog';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -662,7 +663,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                   >
                     {role === 'first' && <Text style={[styles.supersetTag, railColor !== null && { color: railColor }]}>Superset</Text>}
                     <View style={styles.itemRow}>
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         onLongPress={drag}
                         delayLongPress={interaction.delayLongPress}
@@ -672,7 +673,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                         accessibilityHint="Touch and hold, then drag"
                       >
                         <Ionicons name="reorder-two-outline" size={iconSize.md} color={colors.textTertiary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                       <TouchableOpacity
                         style={styles.itemText}
                         onPress={() => toggleOpen(row.id)}
@@ -880,7 +881,7 @@ function ItemControls({
         <View>
           <View style={styles.capRow}>
             <Text style={styles.cap}>Progression</Text>
-            <TouchableOpacity
+            <HoverTouchable
               onPress={() => { haptics.tap(); animateLayout(); setExplainOpen(o => !o); }}
               activeOpacity={interaction.activeOpacity}
               hitSlop={8}
@@ -893,7 +894,7 @@ function ItemControls({
                 size={iconSize.md}
                 color={explainOpen ? colors.accent : colors.textSecondary}
               />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
           <SegmentedControl
             options={PROGRESSION_OPTIONS}

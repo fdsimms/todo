@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
 import { EmptyNote } from './EmptyNote';
@@ -10,6 +10,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { WISH_UNFILED, wishListView } from '../utils/rewardWishList';
 import type { Task } from '../types';
+import { HoverTouchable } from './HoverTouchable';
 
 /** Rows shown before "Show more" while nothing is searched or chosen. */
 const PREVIEW_ROWS = 8;
@@ -76,7 +77,7 @@ export function RewardWishList({ items, onPrice }: Props) {
           {[{ name: null as string | null, label: 'All' }, ...firstPass.categories.map(c => ({ name: c.name as string | null, label: c.name }))].map(c => {
             const on = c.name === category;
             return (
-              <TouchableOpacity
+              <HoverTouchable
                 key={c.label}
                 activeOpacity={interaction.activeOpacity}
                 style={[styles.chip, on && styles.chipOn]}
@@ -86,7 +87,7 @@ export function RewardWishList({ items, onPrice }: Props) {
                 accessibilityLabel={c.name === null ? 'Show every category' : `Show only ${c.name}`}
               >
                 <Text style={[styles.chipText, on && styles.chipTextOn]}>{c.label}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             );
           })}
         </View>

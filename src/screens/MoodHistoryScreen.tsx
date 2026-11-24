@@ -27,6 +27,7 @@ import { ChipFilterSheet, type ChipFilterGroup } from '../components/ChipFilterS
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { animateLayout } from '../utils/layoutAnimation';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * Every mood entry there is, grouped by day and narrowable.
@@ -169,7 +170,7 @@ export function MoodHistoryScreen() {
         title="Mood history"
         onBack={() => navigation.goBack()}
         actions={
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setFilterOpen(true); }}
             hitSlop={8}
@@ -181,7 +182,7 @@ export function MoodHistoryScreen() {
               size={iconSize.md}
               color={isMoodFilterActive(filter) ? colors.accent : colors.textSecondary}
             />
-          </TouchableOpacity>
+          </HoverTouchable>
         }
       />
 
@@ -195,7 +196,7 @@ export function MoodHistoryScreen() {
       {activePills.length > 0 && (
         <View style={styles.pillRow}>
           {activePills.map(pill => (
-            <TouchableOpacity
+            <HoverTouchable
               key={pill.key}
               style={styles.pill}
               onPress={() => { haptics.tap(); animateLayout(); pill.remove(); }}
@@ -205,7 +206,7 @@ export function MoodHistoryScreen() {
             >
               <Text style={styles.pillText}>{pill.label}</Text>
               <Ionicons name="close" size={12} color={colors.onAccent} />
-            </TouchableOpacity>
+            </HoverTouchable>
           ))}
         </View>
       )}

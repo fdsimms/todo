@@ -60,6 +60,7 @@ import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { pickerCardMaxHeightFor, pickerCardWidthFor } from '../utils/frameWidth';
 import { FieldLabel } from './FieldLabel';
+import { HoverTouchable } from './HoverTouchable';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
 // actually reads (title/notes/tags/category/priority/effort) get overridden
@@ -702,7 +703,7 @@ export function WhenPicker({
                       night: colors.timeNight,
                     }[seg.key];
                     return (
-                      <TouchableOpacity
+                      <HoverTouchable
                         key={seg.key}
                         style={[styles.segmentPill, active && { backgroundColor: segColor + '33' }]}
                         onPress={() => {
@@ -719,7 +720,7 @@ export function WhenPicker({
                         <Text style={[styles.segmentLabel, active && { color: segColor, fontWeight: fontWeight.semibold }]}>
                           {seg.label}
                         </Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     );
                   })}
                 </View>
@@ -756,7 +757,7 @@ export function WhenPicker({
                 />
               )}
               {showSuggest && (
-                <TouchableOpacity
+                <HoverTouchable
                   style={[styles.quickButton, styles.suggestButton]}
                   onPress={handleSuggest}
                   activeOpacity={interaction.activeOpacity}
@@ -765,7 +766,7 @@ export function WhenPicker({
                   <Text style={[styles.quickButtonLabel, { color: colors.purpleText, fontWeight: fontWeight.semibold }]}>
                     Suggest
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
             </View>
 
@@ -857,7 +858,7 @@ export function WhenPicker({
           {/* Calendar section */}
           <View style={styles.calSection}>
             <View style={styles.monthNav}>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => setDisplayMonth(m => subMonths(m, 1))}
                 disabled={!canPageBack}
@@ -872,9 +873,9 @@ export function WhenPicker({
                   size={16}
                   color={canPageBack ? colors.accent : colors.textTertiary}
                 />
-              </TouchableOpacity>
+              </HoverTouchable>
               <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => setDisplayMonth(m => addMonths(m, 1))}
                 disabled={!canPageForward}
@@ -889,7 +890,7 @@ export function WhenPicker({
                   size={16}
                   color={canPageForward ? colors.accent : colors.textTertiary}
                 />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
 
             <View style={styles.dayHeaders}>
@@ -1002,13 +1003,13 @@ export function WhenPicker({
           <View style={styles.sectionGap} />
           <View style={styles.footerRow}>
             {onClear && (
-              <TouchableOpacity style={styles.clearBtn} onPress={() => { Keyboard.dismiss(); onClear(); }} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+              <HoverTouchable style={styles.clearBtn} onPress={() => { Keyboard.dismiss(); onClear(); }} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                 <Text style={styles.clearLabel}>Clear</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+            <HoverTouchable style={styles.saveBtn} onPress={handleSave} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
               <Text style={styles.saveLabel}>{BUTTON_LABEL.save}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
           </ScrollView>
         </Animated.View>
@@ -1030,7 +1031,7 @@ function QuickButton({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <HoverTouchable
       style={styles.quickButton}
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
@@ -1045,7 +1046,7 @@ function QuickButton({
           {label}
         </Text>
       </Animated.View>
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

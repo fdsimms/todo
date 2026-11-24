@@ -16,6 +16,7 @@ import { useRewardStore } from '../store/useRewardStore';
 import { formatCoinChange, netCoinsForTask } from '../utils/rewards';
 import { isAnsweredByRecord } from '../utils/recordTasks';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -204,7 +205,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
     onPress: () => void,
     accessibilityLabel: string,
   ) => (
-    <TouchableOpacity
+    <HoverTouchable
       key={label}
       style={[styles.choiceBtn, { borderColor: tint }]}
       activeOpacity={interaction.activeOpacity}
@@ -214,7 +215,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
     >
       <Ionicons name={icon} size={iconSize.sm} color={tint} />
       <Text style={styles.choiceLabel}>{label}</Text>
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 
   return (

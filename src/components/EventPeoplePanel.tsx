@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { useFilterField } from '../hooks/useFilterField';
@@ -8,6 +8,7 @@ import { eventPeopleChoices } from '../utils/eventPeople';
 import { SearchField } from './SearchField';
 import type { Person } from '../types';
 import { HelpText } from './HelpText';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** Everybody on the People list who isn't archived, in the user's own order. */
@@ -42,7 +43,7 @@ export function EventPeoplePanel({ people, title, linkedIds, onToggle }: Props) 
   const searching = filter.query.trim().length > 0;
 
   const chip = (p: Person, on: boolean) => (
-    <TouchableOpacity
+    <HoverTouchable
       key={p.id}
       style={[styles.pill, on && styles.pillActive]}
       onPress={() => onToggle(p.id)}
@@ -51,7 +52,7 @@ export function EventPeoplePanel({ people, title, linkedIds, onToggle }: Props) 
       accessibilityState={{ checked: on }}
     >
       <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 
   return (
@@ -63,7 +64,7 @@ export function EventPeoplePanel({ people, title, linkedIds, onToggle }: Props) 
       <View style={styles.pillRow}>
         {shown.map(p => chip(p, false))}
         {!searching && hidden > 0 && (
-          <TouchableOpacity
+          <HoverTouchable
             style={styles.morepill}
             onPress={() => filter.inputRef.current?.focus()}
             activeOpacity={interaction.activeOpacity}
@@ -71,7 +72,7 @@ export function EventPeoplePanel({ people, title, linkedIds, onToggle }: Props) 
             accessibilityLabel={`${hidden} more people. Search to find one.`}
           >
             <Text style={styles.moreText}>+ {hidden} more</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </View>
       {searching && shown.length === 0 && <Text style={styles.empty}>No one matches.</Text>}

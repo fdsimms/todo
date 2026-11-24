@@ -12,6 +12,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useReminderRemovalStore } from '../store/useReminderRemovalStore';
 import { liveReminderRemovals } from '../utils/reminderRemovals';
+import { HoverTouchable } from './HoverTouchable';
 
 /** Past this many, the rest wait behind one "Show N more" row. */
 const SHOWN_BEFORE_MORE = 5;
@@ -102,7 +103,7 @@ export function ReminderRemovalsCard() {
       <View style={styles.titleRow}>
         <Ionicons name="list-outline" size={iconSize.sm} color={colors.accent} />
         <Text style={styles.title}>Cleared in Reminders</Text>
-        <TouchableOpacity
+        <HoverTouchable
           onPress={handleDismiss}
           activeOpacity={interaction.activeOpacity}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -110,7 +111,7 @@ export function ReminderRemovalsCard() {
           accessibilityLabel="Dismiss. Nothing is added to the pantry"
         >
           <Ionicons name="close" size={iconSize.md} color={colors.textSecondary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
       <HelpText style={styles.help}>Check what you bought to add it to the pantry.</HelpText>
       <View style={styles.list}>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Milestone } from '../types';
@@ -17,6 +17,7 @@ import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDelete } from '../utils/confirmDelete';
+import { HoverTouchable } from './HoverTouchable';
 
 const LABEL_MAX_LENGTH = 80;
 
@@ -110,9 +111,9 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
           title={milestone ? 'Edit milestone' : 'New milestone'}
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={milestone ? (
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete milestone">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete milestone">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
+            </HoverTouchable>
           ) : (
             <View style={styles.headerSpacer} />
           )}

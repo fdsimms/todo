@@ -32,6 +32,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { explainRefusedDeletes } from '../utils/lockedDelete';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -395,7 +396,7 @@ const ArchivedRow = React.memo(function ArchivedRow({
       {selectionMode ? (
         <SelectionDot selected={selected} onPress={() => onToggleSelect(task.id)} />
       ) : (
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.restoreButton}
           onPress={() => onRestore(task.id)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -404,7 +405,7 @@ const ArchivedRow = React.memo(function ArchivedRow({
           accessibilityLabel={`Restore ${title}`}
         >
           <Ionicons name="arrow-undo" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
     </View>
   );

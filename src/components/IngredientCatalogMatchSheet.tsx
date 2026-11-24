@@ -22,6 +22,7 @@ import { EmptyState } from './EmptyState';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -173,7 +174,7 @@ export function IngredientCatalogMatchSheet({
                   onPress={() => accept(ingredient, match)}
                   accessibilityLabel={`Rename ${ingredient.name} to ${match.suggestedName}`}
                 />
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onEditIngredient(ingredient); }}
                   hitSlop={8}
@@ -183,7 +184,7 @@ export function IngredientCatalogMatchSheet({
                   accessibilityHint="Picks a different item, or leaves this line as it is"
                 >
                   <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             </View>
           ))}

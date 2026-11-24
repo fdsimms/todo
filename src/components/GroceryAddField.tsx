@@ -41,6 +41,7 @@ import { generateId } from '../utils/id';
 import { useFilterField } from '../hooks/useFilterField';
 import { useTextScale } from '../hooks/useTextScale';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /**
@@ -593,7 +594,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           accessibilityLabel="Add a grocery item"
         />
         {!!text && (
-          <TouchableOpacity
+          <HoverTouchable
             onPress={() => {
               addFilter.clear();
               setRejectedQuantity(null);
@@ -607,7 +608,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </View>
 
@@ -619,7 +620,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           time. */}
       {attributesShown && (
       <View style={styles.toolbar}>
-        <TouchableOpacity
+        <HoverTouchable
           style={[
             styles.toolChip,
             activePanel === 'brand' && styles.toolChipActive,
@@ -641,8 +642,8 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           >
             {brand || 'Brand'}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </HoverTouchable>
+        <HoverTouchable
           style={[
             styles.toolChip,
             activePanel === 'variant' && styles.toolChipActive,
@@ -664,7 +665,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           >
             {variant || 'Variant'}
           </Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
       )}
 
@@ -695,7 +696,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
             autoFocus
           />
           {!!(activePanel === 'brand' ? brand : variant) && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => (activePanel === 'brand' ? setBrand('') : setVariant(''))}
               hitSlop={8}
@@ -703,7 +704,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
               accessibilityLabel={`Clear ${activePanel}`}
             >
               <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </View>
       )}
@@ -729,7 +730,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
             {tokens.quantityAccepted && (
               <View style={styles.tokenChip}>
                 <Text style={styles.tokenChipText}>{tokens.quantity}</Text>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setRejectedQuantity(tokens.quantity); }}
                   hitSlop={8}
@@ -737,13 +738,13 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   accessibilityLabel={`Keep “${tokens.quantity}” in the name instead of the quantity`}
                 >
                   <Ionicons name="close" size={11} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
             {tokens.prepAccepted && (
               <View style={styles.tokenChip}>
                 <Text style={styles.tokenChipText}>{tokens.prep}</Text>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setRejectedPrep(tokens.prep); }}
                   hitSlop={8}
@@ -751,13 +752,13 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   accessibilityLabel={`Keep “${tokens.prep}” in the name instead of splitting it out`}
                 >
                   <Ionicons name="close" size={11} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
             {tokens.purposeAccepted && (
               <View style={styles.tokenChip}>
                 <Text style={styles.tokenChipText}>for {tokens.purpose}</Text>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setRejectedPurpose(tokens.purpose); }}
                   hitSlop={8}
@@ -765,7 +766,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   accessibilityLabel={`Keep “for ${tokens.purpose}” in the name instead of making it a note`}
                 >
                   <Ionicons name="close" size={11} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
           </View>

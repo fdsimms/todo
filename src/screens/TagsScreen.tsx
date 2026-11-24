@@ -63,6 +63,7 @@ import type { Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { reuseUnchangedLists } from '../utils/stableLists';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
@@ -367,7 +368,7 @@ export function TagsScreen() {
                 </View>
                 <Text style={styles.tagName}>{tag}</Text>
                 <Text style={styles.tagCount}>{count}</Text>
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={() => handleDeleteTag(tag)}
                   style={styles.deleteButton}
                   activeOpacity={interaction.activeOpacity}
@@ -376,7 +377,7 @@ export function TagsScreen() {
                   accessibilityLabel={`Delete tag ${tag}`}
                 >
                   <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
                 <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
               </TouchableOpacity>
             );
@@ -422,7 +423,7 @@ export function TagsScreen() {
               ) : undefined}
               actions={selectedTag && !selectionMode ? (
                 <View style={styles.detailActions}>
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => handleRenameTag(selectedTag)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -430,8 +431,8 @@ export function TagsScreen() {
                     accessibilityLabel={`Rename ${selectedTag}`}
                   >
                     <Ionicons name="create-outline" size={22} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </HoverTouchable>
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); Keyboard.dismiss(); setTaskQuickAddVisible(true); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -439,7 +440,7 @@ export function TagsScreen() {
                     accessibilityLabel={`Add a task tagged ${selectedTag}`}
                   >
                     <Ionicons name="add" size={24} color={colors.accent} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
               ) : undefined}
             />

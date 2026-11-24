@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { MedicationLog } from '../types';
@@ -33,6 +33,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 const NAME_MAX_LENGTH = 60;
 const NOTE_MAX_LENGTH = 200;
@@ -304,9 +305,9 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
           title={log ? 'Edit dose' : 'Record a dose'}
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />}
           right={log ? (
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete dose">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete dose">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
+            </HoverTouchable>
           ) : (
             <SheetHeaderButton label={BUTTON_LABEL.save} onPress={() => { void handleSave(); }} disabled={!canSave} />
           )}

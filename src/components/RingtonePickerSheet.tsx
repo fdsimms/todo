@@ -15,6 +15,7 @@ import { playSoundPreview, stopSoundPreview, subscribeSoundPreview } from '../ut
 import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 type Props = {
   visible: boolean;
@@ -120,7 +121,7 @@ export function RingtonePickerSheet(props: Props) {
           <Text style={[styles.rowLabel, on && styles.rowLabelSelected]} numberOfLines={1}>{label}</Text>
         </TouchableOpacity>
         {sound !== null && (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => {
               haptics.tap();
@@ -132,12 +133,12 @@ export function RingtonePickerSheet(props: Props) {
             accessibilityLabel={playing === sound ? `Pause ${label}` : `Play ${label}`}
           >
             <Ionicons name={playing === sound ? 'pause-circle-outline' : 'play-circle-outline'} size={iconSize.lg} color={colors.accentText} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
         {onDelete && (
-          <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${label}`}>
+          <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${label}`}>
             <Ionicons name="trash-outline" size={iconSize.md} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </View>
     );

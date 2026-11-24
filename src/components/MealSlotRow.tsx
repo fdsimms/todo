@@ -11,6 +11,7 @@ import { SelectionDot } from './SelectionDot';
 import { SwipeActionButtons } from './SwipeActionButtons';
 import { usePaintSelectionRow } from './PaintSelection';
 import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   entry: MealPlanEntry;
@@ -244,7 +245,7 @@ export function MealSlotRow({
         the recipe and fridge rows use.
       */}
       {!selectionMode && onToggleCooked && (
-        <TouchableOpacity
+        <HoverTouchable
           // The caller's setCooked picks the haptic (success to cook, tap to
           // undo), so a tap here doubled it.
           onPress={onToggleCooked}
@@ -261,7 +262,7 @@ export function MealSlotRow({
               color={cooked ? colors.green : colors.textTertiary}
             />
           </Animated.View>
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       <SwipeActionButtons enabled={!dragging && !selectionMode} selectAction={swipeSelect} />
       {!selectionMode && (

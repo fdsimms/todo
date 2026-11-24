@@ -85,6 +85,7 @@ import {
   interleaveHistory,
   type WorkoutHistoryRow,
 } from '../utils/workoutHistory';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * The Workouts area opens on an Overview (`WorkoutOverview`): the next workout to start, this week, and the
@@ -492,7 +493,7 @@ export function WorkoutsScreen() {
             <Text style={styles.groupCount}>{entry.count}</Text>
           </TouchableOpacity>
           {entry.kind === 'header' && (
-            <TouchableOpacity
+            <HoverTouchable
               hitSlop={8}
               activeOpacity={interaction.activeOpacity}
               onPress={e => {
@@ -503,7 +504,7 @@ export function WorkoutsScreen() {
               accessibilityLabel={`${name} group options`}
             >
               <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.text} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </View>
       );
@@ -561,7 +562,7 @@ export function WorkoutsScreen() {
             />
           )}
           {mirroringMode && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               hitSlop={8}
               style={styles.rowMenuButton}
@@ -573,7 +574,7 @@ export function WorkoutsScreen() {
               accessibilityLabel={`More options for ${item.name}`}
             >
               <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </TouchableOpacity>
       </RoutineSwipeRow>

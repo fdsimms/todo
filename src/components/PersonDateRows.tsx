@@ -20,6 +20,7 @@ import {
   personDateInYear,
 } from '../utils/personDateTasks';
 import { FieldLabel } from './FieldLabel';
+import { HoverTouchable } from './HoverTouchable';
 
 /** "June 14, 2019", "June 14", or "June 14, 2027, once". */
 function describeDate(date: Pick<PersonDate, 'month' | 'day' | 'year' | 'yearly'>): string {
@@ -104,7 +105,7 @@ export function PersonDateRows({ dates, onChange }: Props) {
                   {PERSON_DATE_PRESETS.map(preset => {
                     const active = date.label.trim() === preset;
                     return (
-                      <TouchableOpacity
+                      <HoverTouchable
                         key={preset}
                         style={[styles.pill, active && styles.pillActive]}
                         onPress={() => { haptics.tap(); patch(date.id, { label: preset }); }}
@@ -113,7 +114,7 @@ export function PersonDateRows({ dates, onChange }: Props) {
                         accessibilityState={{ selected: active }}
                       >
                         <Text style={[styles.pillText, active && styles.pillTextActive]}>{preset}</Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     );
                   })}
                 </View>

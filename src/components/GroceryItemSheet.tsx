@@ -121,6 +121,7 @@ import {
 } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 /** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
 const PRICE_INPUT_MAX_LENGTH = 8;
@@ -1227,7 +1228,7 @@ function GroceryItemSheetBody({
                       "chosen"), and it is set from here: choosing a product
                       used to take opening its sheet. Tapping the chosen one
                       again clears it, same as "No preference" below. */}
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={styles.productRadio}
                     activeOpacity={interaction.activeOpacity}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 4 }}
@@ -1244,7 +1245,7 @@ function GroceryItemSheetBody({
                       size={22}
                       color={isPreferred ? colors.accent : colors.controlBorder}
                     />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                   <TouchableOpacity
                     style={styles.productBody}
                     activeOpacity={interaction.activeOpacity}
@@ -1930,7 +1931,7 @@ function GroceryItemSheetBody({
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={
             <View style={styles.headerRight}>
-            <TouchableOpacity
+            <HoverTouchable
               onPress={toggleSearch}
               hitSlop={8}
               style={styles.headerSearchButton}
@@ -1944,7 +1945,7 @@ function GroceryItemSheetBody({
                 size={iconSize.sm}
                 color={searchOpen ? colors.accent : colors.textSecondary}
               />
-            </TouchableOpacity>
+            </HoverTouchable>
               <SheetHeaderButton label={BUTTON_LABEL.done} onPress={handleDone} minWidth={64} />
             </View>
           }
@@ -2201,7 +2202,7 @@ function GroceryItemSheetBody({
                 already how a price gets removed on Save (see handleSave), this
                 just saves reaching for backspace on a long mistyped number. */}
             {price.length > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => {
                   haptics.tap();
@@ -2214,7 +2215,7 @@ function GroceryItemSheetBody({
                 }
               >
                 <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
           {/* What the number is *for* and how old it is — never the number
