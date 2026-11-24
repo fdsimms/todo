@@ -147,7 +147,9 @@ import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { EventDetailsCount, EventDetailsPanel } from './EventDetailsPanel';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { useOnCallSwapContext } from '../hooks/useOnCallSwapContext';
-import { automationEntryIdFor, canPinTask, isNoticeTask } from '../utils/generatedTasks';
+import { automationEntryIdFor, canPinTask, generatedSourceOf, isNoticeTask } from '../utils/generatedTasks';
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -696,6 +698,23 @@ const TaskItemRow = React.memo(function TaskItem({
     if (pantryCheckId && url === rowLink) {
       setShowPantryCheck(true);
       return;
+    }
+    // A "Use up X" task answers in the same card ticking it raises
+    // (UseUpResolveSheet) rather than leaving Today for the item's editor. An
+    // item or container that is already out or gone has nothing to ask, so
+    // that case still navigates.
+    if (url === rowLink && !task.completed) {
+      const useUpItemId = generatedSourceOf(task, 'groceryUseUp');
+      const useUpItem = useUpItemId ? useGroceryStore.getState().itemById(useUpItemId) : null;
+      if (useUpItem && useUpItem.onHandUntil !== OUT_OF_IT_UNTIL) {
+        useGroceryStore.getState().setPendingUseUpItem(useUpItem.id);
+        return;
+      }
+      const useUpLeftoverId = generatedSourceOf(task, 'leftoverUseUp');
+      if (useUpLeftoverId && useLeftoverStore.getState().leftovers.some(l => l.id === useUpLeftoverId)) {
+        useLeftoverStore.getState().setPendingUseUpLeftover(useUpLeftoverId);
+        return;
+      }
     }
     // A link this app owns (dundundun://groceries) navigates in place. Going
     // out through Linking would come back to us anyway, but as an app-switch

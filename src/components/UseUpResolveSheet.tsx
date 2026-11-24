@@ -73,6 +73,12 @@ const WENT_BAD_ROW: PantryAnswerRow<UseUpKey> = {
  * already out or gone, leaves the pantry untouched, same as closing the old
  * sheet without touching the Pantry field did.
  *
+ * **Two things raise it: ticking the task off, and tapping the task's link.**
+ * `TaskItem.handleOpenLink` points the same pending flags at the item, so the
+ * row answers in place on Today rather than navigating to the Pantry. An item
+ * already out, or a container already gone, has nothing to ask and the link
+ * still navigates.
+ *
  * **Mounted once, in AppNavigator beside DemoBanner/UndoBar,
  * not on any one screen.** Completion can land here from Today, Search,
  * Waiting, the widget, or a bulk-complete, and the flag has to raise the
