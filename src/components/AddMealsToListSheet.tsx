@@ -45,6 +45,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -481,7 +482,7 @@ export function AddMealsToListSheet({
                                       </View>
                                     </TouchableOpacity>
                                     {!!subs && (
-                                      <TouchableOpacity
+                                      <HoverTouchable
                                         style={styles.subsButton}
                                         activeOpacity={interaction.activeOpacity}
                                         onPress={() => {
@@ -496,7 +497,7 @@ export function AddMealsToListSheet({
                                         {subs.length > 1 && (
                                           <Text style={styles.subsCount}>{subs.length}</Text>
                                         )}
-                                      </TouchableOpacity>
+                                      </HoverTouchable>
                                     )}
                                     {canMarkHave && (
                                       <InlineAction

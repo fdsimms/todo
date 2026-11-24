@@ -2,9 +2,7 @@ import React, { useMemo } from 'react';
 import {
   View,
   Text,
-  Platform,
-  TouchableOpacity,
-  ActivityIndicator,
+  Platform, ActivityIndicator,
   ScrollView,
   StyleSheet,
 } from 'react-native';
@@ -31,6 +29,7 @@ import { TextField } from './TextField';
 import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
 import { useClipboardImage } from '../hooks/useClipboardImage';
 import { FadeInImage } from './FadeInImage';
+import { HoverTouchable } from './HoverTouchable';
 
 export type RecipeInputMode = 'paste' | 'link' | 'photo';
 
@@ -157,7 +156,7 @@ export function RecipeSourcePicker({
     label: string,
     icon: React.ComponentProps<typeof Ionicons>['name'],
   ) => (
-    <TouchableOpacity
+    <HoverTouchable
       style={[styles.photoBtn, picking && styles.photoBtnOff]}
       activeOpacity={interaction.activeOpacity}
       onPress={() => onPickPhoto(source)}
@@ -167,7 +166,7 @@ export function RecipeSourcePicker({
     >
       <Ionicons name={icon} size={iconSize.md} color={colors.accent} />
       <Text style={styles.photoBtnText}>{label}</Text>
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 
   return (
@@ -239,7 +238,7 @@ export function RecipeSourcePicker({
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
-            <TouchableOpacity
+            <HoverTouchable
               hitSlop={8}
               style={styles.previewClear}
               activeOpacity={interaction.activeOpacity}
@@ -248,7 +247,7 @@ export function RecipeSourcePicker({
               accessibilityLabel="Remove this photo"
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         ) : (
           <View style={styles.photoChoices}>
@@ -294,7 +293,7 @@ export function RecipeSourcePicker({
                       <Text maxFontSizeMultiplier={textScale.badge} style={styles.thumbOrderText}>{i + 1}</Text>
                     </View>
                   )}
-                  <TouchableOpacity
+                  <HoverTouchable
                     hitSlop={12}
                     style={styles.thumbClear}
                     activeOpacity={interaction.activeOpacity}
@@ -303,7 +302,7 @@ export function RecipeSourcePicker({
                     accessibilityLabel={`Remove photo ${i + 1}`}
                   >
                     <Ionicons name="close" size={iconSize.xs} color={colors.onFill} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
               ))}
             </ScrollView>
@@ -360,7 +359,7 @@ export function RecipeSourcePicker({
         </View>
       )}
 
-      <TouchableOpacity
+      <HoverTouchable
         style={[styles.runBtn, !ready && styles.runBtnOff]}
         activeOpacity={interaction.activeOpacity}
         onPress={onRun}
@@ -370,7 +369,7 @@ export function RecipeSourcePicker({
       >
         <Ionicons name="sparkles" size={iconSize.sm} color={colors.onFill} />
         <Text style={styles.runBtnText}>{ctaLabel}</Text>
-      </TouchableOpacity>
+      </HoverTouchable>
     </>
   );
 }

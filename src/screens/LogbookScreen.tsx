@@ -96,6 +96,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { explainLockedDelete } from '../utils/lockedDelete';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 interface LogbookSection {
   title: string;
@@ -1076,7 +1077,7 @@ const LogbookRow = React.memo(function LogbookRow({
             happened to the task, and a row picked for a bulk edit must not read
             as one whose completion state just changed. Selection is the dot at
             the row's other end. */}
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           style={[
             styles.checkCircle,
@@ -1118,7 +1119,7 @@ const LogbookRow = React.memo(function LogbookRow({
               color={missed ? colors.textSecondary : colors.green}
             />
           )}
-        </TouchableOpacity>
+        </HoverTouchable>
         <TouchableOpacity
           style={styles.rowContent}
           // Outside selection mode the row has never been tappable — the
@@ -1174,7 +1175,7 @@ const LogbookRow = React.memo(function LogbookRow({
               </View>
             )}
             {projectTitle && task.projectId && (
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.categoryChip}
                 onPress={() => onOpenProject(task.projectId!)}
                 disabled={selectionMode}
@@ -1185,7 +1186,7 @@ const LogbookRow = React.memo(function LogbookRow({
               >
                 <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
                 <Text style={styles.categoryChipText} numberOfLines={1}>{projectTitle}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
             {task.actualMinutes != null && (
               <Text style={styles.taskTime}>· {formatDuration(task.actualMinutes)}</Text>
@@ -1244,7 +1245,7 @@ const LogbookRow = React.memo(function LogbookRow({
           // disturbed by the swap.
           <SelectionDot selected={selected} onPress={() => onToggleSelect(task.id)} />
         ) : (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             style={styles.menuButton}
             onPress={e => onOpenMenu(task, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
@@ -1253,7 +1254,7 @@ const LogbookRow = React.memo(function LogbookRow({
             accessibilityLabel={`More options for ${task.title}`}
           >
             <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
         <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
       </View>

@@ -2,9 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
+  ScrollView, StyleSheet,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -22,6 +20,7 @@ import { EmptyState } from './EmptyState';
 import { SortableList } from './SortableList';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -177,7 +176,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
                         {count} {count === 1 ? 'task' : 'tasks'}
                       </Text>
                     </View>
-                    <TouchableOpacity
+                    <HoverTouchable
                       activeOpacity={interaction.activeOpacity}
                       onLongPress={drag}
                       delayLongPress={interaction.delayLongPress}
@@ -187,7 +186,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
                       accessibilityLabel={`Reorder ${name}`}
                     >
                       <Ionicons name="reorder-three" size={20} color={colors.textTertiary} />
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   </View>
                 );
               }}

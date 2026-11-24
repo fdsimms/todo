@@ -76,6 +76,7 @@ import {
 import { LazySheet } from '../components/LazySheet';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 // A cell is a seventh of the column, read from the window as it is now: a Mac
 // window or an iPad in Split View is resized after launch, so this can't be a
@@ -1039,7 +1040,7 @@ export function CalendarScreen() {
         {VIEW_MODES.map(mode => {
           const active = viewMode === mode.value;
           return (
-            <TouchableOpacity
+            <HoverTouchable
               key={mode.value}
               style={[styles.viewModePill, active && styles.viewModePillActive]}
               activeOpacity={interaction.activeOpacity}
@@ -1051,7 +1052,7 @@ export function CalendarScreen() {
               <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
                 {mode.label}
               </Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           );
         })}
       </View>

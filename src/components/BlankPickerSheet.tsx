@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
 import { SheetModal } from './SheetModal';
@@ -43,6 +43,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { AmountUnitField } from './AmountUnitField';
 import { ingredientAmountGroups } from '../utils/amountUnit';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -276,7 +277,7 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
   const renderChip = (blank: RecipeBlank, owner: Recipe, candidate: BlankCandidate, selected: boolean) => {
     const fromKitchen = candidate.source === 'kitchen';
     return (
-      <TouchableOpacity
+      <HoverTouchable
         key={candidate.nameKey}
         style={[styles.chip, !fromKitchen && styles.chipToBuy, selected && styles.chipOn]}
         activeOpacity={interaction.activeOpacity}
@@ -295,7 +296,7 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
           <View style={[styles.dot, needsUsing(candidate) && styles.dotSoon, selected && styles.dotOnFill]} />
         )}
         <Text style={[styles.chipText, selected && styles.chipTextOn]}>{candidate.name}</Text>
-      </TouchableOpacity>
+      </HoverTouchable>
     );
   };
 

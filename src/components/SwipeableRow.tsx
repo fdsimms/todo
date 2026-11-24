@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useColors } from '../theme/ThemeContext';
@@ -7,6 +7,7 @@ import { font, fontWeight, iconSize, spacing, interaction, type Colors } from '.
 import { haptics } from '../utils/haptics';
 import { nextSwipeArm, swipeArmDistance } from '../utils/swipeArm';
 import { runningOnMac } from '../utils/runningOnMac';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * Whether the pointer is over the row, for `SwipeActionButtons`, which shows
@@ -205,7 +206,7 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
   // Right-hand panel, revealed by swiping left.
   const renderRightActions = undoAction
     ? () => (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           style={styles.undoAction}
           onPress={() => fire(undoAction.onUndo)}
@@ -214,11 +215,11 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
         >
           <Ionicons name="arrow-undo" size={iconSize.md} color={colors.onAccent} />
           <Text style={styles.undoLabel}>Undo</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       )
     : selectAction
     ? () => (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           style={styles.selectAction}
           onPress={() => fire(selectAction.onSelect)}
@@ -226,14 +227,14 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
           accessibilityLabel={selectAction.accessibilityLabel}
         >
           <Ionicons name="ellipsis-horizontal-circle-outline" size={iconSize.md} color={colors.onAccent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )
     : undefined;
 
   // Left-hand panel, revealed by swiping right.
   const renderLeftActions = whenAction
     ? () => (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           style={[styles.whenAction, whenAction.tint ? { backgroundColor: whenAction.tint } : null]}
           onPress={() => fire(whenAction.onAction)}
@@ -241,7 +242,7 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
           accessibilityLabel={whenAction.accessibilityLabel}
         >
           <Ionicons name={whenAction.icon ?? 'time'} size={iconSize.md} color={colors.onAccent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )
     : undefined;
 
@@ -269,6 +270,8 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
         // ends up, so the reveal now tracks a swipe long enough to feel
         // deliberate.
         friction={FRICTION}
+        // A two-finger swipe on a trackpad opens the row too, not only a click and drag.
+        enableTrackpadTwoFingerGesture
         enabled={enabled}
         onSwipeableOpenStartDrag={() => { committed.current = false; startWatching(); }}
         onSwipeableWillClose={stopWatching}

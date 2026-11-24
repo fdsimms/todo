@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -15,6 +15,7 @@ import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
 import { savedDefaultRows, type SavedDefaultRow } from '../utils/savedDefaults';
 import type { GeneratedKind } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -68,7 +69,7 @@ export function SavedDefaultsSheet({ visible, onClose }: Props) {
               <Text style={styles.name}>{row.label}</Text>
               <Text style={styles.meta}>{row.summary}</Text>
               <View style={styles.actions}>
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.clear}
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => clear(row)}
@@ -77,7 +78,7 @@ export function SavedDefaultsSheet({ visible, onClose }: Props) {
                   accessibilityHint="New tasks stop starting with these answers. Existing tasks keep theirs."
                 >
                   <Text style={styles.clearText}>Clear</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             </View>
           </View>

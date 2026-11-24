@@ -11,6 +11,7 @@ import { haptics } from '../utils/haptics';
 import { useFilterField } from '../hooks/useFilterField';
 import { stackRows, type StackOption } from '../utils/stackPicker';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   stacks: StackOption[];
@@ -73,7 +74,7 @@ export function StackPickerList({ stacks, value, onSelect }: Props) {
           accessibilityLabel="Find a stack"
         />
         {!!trimmed && (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => clearQuery()}
             hitSlop={8}
@@ -81,7 +82,7 @@ export function StackPickerList({ stacks, value, onSelect }: Props) {
             accessibilityLabel="Clear search"
           >
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </View>
 

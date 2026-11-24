@@ -20,6 +20,7 @@ import { suggestProjectTasks, describeAIError, type ProjectTaskSuggestion } from
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -206,10 +207,10 @@ export function ProjectTaskSuggestionsSheet({
               );
             })}
 
-            <TouchableOpacity style={styles.regenerateBtn} onPress={() => { haptics.tap(); load(); }} activeOpacity={interaction.activeOpacity}>
+            <HoverTouchable style={styles.regenerateBtn} onPress={() => { haptics.tap(); load(); }} activeOpacity={interaction.activeOpacity}>
               <Ionicons name="refresh" size={16} color={colors.purple} />
               <Text style={styles.regenerateText}>Regenerate</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </ScrollView>
         )}
       </View>

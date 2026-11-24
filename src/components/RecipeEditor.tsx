@@ -61,6 +61,7 @@ import { CookwareWeighIn } from './CookwareWeighIn';
 import { useWeighIn } from '../hooks/useWeighIn';
 import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -450,7 +451,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
           title="Recipe details"
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} disabled={nameTaken} />}
           right={
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={handleDelete}
               hitSlop={8}
@@ -458,7 +459,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
               accessibilityLabel={`Delete recipe ${recipe.name}`}
             >
               <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
+            </HoverTouchable>
           }
         />
       }
@@ -700,7 +701,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         >
           <View style={styles.pillRow}>
             {RECIPE_MEAL_TYPES.map(type => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={type}
                 style={[styles.pill, mealType === type && styles.pillActiveNeutral]}
                 activeOpacity={interaction.activeOpacity}
@@ -716,7 +717,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
                 <Text style={[styles.pillText, mealType === type && styles.pillTextActive]}>
                   {RECIPE_MEAL_TYPE_LABELS[type]}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         </CollapsibleField>
@@ -749,7 +750,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         >
           <View style={styles.tagRow}>
             {tags.map(tag => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={tag}
                 style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
                 activeOpacity={interaction.activeOpacity}
@@ -760,7 +761,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
                 <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                 <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
                 <Ionicons name="close" size={12} color={tagColor(tag)} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             {addingTag ? (
               <TextField
@@ -881,7 +882,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         {authorOpen && authorSuggestions.length > 0 && (
           <View style={styles.suggestionChips}>
             {authorSuggestions.map(value => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={value}
                 style={styles.suggestionChip}
                 activeOpacity={interaction.activeOpacity}
@@ -890,7 +891,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
                 accessibilityLabel={`Use author ${value}`}
               >
                 <Text style={styles.suggestionChipText} numberOfLines={1}>{value}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         )}
@@ -910,7 +911,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         {sourceOpen && (
           <View style={[styles.pillRow, styles.pillRowSpaced]}>
             {RECIPE_SOURCE_TYPES.map(type => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={type}
                 style={[styles.pill, sourceType === type && styles.pillActiveNeutral]}
                 activeOpacity={interaction.activeOpacity}
@@ -925,7 +926,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
                 <Text style={[styles.pillText, sourceType === type && styles.pillTextActive]}>
                   {RECIPE_SOURCE_TYPE_LABELS[type]}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         )}
@@ -961,7 +962,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         {sourceOpen && sourceSuggestions.length > 0 && (
           <View style={styles.suggestionChips}>
             {sourceSuggestions.map(value => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={value}
                 style={styles.suggestionChip}
                 activeOpacity={interaction.activeOpacity}
@@ -978,7 +979,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
                 accessibilityLabel={`Use source ${value}`}
               >
                 <Text style={styles.suggestionChipText} numberOfLines={1}>{value}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         )}

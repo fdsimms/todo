@@ -47,6 +47,7 @@ import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -761,7 +762,7 @@ export function SuggestMealsSheet({
           )}
         </View>
         <View style={styles.rowActions}>
-          <TouchableOpacity
+          <HoverTouchable
             onPress={() => openPreview(recipe)}
             activeOpacity={interaction.activeOpacity}
             hitSlop={8}
@@ -769,7 +770,7 @@ export function SuggestMealsSheet({
             accessibilityLabel={`See ingredients for ${recipe.name}`}
           >
             <Ionicons name="information-circle-outline" size={iconSize.md} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
           <Ionicons
             name={landedDay || isSelected ? 'checkmark-circle' : 'add-circle-outline'}
             size={iconSize.md}
@@ -829,7 +830,7 @@ export function SuggestMealsSheet({
           <ActivityIndicator color={colors.purple} />
         ) : (
           <View style={styles.ideaActions}>
-            <TouchableOpacity
+            <HoverTouchable
               onPress={() => dismissIdea(idea)}
               activeOpacity={interaction.activeOpacity}
               disabled={saving}
@@ -838,7 +839,7 @@ export function SuggestMealsSheet({
               hitSlop={8}
             >
               <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
             <Ionicons
               name={isSelected ? 'checkmark-circle' : 'add-circle-outline'}
               size={iconSize.md}
@@ -969,7 +970,7 @@ export function SuggestMealsSheet({
               const active = filter === type;
               const label = type === 'all' ? 'All' : RECIPE_MEAL_TYPE_LABELS[type];
               return (
-                <TouchableOpacity
+                <HoverTouchable
                   key={type}
                   style={[styles.filterChip, active && styles.filterChipActive]}
                   activeOpacity={interaction.activeOpacity}
@@ -980,7 +981,7 @@ export function SuggestMealsSheet({
                   accessibilityState={{ selected: active }}
                 >
                   <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               );
             })}
           </ScrollView>

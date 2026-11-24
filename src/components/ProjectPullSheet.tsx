@@ -38,6 +38,7 @@ import { describeCadence } from '../utils/nudgeCadence';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -336,7 +337,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
   // carries the same hitSlop reasoning as the cycle pill: a near miss would
   // toggle the row instead.
   const scheduleButton = (p: ProjectPullProposal, task: Task, dayLabel: string) => (
-    <TouchableOpacity
+    <HoverTouchable
       style={styles.scheduleBtn}
       onPress={() => openPicker(p, task)}
       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
@@ -345,7 +346,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
       accessibilityLabel={`Pick a different day for ${displayTitleFor(task)}, currently ${dayLabel}`}
     >
       <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 
   const renderRow = (p: ProjectPullProposal) => {
@@ -385,7 +386,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
           </Text>
         </View>
         {p.candidates.length > 1 && (
-          <TouchableOpacity
+          <HoverTouchable
             style={styles.cycleBtn}
             onPress={() => cycle(p)}
             // The row's own tap target surrounds this one, so a near miss
@@ -398,7 +399,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
           >
             <Ionicons name="swap-horizontal" size={iconSize.md} color={colors.accent} />
             <Text style={styles.cycleText}>{index + 1}/{p.candidates.length}</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
         {scheduleButton(p, task, dayLabel)}
       </TouchableOpacity>
@@ -497,7 +498,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
                 {plan.empty ? describePullEmpty(plan.empty) : 'Nothing waiting.'}
               </Text>
               {plan.empty?.reason === 'vacation' && (
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.vacationOffBtn}
                   onPress={handleTurnOffVacation}
                   activeOpacity={interaction.activeOpacity}
@@ -505,7 +506,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
                   accessibilityLabel="Turn off vacation mode"
                 >
                   <Text style={styles.vacationOffText}>Turn off vacation mode</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
             </>
           ) : (
@@ -538,7 +539,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
               list is empty and a disabled "Nothing selected" under the
               explanation was one more thing saying no. */}
           {plan.proposals.length > 0 && (
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.applyBtn, selected.length === 0 && styles.applyBtnDisabled]}
             onPress={handleApply}
             disabled={selected.length === 0}
@@ -551,11 +552,11 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
                 ? 'Nothing selected'
                 : `Pull in ${selected.length} task${selected.length === 1 ? '' : 's'}`}
             </Text>
-          </TouchableOpacity>
+          </HoverTouchable>
           )}
 
           {reviewTaskId && (
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.skipBtn}
               onPress={handleSkip}
               activeOpacity={interaction.activeOpacity}
@@ -569,7 +570,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
                   ? `Nothing to pull, ask again in ${describeCadence(scopedProject.nudgeCadenceDays)}`
                   : 'Nothing to pull, mark reviewed'}
               </Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </View>
 

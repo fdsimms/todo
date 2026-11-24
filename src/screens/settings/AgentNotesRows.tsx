@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, TouchableOpacity, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useColors } from '../../theme/ThemeContext';
@@ -19,6 +19,7 @@ import { NameSheet, type NameRequest } from '../../components/NameSheet';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { BUTTON_LABEL } from '../../copy/shared';
+import { HoverTouchable } from '../../components/HoverTouchable';
 
 /**
  * What Claude is asked to keep in mind, in Settings › Data & reset › Sync,
@@ -119,7 +120,7 @@ export function AgentNotesRows() {
             onPress={() => edit(note)}
             accessibilityLabel={`Edit note: ${note.text}`}
             trailing={(
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => remove(note)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -127,7 +128,7 @@ export function AgentNotesRows() {
                 accessibilityLabel={`Remove note: ${note.text}`}
               >
                 <Ionicons name="trash-outline" size={iconSize.sm} color={colors.red} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           />
         </React.Fragment>

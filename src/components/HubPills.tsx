@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, textScale, textOnFill, type Colors } from '../theme';
@@ -22,6 +22,7 @@ import { AnimatedNumber } from './AnimatedNumber';
 import { usePillRowReveal } from '../hooks/usePillRowReveal';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   hub: NavHubId;
@@ -137,7 +138,7 @@ export function HubPills({ hub, active }: Props) {
           ? `${badge} to buy`
           : `${badge} to use up`;
         return (
-          <TouchableOpacity
+          <HoverTouchable
             key={tab.route}
             onLayout={reveal.onPillLayout(tab.route)}
             style={[styles.pill, isActive && styles.pillActive]}
@@ -172,7 +173,7 @@ export function HubPills({ hub, active }: Props) {
                 />
               </View>
             )}
-          </TouchableOpacity>
+          </HoverTouchable>
         );
       })}
     </ScrollView>

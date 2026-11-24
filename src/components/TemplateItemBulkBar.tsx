@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
@@ -9,6 +9,7 @@ import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   selectedCount: number;
@@ -48,9 +49,9 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
         <>
           <View style={styles.topRow}>
             <Text style={styles.countText}>{selectedCount} selected</Text>
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
               <Ionicons name="close" size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
           <View style={styles.actionRow}>
             <PressableScale style={styles.actionBtn} onPress={() => { haptics.tap(); setPanel('group'); }}>
@@ -68,17 +69,17 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
       {panel === 'group' && (
         <View style={styles.subPanel}>
           <View style={styles.subHeader}>
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={() => setPanel('actions')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={() => setPanel('actions')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
               <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
             <Text style={styles.subTitle}>Stack items</Text>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               style={[styles.applyBtn, !groupTitle.trim() && styles.applyBtnDisabled]}
               onPress={handleApplyGroup}
             >
               <Text style={[styles.applyBtnText, !groupTitle.trim() && styles.applyBtnTextDisabled]}>Apply</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
           <FieldLabel>Stack name</FieldLabel>
           <TextField

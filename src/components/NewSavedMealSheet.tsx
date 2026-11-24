@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -16,6 +16,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { MealSlot, SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -117,7 +118,7 @@ export function NewSavedMealSheet({ visible, slot, at, onSave, onClose }: Props)
                       <Text style={styles.foodName}>{item.label}</Text>
                       <Text style={styles.meta}>{item.quantity}</Text>
                     </View>
-                    <TouchableOpacity
+                    <HoverTouchable
                       activeOpacity={interaction.activeOpacity}
                       hitSlop={8}
                       onPress={() => { haptics.tap(); setItems(prev => prev.filter((_, n) => n !== i)); }}
@@ -125,7 +126,7 @@ export function NewSavedMealSheet({ visible, slot, at, onSave, onClose }: Props)
                       accessibilityLabel={`Remove ${item.label}`}
                     >
                       <Ionicons name="close-circle" size={iconSize.sm} color={colors.textTertiary} />
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   </View>
                 </View>
               ))}

@@ -44,6 +44,7 @@ Reach for one of these before hand-rolling the thing it does. Each component's o
   picker over a long list, a filter (see below) or a multi-step flow still wants a bottom sheet.
 - `ScreenHeader` (`src/components/ScreenHeader.tsx`) — every screen's large-title header: title, optional subtitle/overline, 34pt icon actions with badges/active tint/loading, or custom `right` content.
 - `PressableScale` (`src/components/PressableScale.tsx`) — standard press feedback (spring scale + opacity dip) for buttons, chips, FABs, icon buttons. Full-width list rows keep `TouchableOpacity` with `interaction.activeOpacity` — scaling a full row looks wrong. `noBareTouchableOpacity.test.ts` fails the build on a `TouchableOpacity` that sets no `activeOpacity`, since the 0.2 default flashes far deeper than the rest of the app.
+- `HoverTouchable` (`src/components/HoverTouchable.tsx`) — a `TouchableOpacity` that also gets the pointer effect on an iPad or Mac (`Hoverable`). Use it for a small button, chip or icon button that dims instead of scaling; a full-width row stays a plain `TouchableOpacity`, since a list gets no hover tint on a Mac (`docs/arch/wide-layout.md`, "Hover"). `PressableScale` has the effect built in.
 - `Toggle` (`src/components/Toggle.tsx`) — the on/off switch drawn in a row whose whole surface is
   the button: every editor toggle and Settings switch. The knob slides and the track colour eases;
   `look="settings"` and `onColor` cover the two styles in use. Never draw a knob inside a track by

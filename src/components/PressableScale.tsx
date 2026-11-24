@@ -11,6 +11,7 @@ import {
 import { animation, interaction } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { Hoverable } from './Hoverable';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -89,15 +90,17 @@ export function PressableScale({
   const animatedOpacity = typeof baseOpacity === 'number' ? Animated.multiply(opacity, baseOpacity) : opacity;
 
   return (
-    <AnimatedPressable
-      accessibilityRole="button"
-      style={[style, { transform: [{ scale }], opacity: animatedOpacity }]}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      onPress={handlePress}
-      {...rest}
-    >
-      {children}
-    </AnimatedPressable>
+    <Hoverable effect={rest.disabled ? 'none' : 'lift'}>
+      <AnimatedPressable
+        accessibilityRole="button"
+        style={[style, { transform: [{ scale }], opacity: animatedOpacity }]}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={handlePress}
+        {...rest}
+      >
+        {children}
+      </AnimatedPressable>
+    </Hoverable>
   );
 }

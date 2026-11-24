@@ -141,6 +141,7 @@ import { resetToMealPlan } from '../navigation/navigationRef';
 import { ProgressBar } from '../components/ProgressBar';
 import { BUTTON_LABEL } from '../copy/shared';
 import { AnimatedNumber } from '../components/AnimatedNumber';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * How long the Food log can be away before an arrival lands back on today.
@@ -1587,7 +1588,7 @@ export function FoodLogScreen() {
       <TipHost screen="foodLog" />
 
       <View style={styles.dayNav}>
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.dayNavButton}
           activeOpacity={interaction.activeOpacity}
           onPress={() => step(-1)}
@@ -1595,7 +1596,7 @@ export function FoodLogScreen() {
           accessibilityLabel="Previous day"
         >
           <Ionicons name="chevron-back" size={iconSize.sm} color={colors.text} />
-        </TouchableOpacity>
+        </HoverTouchable>
         {/* The date itself, not "Back to today" — that text said which of two
             states you were in but never which day you were actually looking
             at, so reading it meant checking the header instead. This is
@@ -1622,7 +1623,7 @@ export function FoodLogScreen() {
             </TouchableOpacity>
           )}
         </TouchableOpacity>
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.dayNavButton}
           activeOpacity={interaction.activeOpacity}
           onPress={() => step(1)}
@@ -1632,7 +1633,7 @@ export function FoodLogScreen() {
           accessibilityState={{ disabled: isToday }}
         >
           <Ionicons name="chevron-forward" size={iconSize.sm} color={isToday ? colors.textTertiary : colors.text} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
 
       <ProductRatingOffer />
@@ -2417,7 +2418,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
             <SelectionDot selected={selected} onPress={toggleSelect} />
           </View>
         ) : (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             style={styles.entryMenuButton}
             onPress={e => onOpenMenu(entry, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
@@ -2426,7 +2427,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
             accessibilityLabel={`More options for ${entry.label}`}
           >
             <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
         <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
       </View>
@@ -2498,7 +2499,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
           <Text style={styles.trayName} numberOfLines={1}>{tray.name}</Text>
           <Text style={styles.trayCount}>{tray.count} foods</Text>
           {!selectionMode && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={e => onOpenTrayMenu(tray, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2506,7 +2507,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
               accessibilityLabel={`More options for ${tray.name}`}
             >
               <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </View>
       )}

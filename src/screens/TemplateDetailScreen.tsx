@@ -64,6 +64,7 @@ import type { TaskTemplate, TemplateItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
 import { RotatingChevron } from '../components/RotatingChevron';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 type RootStackParamList = {
   TemplateDetail: { templateId: string };
@@ -401,7 +402,7 @@ export function TemplateDetailScreen() {
         }
         actions={
         <View style={styles.detailHeaderActions}>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => { if (!template) return; haptics.tap(); setSettingsTemplate(template); }}
             disabled={!template}
@@ -411,9 +412,9 @@ export function TemplateDetailScreen() {
             accessibilityHint="Rename, categorize, or delete this template"
           >
             <Ionicons name="ellipsis-horizontal" size={22} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
           {!!anthropicApiKey && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setSuggestVisible(true); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -421,9 +422,9 @@ export function TemplateDetailScreen() {
               accessibilityLabel="Suggest tasks with AI"
             >
               <Ionicons name="sparkles-outline" size={22} color={colors.purple} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => {
               if (!template || template.items.length === 0) return;
@@ -441,7 +442,7 @@ export function TemplateDetailScreen() {
               size={24}
               color={template && template.items.length > 0 ? colors.accent : colors.textTertiary}
             />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
         }
       />
@@ -818,7 +819,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
       </View>
       {!selectionMode && broken && (
         <View style={styles.brokenActions}>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => onReplace(item.id)}
             hitSlop={8}
@@ -828,8 +829,8 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
           >
             <Ionicons name="swap-horizontal-outline" size={16} color={colors.warningText} />
             <Text style={styles.brokenActionText}>Replace</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </HoverTouchable>
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => onDelete(item.id)}
             hitSlop={8}
@@ -839,7 +840,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
           >
             <Ionicons name="trash-outline" size={16} color={colors.warningText} />
             <Text style={styles.brokenActionText}>Remove</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
       )}
       {!selectionMode && !broken && isRef && (
@@ -912,9 +913,9 @@ function TemplateGroupHeader({
       <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
       <Text style={styles.groupHeaderText}>{title}</Text>
       <Text style={styles.groupHeaderCount}>{count}</Text>
-      <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Ungroup ${title}`}>
+      <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Ungroup ${title}`}>
         <Ionicons name="close-circle-outline" size={16} color={colors.textTertiary} />
-      </TouchableOpacity>
+      </HoverTouchable>
     </TouchableOpacity>
   );
 }

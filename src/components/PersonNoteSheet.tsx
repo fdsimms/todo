@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { PersonNote, PersonNoteKind } from '../types';
 import { PERSON_NOTE_KINDS } from '../types';
@@ -23,6 +23,7 @@ import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDelete } from '../utils/confirmDelete';
+import { HoverTouchable } from './HoverTouchable';
 
 const NOTE_MAX_LENGTH = 240;
 
@@ -118,9 +119,9 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={
             note ? (
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete note">
+              <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete note">
                 <Ionicons name="trash-outline" size={20} color={colors.red} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ) : (
               <View style={styles.headerSpacer} />
             )

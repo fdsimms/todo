@@ -22,6 +22,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { overlayDocked } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -123,13 +124,13 @@ export function SortFilterSheet({
             <Text style={styles.sheetTitle}>Sort & filter</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
-                <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={reset} style={styles.resetBtn}>
+                <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={reset} style={styles.resetBtn}>
                   <Text style={styles.resetText}>Clear all ({activeCount})</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+              <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           </View>
 
@@ -170,7 +171,7 @@ export function SortFilterSheet({
               {([1, 2, 3, 4] as Priority[]).map(p => {
                 const active = priorities.includes(p);
                 return (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={p}
                     style={[
@@ -188,7 +189,7 @@ export function SortFilterSheet({
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>
                       {PRIORITY_LABELS[p]}
                     </Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 );
               })}
             </View>
@@ -199,7 +200,7 @@ export function SortFilterSheet({
               {([1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
                 const active = efforts.includes(e);
                 return (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={e}
                     style={[styles.chip, active && styles.chipActive]}
@@ -211,7 +212,7 @@ export function SortFilterSheet({
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>
                       {effortRangeLabel(e)}
                     </Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 );
               })}
             </View>
@@ -223,7 +224,7 @@ export function SortFilterSheet({
               {TASK_TYPE_FILTERS.map(t => {
                 const active = types.includes(t);
                 return (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={t}
                     style={[styles.chip, active && styles.chipActive]}
@@ -237,7 +238,7 @@ export function SortFilterSheet({
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>
                       {taskTypeFilterLabel(t)}
                     </Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 );
               })}
             </View>

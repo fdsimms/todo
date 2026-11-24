@@ -105,6 +105,7 @@ import { FadeInImage } from '../components/FadeInImage';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
 import { TextField } from '../components/TextField';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * The recipe box.
@@ -1234,7 +1235,7 @@ const RecipeRow = React.memo(function RecipeRow({
           is the one control that puts a recipe on the shelf in the first
           place. */}
       {!selectionMode && (
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.planButton}
           onPress={() => onToggleUpNext(recipe)}
           activeOpacity={interaction.activeOpacity}
@@ -1247,7 +1248,7 @@ const RecipeRow = React.memo(function RecipeRow({
             size={iconSize.md}
             color={recipe.upNext ? colors.accent : colors.textTertiary}
           />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       {/* Icon-only because the row is already dense; the spoken label carries
           the meaning. Deliberately a button rather than a long-press: the
@@ -1255,7 +1256,7 @@ const RecipeRow = React.memo(function RecipeRow({
           panel either, which is select-only (#1378), same contract as every
           other SwipeableRow in the app. */}
       {!selectionMode && (
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.planButton}
           onPress={() => onPlan(recipe)}
           activeOpacity={interaction.activeOpacity}
@@ -1264,7 +1265,7 @@ const RecipeRow = React.memo(function RecipeRow({
           accessibilityLabel={`Plan ${recipe.name} onto a day`}
         >
           <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       <SwipeActionButtons enabled={!isActive && !selectionMode} selectAction={swipeSelect} />
       {!selectionMode && (

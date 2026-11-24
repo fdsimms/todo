@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, radius, spacing, interaction, type Colors } from '../theme';
@@ -15,6 +15,7 @@ import {
 } from '../utils/recipeScale';
 import { formatServingsRange } from '../utils/recipeUtils';
 import { haptics } from '../utils/haptics';
+import { HoverTouchable } from './HoverTouchable';
 
 // Same ceiling RecipeEditor's own servings stepper caps `Recipe.servings` at —
 // the base a target is a ratio against can never exceed it, so the target
@@ -130,7 +131,7 @@ export function RecipeScaleChips({
             to find that chip again once the row has scrolled or the servings
             stepper has moved the selection away from any of the presets. */}
         {!isUnscaled(active) && (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => {
               haptics.tap();
@@ -141,7 +142,7 @@ export function RecipeScaleChips({
             accessibilityLabel="Reset to the recipe as written"
           >
             <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </View>
       {servings !== null && (

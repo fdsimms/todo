@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { CountStepper } from './CountStepper';
 import { HelpText } from './HelpText';
@@ -10,6 +10,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
 import { REST_SECONDS_MAX, formatRestSeconds } from '../utils/workoutData';
+import { HoverTouchable } from './HoverTouchable';
 
 /** The rests offered as one tap, in seconds. */
 export const REST_PRESETS: readonly number[] = [30, 60, 90, 120, 180];
@@ -66,7 +67,7 @@ export function ExerciseRestSheet({ visible, exerciseName, seconds, fallbackSeco
           {REST_PRESETS.map(p => {
             const on = p === seconds;
             return (
-              <TouchableOpacity
+              <HoverTouchable
                 key={p}
                 style={[styles.preset, on && styles.presetOn]}
                 activeOpacity={interaction.activeOpacity}
@@ -76,7 +77,7 @@ export function ExerciseRestSheet({ visible, exerciseName, seconds, fallbackSeco
                 accessibilityState={{ selected: on }}
               >
                 <Text style={[styles.presetText, on && styles.presetTextOn]}>{formatRestSeconds(p)}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             );
           })}
         </View>

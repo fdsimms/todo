@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useRef } from 'react';
-import { Animated, TouchableOpacity, StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { RowHoverContext, type SelectAction, type UndoAction, type WhenAction } from './SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -7,6 +7,7 @@ import { PointerView } from './PointerView';
 import { useColors } from '../theme/ThemeContext';
 import { animation, iconSize, radius, spacing, interaction } from '../theme';
 import { haptics } from '../utils/haptics';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** The row's swipe-right "when" action. Omit where the row has none, or where another button already does it. */
@@ -99,7 +100,7 @@ export function SwipeActionButtons({
     <>
       {overlay && dragHandle ? (
         <PointerView toolTip="Drag to reorder" pointerEvents={buttonEvents}>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             // Pressed in, not pressed: the drag has to start with the button still down.
             onPressIn={dragHandle}
@@ -110,12 +111,12 @@ export function SwipeActionButtons({
             accessibilityHint="Press and drag to move this up or down the list."
           >
             <Ionicons name="reorder-two" size={iconSize.sm} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </PointerView>
       ) : null}
       {undoAction ? (
         <PointerView toolTip={undoAction.accessibilityLabel} pointerEvents={buttonEvents}>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); undoAction.onUndo(); }}
             hitSlop={8}
@@ -124,11 +125,11 @@ export function SwipeActionButtons({
             accessibilityLabel={undoAction.accessibilityLabel}
           >
             <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </PointerView>
       ) : whenAction ? (
         <PointerView toolTip={whenAction.accessibilityLabel} pointerEvents={buttonEvents}>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); whenAction.onAction(); }}
             hitSlop={8}
@@ -137,12 +138,12 @@ export function SwipeActionButtons({
             accessibilityLabel={whenAction.accessibilityLabel}
           >
             <Ionicons name={outlineOf(whenAction.icon ?? 'time')} size={iconSize.sm} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </PointerView>
       ) : null}
       {selectAction && (
         <PointerView toolTip={selectAction.accessibilityLabel} pointerEvents={buttonEvents}>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             // No tap of its own: onSelect enters selection mode, which fires a
             // heavy impact (useRowSelection), and the two landed together.
@@ -153,7 +154,7 @@ export function SwipeActionButtons({
             accessibilityLabel={selectAction.accessibilityLabel}
           >
             <Ionicons name="radio-button-off" size={iconSize.sm} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </PointerView>
       )}
     </>

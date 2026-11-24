@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { addDays } from 'date-fns/addDays';
@@ -38,6 +38,7 @@ import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDelete } from '../utils/confirmDelete';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { HoverTouchable } from './HoverTouchable';
 
 const NOTE_MAX_LENGTH = 300;
 
@@ -239,9 +240,9 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
           title={experiment ? 'Edit experiment' : 'New experiment'}
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={handleDone} disabled={refusal !== null && !blankNew} />}
           right={experiment ? (
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete experiment">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete experiment">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
+            </HoverTouchable>
           ) : (
             <View style={styles.headerSpacer} />
           )}

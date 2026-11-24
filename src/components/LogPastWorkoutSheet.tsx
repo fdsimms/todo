@@ -42,6 +42,7 @@ import {
 } from '../utils/pastWorkout';
 import type { ImportedSession } from '../utils/workoutCsv';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -330,7 +331,7 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
                 <View style={styles.exerciseHead}>
                   <Text style={styles.exerciseName} numberOfLines={2}>{nameOf(ex.exerciseId)}</Text>
                   {exercises.length > 1 && (
-                    <TouchableOpacity
+                    <HoverTouchable
                       onPress={e => {
                         haptics.tap();
                         setExerciseMenu({ exerciseId: ex.exerciseId, anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY } });
@@ -341,9 +342,9 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
                       accessibilityLabel={`More options for ${nameOf(ex.exerciseId)}`}
                     >
                       <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   )}
-                  <TouchableOpacity
+                  <HoverTouchable
                     onPress={() => removeExercise(ex.exerciseId)}
                     hitSlop={8}
                     activeOpacity={interaction.activeOpacity}
@@ -351,7 +352,7 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
                     accessibilityLabel={`Remove ${nameOf(ex.exerciseId)}`}
                   >
                     <Ionicons name="close" size={20} color={colors.textSecondary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
                 <View style={styles.tableHead}>
                   <View style={styles.colSet} />
@@ -401,7 +402,7 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
                     ))}
                     <View style={styles.colRemove}>
                       {ex.sets.length > 1 && (
-                        <TouchableOpacity
+                        <HoverTouchable
                           onPress={() => changeSets(ex.exerciseId, sets => sets.filter((_, i) => i !== index))}
                           hitSlop={8}
                           activeOpacity={interaction.activeOpacity}
@@ -409,7 +410,7 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
                           accessibilityLabel={`Remove set ${index + 1} of ${nameOf(ex.exerciseId)}`}
                         >
                           <Ionicons name="remove-circle-outline" size={20} color={colors.textTertiary} />
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       )}
                     </View>
                   </View>

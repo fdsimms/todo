@@ -170,6 +170,7 @@ import { shareContent } from '../utils/shareContent';
 import { LazySheet } from '../components/LazySheet';
 import { BUTTON_LABEL } from '../copy/shared';
 import { explainRefusedDeletes } from '../utils/lockedDelete';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -1720,7 +1721,7 @@ export function MealPlanScreen() {
                     */
                     <View style={styles.dayActions}>
                       {shoppable && (
-                        <TouchableOpacity
+                        <HoverTouchable
                           style={styles.dayAdd}
                           onPress={() => openDayAddToList(key)}
                           activeOpacity={interaction.activeOpacity}
@@ -1729,9 +1730,9 @@ export function MealPlanScreen() {
                           accessibilityLabel={`Add ${dayLabel}’s ingredients to the grocery list`}
                         >
                           <Ionicons name="cart-outline" size={iconSize.md} color={colors.textSecondary} />
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       )}
-                      <TouchableOpacity
+                      <HoverTouchable
                         style={styles.dayAdd}
                         onPress={() => { haptics.tap(); setPlanningDay(key); }}
                         activeOpacity={interaction.activeOpacity}
@@ -1740,7 +1741,7 @@ export function MealPlanScreen() {
                         accessibilityLabel={`Plan a meal on ${dayLabel}`}
                       >
                         <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </View>
                   )}
                 </View>

@@ -30,6 +30,7 @@ import {
   type GoalPlan,
 } from '../utils/rewardSavings';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -162,7 +163,7 @@ export function GoalPlanSheet({ visible, onClose, goal, current, saved, balance,
                   const key = dayKeyOf(addDays(today, p.days));
                   const on = byKey === key;
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={p.days}
                       style={[styles.preset, on && styles.presetOn]}
                       onPress={() => { haptics.tap(); aimAt(key); }}
@@ -171,7 +172,7 @@ export function GoalPlanSheet({ visible, onClose, goal, current, saved, balance,
                       accessibilityState={{ selected: on }}
                     >
                       <Text style={[styles.presetText, on && styles.presetTextOn]}>{p.label}</Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
               </View>

@@ -59,6 +59,7 @@ import { countStripScale } from '../utils/stripScale';
 import { BUTTON_LABEL } from '../copy/shared';
 import { resetToTask } from '../navigation/navigationRef';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 type RootStackParamList = {
   MedicationDetail: {
@@ -534,7 +535,7 @@ export function MedicationDetailScreen() {
           {storedUsuals.length > 0 && (
             <View style={styles.usualChips}>
               {storedUsuals.map((dose, index) => (
-                <TouchableOpacity
+                <HoverTouchable
                   key={`${dose.amount}-${dose.unit}`}
                   style={styles.usualChip}
                   activeOpacity={interaction.activeOpacity}
@@ -545,7 +546,7 @@ export function MedicationDetailScreen() {
                   <Text style={styles.usualChipText}>
                     {formatDose({ ...dose, strength: isCountedUnit(dose.unit) ? storedStrength : null })}{index === 0 && storedUsuals.length > 1 ? ' · default' : ''}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               ))}
             </View>
           )}

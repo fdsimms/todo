@@ -30,6 +30,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { activeChainStep } from '../utils/chain';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -221,7 +222,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.swapBtn}
           onPress={() => swap(task)}
           disabled={!canSwap}
@@ -235,7 +236,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
             size={iconSize.sm}
             color={canSwap ? colors.textSecondary : colors.bgQuaternary}
           />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
     );
   };
@@ -285,7 +286,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
             ))}
           </ScrollView>
 
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.confirmBtn, selected.length === 0 && styles.confirmBtnDisabled]}
             onPress={handleConfirm}
             disabled={selected.length === 0}
@@ -296,7 +297,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
                 ? 'Nothing selected'
                 : `Pin ${selected.length} task${selected.length === 1 ? '' : 's'}`}
             </Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">

@@ -17,6 +17,7 @@ import { formatTimeOfDay } from '../utils/dateUtils';
 import { describeEventLength } from '../utils/eventLength';
 import { liveStartProblem, sameMinute, shiftDays, spanMinutes, withClock, workoutTimesProblem } from '../utils/workoutTimes';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 /** Which of the two times is being changed. */
 export type TimeEnd = 'start' | 'end';
@@ -147,7 +148,7 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
           </View>
 
           <View style={styles.day}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => stepDay(-1)}
               hitSlop={8}
@@ -156,9 +157,9 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
               accessibilityLabel="Previous day"
             >
               <Ionicons name="chevron-back" size={18} color={colors.accentText} />
-            </TouchableOpacity>
+            </HoverTouchable>
             <Text style={styles.dayText} accessibilityLiveRegion="polite">{dayName(active, now)}</Text>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => stepDay(1)}
               hitSlop={8}
@@ -167,7 +168,7 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
               accessibilityLabel="Next day"
             >
               <Ionicons name="chevron-forward" size={18} color={colors.accentText} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
 
           <View style={styles.tiles}>

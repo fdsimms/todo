@@ -18,6 +18,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { overlayDocked } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 export interface ChipFilterOption {
   key: string;
@@ -129,18 +130,18 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
             <Text style={styles.sheetTitle}>{title}</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && onClearAll && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onClearAll(); }}
                   style={styles.resetBtn}
                   accessibilityRole="button"
                 >
                   <Text style={styles.resetText}>Clear all ({activeCount})</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+              <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           </View>
 
@@ -154,7 +155,7 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
                 {group.label !== '' && <Text style={styles.groupLabel}>{group.label}</Text>}
                 <View style={styles.chips}>
                   {group.showAllChip && (
-                    <TouchableOpacity
+                    <HoverTouchable
                       style={[styles.chip, group.selected.length === 0 && { backgroundColor: colors.accent }]}
                       onPress={() => { haptics.tap(); group.onClear?.(); }}
                       activeOpacity={interaction.activeOpacity}
@@ -165,7 +166,7 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
                         styles.chipText,
                         group.selected.length === 0 && styles.chipTextActive,
                       ]}>All</Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   )}
                   {group.options.map(option => {
                     const active = group.selected.includes(option.key);

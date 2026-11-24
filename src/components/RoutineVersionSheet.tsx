@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -20,6 +20,7 @@ import {
   changeParts, diffIsEmpty, diffRoutines, routineHistory, versionSpanText, versionStats, workoutCountText,
   type ItemDiff, type RoutineVersionEntry,
 } from '../utils/routineVersions';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -212,34 +213,34 @@ export function RoutineVersionSheet({ visible, routineId, versionId, onClose, on
             <View style={styles.actions}>
               {!entry.current && (
                 <>
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={[styles.button, styles.primary]}
                     onPress={() => { haptics.tap(); onRestore(entry.version); }}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
                   >
                     <Text style={styles.primaryText}>{`Restore version ${entry.number}`}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                   {onStart && (
-                    <TouchableOpacity
+                    <HoverTouchable
                       style={[styles.button, styles.secondary]}
                       onPress={() => onStart(entry.version.id)}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
                     >
                       <Text style={styles.secondaryText}>Start a workout from it</Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   )}
                 </>
               )}
-              <TouchableOpacity
+              <HoverTouchable
                 style={[styles.button, styles.secondary]}
                 onPress={copy}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
               >
                 <Text style={styles.secondaryText}>Copy to a new routine</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
             {!entry.current && (
               <HelpText style={styles.foot}>

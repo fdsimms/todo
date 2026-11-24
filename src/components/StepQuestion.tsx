@@ -1,11 +1,12 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ChainItem } from '../types';
 import { deliverableMeta } from '../utils/deliverables';
 import { useColors } from '../theme/ThemeContext';
 import { radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** The step this button belongs to. */
@@ -41,7 +42,7 @@ export function StepQuestion({ step, datesNextStep, onPress }: Props) {
     : `Ask something when ${step.title} is completed`;
 
   return (
-    <TouchableOpacity
+    <HoverTouchable
       onPress={() => { haptics.tap(); onPress(); }}
       style={[styles.button, kind && styles.buttonSet]}
       activeOpacity={interaction.activeOpacity}
@@ -59,7 +60,7 @@ export function StepQuestion({ step, datesNextStep, onPress }: Props) {
           <Ionicons name="arrow-forward" size={9} color={colors.onAccent} />
         </View>
       )}
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

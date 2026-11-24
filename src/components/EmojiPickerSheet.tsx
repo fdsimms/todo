@@ -25,6 +25,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -183,7 +184,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
               accessibilityLabel="Search emoji"
             />
             {!!query && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => clearQuery()}
                 hitSlop={8}
@@ -191,7 +192,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
                 accessibilityLabel="Clear search"
               >
                 <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
 
@@ -227,7 +228,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
               {EMOJI_GROUPS.map((group, index) => {
                 const active = index === groupIndex;
                 return (
-                  <TouchableOpacity
+                  <HoverTouchable
                     key={group.name}
                     style={[styles.tab, active && styles.tabActive]}
                     onPress={() => switchGroup(index)}
@@ -241,7 +242,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
                       size={17}
                       color={active ? colors.accent : colors.textTertiary}
                     />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 );
               })}
             </View>

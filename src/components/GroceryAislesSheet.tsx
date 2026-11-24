@@ -49,6 +49,7 @@ import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryGroupBy, type 
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -546,7 +547,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
 
                 {!editing && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     onPress={() => setAisleNonFood(aisle, !nonFood)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     activeOpacity={interaction.activeOpacity}
@@ -560,10 +561,10 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                       size={iconSize.md}
                       color={nonFood ? colors.accent : colors.textTertiary}
                     />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
 
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={() => confirmDeleteAisle(aisle)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   activeOpacity={interaction.activeOpacity}
@@ -571,7 +572,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                   accessibilityLabel={`Delete ${aisle}`}
                 >
                   <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </TouchableOpacity>
             );
           }}
@@ -762,7 +763,7 @@ function StoresTab({
               {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
 
               {!editing && (
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={() => onToggleRange(shop.id)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   activeOpacity={interaction.activeOpacity}
@@ -781,11 +782,11 @@ function StoresTab({
                     size={iconSize.md}
                     color={shop.aisles !== null ? colors.accent : colors.textTertiary}
                   />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
 
               {!editing && (
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={() => onToggleExcluded(shop.id, !shop.excludeFromSuggestions)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   activeOpacity={interaction.activeOpacity}
@@ -799,10 +800,10 @@ function StoresTab({
                     size={iconSize.md}
                     color={shop.excludeFromSuggestions ? colors.accent : colors.textTertiary}
                   />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
 
-              <TouchableOpacity
+              <HoverTouchable
                 onPress={() => onDelete(shop.id, shop.name)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 activeOpacity={interaction.activeOpacity}
@@ -810,7 +811,7 @@ function StoresTab({
                 accessibilityLabel={`Delete ${shop.name}`}
               >
                 <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </TouchableOpacity>
 
             {rangeOpen && (

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -35,6 +35,7 @@ import { LazySheet } from '../components/LazySheet';
 import { HelpText } from '../components/HelpText';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 type RootStackParamList = {
   ExperimentDetail: { experimentId: string };
@@ -187,7 +188,7 @@ export function ExperimentDetailScreen() {
         title={experiment.label}
         onBack={() => navigation.goBack()}
         actions={
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setSheetOpen(true); }}
             hitSlop={8}
@@ -195,7 +196,7 @@ export function ExperimentDetailScreen() {
             accessibilityLabel="Edit experiment"
           >
             <Ionicons name="create-outline" size={iconSize.md} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         }
       />
 
@@ -213,7 +214,7 @@ export function ExperimentDetailScreen() {
               compared with {experiment.days ? `the ${days(experiment.days)}` : 'the same number of days'} before the day you start it.
             </Text>
             <View style={styles.startActions}>
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.startButton}
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => startToday()}
@@ -221,7 +222,7 @@ export function ExperimentDetailScreen() {
                 accessibilityLabel={`Start ${experiment.label} today`}
               >
                 <Text style={styles.startButtonText}>Start today</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
               <InlineAction label="Started earlier" icon="calendar-outline" variant="neutral" onPress={() => { haptics.tap(); setPickingStart(true); }} />
             </View>
           </View>

@@ -13,6 +13,7 @@ import { afterMenuDismissed } from '../utils/sheetModal';
 import { alertPermissionOff } from '../utils/permissionAlert';
 import { pickPhotoIntoFolder, storedFileName, type RecipePhotoSource } from '../utils/recipePhoto';
 import { JOURNAL_PHOTO_FOLDER, MAX_JOURNAL_PHOTOS, journalPhotosOnDevice } from '../utils/journalPhotos';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** File names in the journal photo folder. Names whose file isn't here are left out. */
@@ -78,7 +79,7 @@ export function JournalPhotoStrip({ photos, title, onAdd, onRemove, size = 64 }:
             <FadeInImage source={{ uri: photo.uri }} style={[styles.thumb, { width: size, height: size }]} resizeMode="cover" />
           </TouchableOpacity>
           {!!onRemove && (
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.remove}
               onPress={() => { haptics.tap(); onRemove(photo.name); }}
               hitSlop={8}
@@ -87,12 +88,12 @@ export function JournalPhotoStrip({ photos, title, onAdd, onRemove, size = 64 }:
               accessibilityLabel={`Remove photo ${index + 1}`}
             >
               <Ionicons name="close" size={12} color={colors.onFill} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </View>
       ))}
       {editable && photos.length < MAX_JOURNAL_PHOTOS && (
-        <TouchableOpacity
+        <HoverTouchable
           style={[styles.add, { width: size, height: size }]}
           onPress={(e: GestureResponderEvent) => {
             haptics.tap();
@@ -103,7 +104,7 @@ export function JournalPhotoStrip({ photos, title, onAdd, onRemove, size = 64 }:
           accessibilityLabel="Add a photo"
         >
           <Ionicons name="camera-outline" size={iconSize.md} color={colors.accentText} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       {mountMenu && <ActionMenu
         visible={menuAnchor !== null}

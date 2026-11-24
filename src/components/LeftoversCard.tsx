@@ -17,6 +17,7 @@ import {
   isPlannedPastKeepUntil,
   liveLeftovers,
 } from '../utils/leftovers';
+import { HoverTouchable } from './HoverTouchable';
 
 /** How many rows the card shows before folding the rest behind "+N more". */
 const COLLAPSED_ROWS = 3;
@@ -155,7 +156,7 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
         </View>
         <View style={styles.headerActions}>
           {hasHistory && (
-            <TouchableOpacity
+            <HoverTouchable
               onPress={onHistory}
               activeOpacity={interaction.activeOpacity}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -163,9 +164,9 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
               accessibilityLabel="What happened to past leftovers"
             >
               <Ionicons name="time-outline" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
-          <TouchableOpacity
+          <HoverTouchable
             onPress={onAdd}
             activeOpacity={interaction.activeOpacity}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -173,7 +174,7 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
             accessibilityLabel="Log a leftover"
           >
             <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
       </View>
 
@@ -226,7 +227,7 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
                     (the dot, the chevron) are bare too, and a filled tile here
                     would read as a second kind of row rather than an action on
                     this one. Same call the recipe rows make. */}
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={() => { haptics.tap(); onPlan(leftover); }}
                   activeOpacity={interaction.activeOpacity}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -234,7 +235,7 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
                   accessibilityLabel={`Plan ${leftover.title} onto a day`}
                 >
                   <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
-                </TouchableOpacity>
+                </HoverTouchable>
                 <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>

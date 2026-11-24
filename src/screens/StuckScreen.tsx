@@ -46,6 +46,7 @@ import type { Person, Task } from '../types';
 import { resetToPeople } from '../navigation/navigationRef';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 const CHECKBOX_SIZE = 22;
 
@@ -683,7 +684,7 @@ const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel
           </View>
         )}
       </TouchableOpacity>
-      <TouchableOpacity
+      <HoverTouchable
         style={styles.releaseButton}
         onPress={() => onRelease(task)}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -692,7 +693,7 @@ const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel
         accessibilityLabel={`Stop ${title} waiting`}
       >
         <Ionicons name="arrow-forward" size={iconSize.sm} color={colors.accent} />
-      </TouchableOpacity>
+      </HoverTouchable>
     </View>
   );
 });

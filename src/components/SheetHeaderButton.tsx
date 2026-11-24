@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, Text, TouchableOpacity, type StyleProp, type TextStyle } from 'react-native';
+import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { registerCommit } from '../utils/keyActions';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   label: string;
@@ -65,7 +66,7 @@ export function SheetHeaderButton({
   // nothing when tapped reads as the app not noticing. It never calls onPress,
   // and it doesn't dim on press, since nothing happened.
   return (
-    <TouchableOpacity
+    <HoverTouchable
       onPress={disabled ? refuse : onPress}
       hitSlop={8}
       style={filled ? styles.pill : undefined}
@@ -86,7 +87,7 @@ export function SheetHeaderButton({
       >
         {label}
       </Text>
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

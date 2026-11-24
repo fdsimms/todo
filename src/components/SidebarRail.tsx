@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
+import { ScrollView, StyleSheet, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NamedIcon } from './CoinIcon';
@@ -15,6 +15,7 @@ import { currentTabName } from '../navigation/navigationRef';
 import { tipsFor } from '../utils/tips';
 import { haptics } from '../utils/haptics';
 import type { ActionMenuAction } from './ActionMenu';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   activeTab: string;
@@ -83,7 +84,7 @@ export function SidebarRail({ activeTab, onNavigate, onOpenSettings, onOpenAskCl
     const badge = row.kind === 'screen' && row.destination.route === 'Tips' && unreadTipCount > 0;
     return (
       <PointerView key={label} toolTip={label}>
-        <TouchableOpacity
+        <HoverTouchable
           style={[styles.button, active && { backgroundColor: colors.bgSecondary }]}
           onPress={e => (row.kind === 'screen' ? onNavigate(row.destination.route) : openHub(row, e))}
           // A hub's long press opens the screen it would open in the full sidebar,
@@ -97,7 +98,7 @@ export function SidebarRail({ activeTab, onNavigate, onOpenSettings, onOpenAskCl
         >
           <NamedIcon name={icon} size={RAIL_ICON} color={active ? colors.accent : colors.textSecondary} />
           {badge && <View style={[styles.dot, { backgroundColor: colors.accent }]} />}
-        </TouchableOpacity>
+        </HoverTouchable>
       </PointerView>
     );
   };
@@ -105,7 +106,7 @@ export function SidebarRail({ activeTab, onNavigate, onOpenSettings, onOpenAskCl
   return (
     <View style={[styles.rail, { paddingTop: insets.top + spacing.md, paddingBottom: spacing.md + insets.bottom }]}>
       <PointerView toolTip="Find a screen or setting">
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.button}
           onPress={() => { haptics.tap(); setSidebarCollapsed(false); }}
           activeOpacity={interaction.activeOpacity}
@@ -114,7 +115,7 @@ export function SidebarRail({ activeTab, onNavigate, onOpenSettings, onOpenAskCl
           accessibilityHint="Expands the sidebar"
         >
           <Ionicons name="search" size={RAIL_ICON} color={colors.textSecondary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </PointerView>
       <ScrollView style={styles.rows} contentContainerStyle={styles.rowsContent} showsVerticalScrollIndicator={false}>
         {rows.map(renderRow)}
@@ -122,7 +123,7 @@ export function SidebarRail({ activeTab, onNavigate, onOpenSettings, onOpenAskCl
       <View style={[styles.footer, { borderTopColor: colors.separator }]}>
         {askClaudeReady && (
           <PointerView toolTip="Ask Claude">
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.button}
               onPress={onOpenAskClaude}
               activeOpacity={interaction.activeOpacity}
@@ -130,11 +131,11 @@ export function SidebarRail({ activeTab, onNavigate, onOpenSettings, onOpenAskCl
               accessibilityLabel="Ask Claude"
             >
               <Ionicons name="sparkles" size={RAIL_ICON} color={colors.purple} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </PointerView>
         )}
         <PointerView toolTip="Settings">
-          <TouchableOpacity
+          <HoverTouchable
             style={styles.button}
             onPress={onOpenSettings}
             activeOpacity={interaction.activeOpacity}
@@ -142,10 +143,10 @@ export function SidebarRail({ activeTab, onNavigate, onOpenSettings, onOpenAskCl
             accessibilityLabel="Settings"
           >
             <Ionicons name="settings-outline" size={RAIL_ICON} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </PointerView>
         <PointerView toolTip="Expand sidebar (⌃⌘S)">
-          <TouchableOpacity
+          <HoverTouchable
             style={styles.button}
             onPress={() => { haptics.tap(); setSidebarCollapsed(false); }}
             activeOpacity={interaction.activeOpacity}
@@ -153,7 +154,7 @@ export function SidebarRail({ activeTab, onNavigate, onOpenSettings, onOpenAskCl
             accessibilityLabel="Expand sidebar"
           >
             <Ionicons name="chevron-forward" size={RAIL_ICON} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </PointerView>
       </View>
       {hubMenu.element}

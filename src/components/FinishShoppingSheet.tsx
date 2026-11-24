@@ -45,6 +45,7 @@ import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { SHOP_NAME_TAKEN } from '../utils/groceryItemWrite';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -1052,7 +1053,7 @@ export function FinishShoppingSheet({
                     </Text>
                     {!!replacesName && <Text style={styles.rowQuantity}>Replaces {replacesName}</Text>}
                   </View>
-                  <TouchableOpacity
+                  <HoverTouchable
                     onPress={() => removeIncidental(row.id)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     activeOpacity={interaction.activeOpacity}
@@ -1060,7 +1061,7 @@ export function FinishShoppingSheet({
                     accessibilityLabel={`Remove ${row.name} from the cart`}
                   >
                     <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
               );
             })}
@@ -1170,7 +1171,7 @@ export function FinishShoppingSheet({
                           trailing edge, and beside the row rather than inside
                           it so it's its own control for VoiceOver. */}
                       {freezerShown && (
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           style={styles.freezerControl}
                           onPress={() => toggleFrozen(row.id)}
@@ -1188,7 +1189,7 @@ export function FinishShoppingSheet({
                             size={iconSize.sm}
                             color={isFrozen ? colors.accent : colors.textTertiary}
                           />
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       )}
                     </View>
                   );

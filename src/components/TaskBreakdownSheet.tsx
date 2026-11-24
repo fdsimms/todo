@@ -24,6 +24,7 @@ import { InlineAction } from './InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { TITLE_MAX_LENGTH } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -326,7 +327,7 @@ export function TaskBreakdownSheet({ visible, taskId, manual = false, onClose }:
           />
           <Text style={styles.hint}>Sent with Regenerate so the steps match what you mean.</Text>
 
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.regenerateBtn, loading && styles.regenerateDisabled]}
             onPress={() => { haptics.tap(); load(); }}
             disabled={loading}
@@ -334,7 +335,7 @@ export function TaskBreakdownSheet({ visible, taskId, manual = false, onClose }:
           >
             <Ionicons name="refresh" size={16} color={colors.purple} />
             <Text style={styles.regenerateText}>{hasContext ? 'Regenerate with these details' : 'Regenerate'}</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
           </>)}
         </ScrollView>
       </View>

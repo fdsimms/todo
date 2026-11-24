@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -18,6 +18,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { catalogItemForKey } from '../utils/groceryPlural';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { HoverTouchable } from './HoverTouchable';
 
 const CHECKBOX_SIZE = 22;
 
@@ -117,7 +118,7 @@ export function ExtractedIngredientRow({
     <>
       {!!sectionHeader && <Text style={styles.sectionHeader}>{sectionHeader}</Text>}
       <View style={[styles.row, (linkOpen || sectionOpen) && styles.rowAttached]}>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onToggle(); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -128,7 +129,7 @@ export function ExtractedIngredientRow({
           <View style={[styles.checkbox, checked && styles.checkboxOn]}>
             {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onFill} />}
           </View>
-        </TouchableOpacity>
+        </HoverTouchable>
 
         <View style={styles.body}>
           <InlineEditableText
@@ -162,7 +163,7 @@ export function ExtractedIngredientRow({
           </View>
         )}
 
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); setLinkOpen(v => !v); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -179,9 +180,9 @@ export function ExtractedIngredientRow({
             size={iconSize.sm}
             color={linkedItem ? colors.purple : colors.textTertiary}
           />
-        </TouchableOpacity>
+        </HoverTouchable>
 
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); setSectionOpen(v => !v); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -194,7 +195,7 @@ export function ExtractedIngredientRow({
             size={iconSize.sm}
             color={row.section ? colors.purple : colors.textTertiary}
           />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
 
       {linkOpen && (

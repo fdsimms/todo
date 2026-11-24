@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf } from '../utils/dateUtils';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   days: Date[];
@@ -36,7 +37,7 @@ export function DayChipRow({ days, isOn, onPress, accessibilityLabelFor, disable
         const on = isOn(key);
         const inert = !!disableOn && on;
         return (
-          <TouchableOpacity
+          <HoverTouchable
             key={key}
             style={[styles.chip, on && styles.chipOn]}
             disabled={inert}
@@ -48,7 +49,7 @@ export function DayChipRow({ days, isOn, onPress, accessibilityLabelFor, disable
           >
             <Text style={[styles.top, on && styles.textOn]}>{format(day, 'EEEEE')}</Text>
             <Text style={[styles.num, on && styles.textOn]}>{format(day, 'd')}</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         );
       })}
     </View>

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import {
-  View, TextInput, TouchableOpacity, StyleSheet, Platform,
+  View, TextInput, StyleSheet, Platform,
   type StyleProp, type ViewStyle,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -8,6 +8,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { FilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /**
@@ -72,7 +73,7 @@ export function SearchField(
         accessibilityLabel={accessibilityLabel}
       />
       {field.query.length > 0 && (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={field.clear}
           hitSlop={8}
@@ -80,7 +81,7 @@ export function SearchField(
           accessibilityLabel="Clear search"
         >
           <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
     </View>
   );

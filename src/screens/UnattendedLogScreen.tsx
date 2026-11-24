@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, SectionList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, SectionList, StyleSheet, Alert } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -50,6 +50,7 @@ import {
 import type { ActivityFilter } from '../utils/unattendedLedger';
 import type { UnattendedEntry } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * What the app did while nobody was looking.
@@ -236,7 +237,7 @@ export function UnattendedLogScreen() {
 
       {sourceOptions.length > 1 && (
         <View style={styles.filter}>
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.sourceButton, kind !== null && styles.sourceButtonActive]}
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setSourceOpen(true); }}
@@ -248,7 +249,7 @@ export function UnattendedLogScreen() {
               {filterLabel}
             </Text>
             <Ionicons name="chevron-down" size={iconSize.sm} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
       )}
       <ActivitySourceSheet

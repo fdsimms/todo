@@ -16,6 +16,7 @@ import {
   type OverflowPill,
 } from '../utils/pillOverflow';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 export interface PillGroupOption extends OverflowPill {
   /**
@@ -322,7 +323,7 @@ export function PillGroup({
         ))}
 
         {hiddenCount > 0 && (
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.pill, styles.morePill]}
             activeOpacity={interaction.activeOpacity}
             onPress={revealAll}
@@ -332,7 +333,7 @@ export function PillGroup({
           >
             <Text style={[styles.pillText, styles.moreText]}>{hiddenCount} more</Text>
             <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
 
         {/* One control, two states. With a filter field on screen the text to

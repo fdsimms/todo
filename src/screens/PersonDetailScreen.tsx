@@ -73,6 +73,7 @@ import {
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { explainLockedDelete } from '../utils/lockedDelete';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 type RootStackParamList = {
   // `returnTo` is the tab a task row's people link was tapped from (see
@@ -443,7 +444,7 @@ export function PersonDetailScreen() {
                 color={person.pinned ? colors.accent : colors.textSecondary}
               />
             </TouchableOpacity>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setEditing(true); }}
               hitSlop={8}
@@ -451,7 +452,7 @@ export function PersonDetailScreen() {
               accessibilityLabel={`Edit ${name}`}
             >
               <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         }
       />
@@ -818,7 +819,7 @@ export function PersonDetailScreen() {
                       </Text>
                     </View>
                     <View style={styles.suggestActions}>
-                      <TouchableOpacity
+                      <HoverTouchable
                         onPress={() => acceptSuggestion(suggestion)}
                         hitSlop={8}
                         activeOpacity={interaction.activeOpacity}
@@ -826,8 +827,8 @@ export function PersonDetailScreen() {
                         accessibilityLabel={`Add ${suggestion.title} to history`}
                       >
                         <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </HoverTouchable>
+                      <HoverTouchable
                         onPress={() => dismissSuggestion(suggestion)}
                         hitSlop={8}
                         activeOpacity={interaction.activeOpacity}
@@ -835,7 +836,7 @@ export function PersonDetailScreen() {
                         accessibilityLabel={`Don’t suggest ${suggestion.title} again`}
                       >
                         <Ionicons name="close" size={iconSize.md} color={colors.textTertiary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </View>
                   </View>
                 </View>
@@ -966,7 +967,7 @@ function ReachButton({ icon, label, onPress, styles, colors }: {
   colors: Colors;
 }) {
   return (
-    <TouchableOpacity
+    <HoverTouchable
       style={styles.reachButton}
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
@@ -975,7 +976,7 @@ function ReachButton({ icon, label, onPress, styles, colors }: {
     >
       <Ionicons name={icon} size={16} color={colors.accent} />
       <Text style={styles.reachLabel}>{label}</Text>
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

@@ -139,6 +139,7 @@ import { useClockTimeToken } from '../hooks/useClockTimeToken';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { completesThroughQueue } from '../utils/bulkCompletion';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -2719,7 +2720,7 @@ export function BackfillScreen() {
     : active.kind === 'item' ? ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
     : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
   const redoButton = multiFields ? undefined : (
-    <TouchableOpacity
+    <HoverTouchable
       activeOpacity={interaction.activeOpacity}
       onPress={confirmStartOver}
       hitSlop={8}
@@ -2727,7 +2728,7 @@ export function BackfillScreen() {
       accessibilityLabel={`Redo ${redoLabel.toLowerCase()} from scratch`}
     >
       <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 
   // The all-fields walk's own line, shared by every pool's page: how many fields
@@ -2827,7 +2828,7 @@ export function BackfillScreen() {
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
             {history.length > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
@@ -2835,11 +2836,11 @@ export function BackfillScreen() {
                 accessibilityLabel="Previous task"
               >
                 <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
@@ -2847,7 +2848,7 @@ export function BackfillScreen() {
                 accessibilityLabel="Skip this task for now"
               >
                 <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         )}
@@ -3011,7 +3012,7 @@ export function BackfillScreen() {
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
             {history.length > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
@@ -3019,11 +3020,11 @@ export function BackfillScreen() {
                 accessibilityLabel="Previous category"
               >
                 <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
@@ -3031,7 +3032,7 @@ export function BackfillScreen() {
                 accessibilityLabel="Skip this category for now"
               >
                 <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         )}
@@ -3138,7 +3139,7 @@ export function BackfillScreen() {
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
             {history.length > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
@@ -3146,11 +3147,11 @@ export function BackfillScreen() {
                 accessibilityLabel="Previous person"
               >
                 <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
@@ -3158,7 +3159,7 @@ export function BackfillScreen() {
                 accessibilityLabel="Skip this person for now"
               >
                 <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         )}
@@ -3456,7 +3457,7 @@ export function BackfillScreen() {
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
             {history.length > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
@@ -3464,11 +3465,11 @@ export function BackfillScreen() {
                 accessibilityLabel="Previous project"
               >
                 <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
@@ -3476,7 +3477,7 @@ export function BackfillScreen() {
                 accessibilityLabel="Skip this project for now"
               >
                 <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         )}
@@ -3621,7 +3622,7 @@ export function BackfillScreen() {
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
             {history.length > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
@@ -3629,11 +3630,11 @@ export function BackfillScreen() {
                 accessibilityLabel="Previous recipe"
               >
                 <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
@@ -3641,7 +3642,7 @@ export function BackfillScreen() {
                 accessibilityLabel="Skip this recipe for now"
               >
                 <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         )}
@@ -3837,7 +3838,7 @@ export function BackfillScreen() {
       {sessionTotal > 0 && (
         <View style={styles.progressRow}>
           {history.length > 0 && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={goBack}
               hitSlop={8}
@@ -3845,11 +3846,11 @@ export function BackfillScreen() {
               accessibilityLabel="Previous item"
             >
               <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
           <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
           {!!currentId && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={skip}
               hitSlop={8}
@@ -3857,7 +3858,7 @@ export function BackfillScreen() {
               accessibilityLabel="Skip this item for now"
             >
               <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </View>
       )}

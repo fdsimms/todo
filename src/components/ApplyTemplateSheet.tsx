@@ -89,6 +89,7 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -589,7 +590,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       return (
         <View>
           <View style={[styles.itemRow, indent]}>
-            <TouchableOpacity hitSlop={11}
+            <HoverTouchable hitSlop={11}
               onPress={() => toggleNode(node)}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="checkbox"
@@ -601,7 +602,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                 size={22}
                 color={allChecked ? colors.accent : colors.textTertiary}
               />
-            </TouchableOpacity>
+            </HoverTouchable>
             <TouchableOpacity
               style={styles.itemContent}
               onPress={() => toggleCollapsed(node.item.id)}
@@ -877,7 +878,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
           )}
           </ScrollView>
 
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.applyBtn, applyDisabled && styles.applyBtnDisabled]}
             onPress={onItems ? handleApply : () => { haptics.tap(); Keyboard.dismiss(); setStep('items'); }}
             disabled={applyDisabled}
@@ -894,7 +895,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                     ? `Set ${missingAnchors.map(anchorName).join(' and ')} first`
                     : `Add ${selectedCount} task${selectedCount === 1 ? '' : 's'}`}
             </Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
@@ -964,7 +965,7 @@ function QuestionRow({
           {displayOptions(question).map(option => {
             const on = picked.includes(option);
             return (
-              <TouchableOpacity
+              <HoverTouchable
                 key={option}
                 style={[styles.answerPill, on && styles.answerPillOn]}
                 onPress={() => { haptics.tap(); onChange(toggleAnswer(question, value, option)); }}
@@ -974,7 +975,7 @@ function QuestionRow({
                 accessibilityLabel={option}
               >
                 <Text style={[styles.answerPillText, on && styles.answerPillTextOn]}>{option}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             );
           })}
         </View>

@@ -17,6 +17,7 @@ import { type PendingEdits } from '../hooks/usePendingEdits';
 import { haptics } from '../utils/haptics';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
+import { HoverTouchable } from './HoverTouchable';
 
 const CHECKBOX_SIZE = 22;
 const LINE_CHECKBOX_SIZE = 18;
@@ -100,7 +101,7 @@ export function ImportApplyRow({
   return (
     <View style={styles.block}>
       <View style={styles.row}>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onToggle(); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -111,7 +112,7 @@ export function ImportApplyRow({
           <View style={[styles.checkbox, checked && styles.checkboxOn]}>
             {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onFill} />}
           </View>
-        </TouchableOpacity>
+        </HoverTouchable>
 
         {/* The heading and its summary toggle the tick; the editable fields
             below them don't — a tap meant for the servings box must not be
@@ -153,7 +154,7 @@ export function ImportApplyRow({
               const lineChecked = acceptedLines?.has(i) ?? true;
               return (
                 <View key={`${editKeyPrefix}-${i}`} style={styles.previewLine}>
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); onToggleLine?.(i); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -166,7 +167,7 @@ export function ImportApplyRow({
                         <Ionicons name="checkmark" size={12} color={colors.onFill} />
                       )}
                     </View>
-                  </TouchableOpacity>
+                  </HoverTouchable>
 
                   {ordered && <Text style={styles.previewIndex}>{i + 1}.</Text>}
 

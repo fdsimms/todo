@@ -9,6 +9,7 @@ import { SpotlightScrim } from './SpotlightOverlay';
 import type { CardPosition } from '../utils/contextCards';
 import { CheckPop } from './CheckPop';
 import { PressableScale } from './PressableScale';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   row: ContextRow;
@@ -141,7 +142,7 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
   const glyphName = row.kind === 'event' ? 'calendar-outline' : 'restaurant-outline';
 
   const leading = onMarkCooked ? (
-    <TouchableOpacity
+    <HoverTouchable
       style={styles.slot}
       onPress={markCooked}
       disabled={marked}
@@ -160,7 +161,7 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
           </View>
         )}
       </View>
-    </TouchableOpacity>
+    </HoverTouchable>
   ) : (
     <View style={styles.slot}>
       <Ionicons name={glyphName} size={iconSize.sm} color={colors.textTertiary} />

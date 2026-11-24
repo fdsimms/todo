@@ -38,6 +38,7 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -174,7 +175,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
           title="Edit template"
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
           right={
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={handleDelete}
               hitSlop={8}
@@ -182,7 +183,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
               accessibilityLabel={`Delete template ${template.name}`}
             >
               <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
+            </HoverTouchable>
           }
         />
       }
@@ -206,22 +207,22 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
           onToggle={() => setCategoryOpen(v => !v)}
         >
           <View style={styles.pillRow}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !category && styles.pillActiveNeutral]}
               onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
             >
               <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             {categories.map(cat => (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 key={cat.id}
                 style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
                 onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
               >
                 <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             {addingCategory ? (
               <TextField
@@ -261,7 +262,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
         >
           <View style={styles.pillRow}>
             {CONTAINER_OPTIONS.map(opt => (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 key={opt}
                 style={[styles.pill, container === opt && styles.pillActiveNeutral]}
@@ -270,7 +271,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
                 <Text style={[styles.pillText, container === opt && styles.pillTextActive]}>
                   {CONTAINER_LABELS[opt]}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
           <Text style={styles.containerNote}>{CONTAINER_NOTES[container]}</Text>
