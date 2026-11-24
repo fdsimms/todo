@@ -42,6 +42,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 interface ListProps {
   /**
@@ -222,7 +223,7 @@ export function CategoryPickerList({
           accessibilityLabel={searchPlaceholder ?? 'Find or add a category'}
         />
         {!!trimmed && (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => clearQuery()}
             hitSlop={8}
@@ -230,7 +231,7 @@ export function CategoryPickerList({
             accessibilityLabel="Clear search"
           >
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </View>
 

@@ -117,6 +117,7 @@ import { openExternalUrl } from '../utils/openExternalUrl';
 import { activeGoalPlan, describeGoalPace, describeSetback, savingsBalance, savingsNeededFor, spendingBalance, spendingPerDay } from '../utils/rewardSavings';
 import { getLogicalToday } from '../utils/dateUtils';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -702,7 +703,7 @@ export function RewardsScreen() {
           <HelpText style={styles.hint}>Shown on the reward’s tile. Leave it blank to use a gift icon.</HelpText>
           <View style={styles.presetRow}>
             {GLYPH_CHOICES.map(g => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={g}
                 style={[styles.presetChip, draftGlyph === g && styles.presetChipActive]}
                 onPress={() => {
@@ -715,7 +716,7 @@ export function RewardsScreen() {
                 accessibilityLabel={`Icon ${g}`}
               >
                 <Text style={styles.glyphChipText}>{g}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
           <TextField
@@ -743,7 +744,7 @@ export function RewardsScreen() {
             // over it quietly drops the highlight rather than lying about it.
             const active = draftCost === String(cost);
             return (
-              <TouchableOpacity
+              <HoverTouchable
                 key={f.id}
                 style={[styles.presetChip, active && styles.presetChipActive]}
                 onPress={() => {
@@ -757,7 +758,7 @@ export function RewardsScreen() {
                 accessibilityLabel={`${f.label}, ${formatCoins(cost)}`}
               >
                 <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>{f.label}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             );
           })}
         </View>

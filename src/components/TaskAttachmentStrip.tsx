@@ -15,6 +15,7 @@ import { alertPermissionOff } from '../utils/permissionAlert';
 import { pickPhotoIntoFolder, storedFileName, type RecipePhotoSource } from '../utils/recipePhoto';
 import { MAX_TASK_ATTACHMENTS, TASK_FILE_FOLDER, attachmentBadge, taskAttachmentsOnDevice } from '../utils/taskFiles';
 import { openTaskFile, pickTaskDocument } from '../utils/taskFilePick';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   attachments: readonly TaskAttachment[];
@@ -122,7 +123,7 @@ export function TaskAttachmentStrip({ attachments, title, onAdd, onRemove, size 
                 <Text style={styles.fileName} numberOfLines={1}>{item.title}</Text>
               )}
               {!!onRemove && (
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.remove}
                   onPress={() => { haptics.tap(); onRemove(item.name); }}
                   hitSlop={8}
@@ -131,7 +132,7 @@ export function TaskAttachmentStrip({ attachments, title, onAdd, onRemove, size 
                   accessibilityLabel={item.kind === 'photo' ? `Remove photo ${index + 1}` : `Remove ${item.title}`}
                 >
                   <Ionicons name="close" size={12} color={colors.onFill} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
             </View>
           ))}

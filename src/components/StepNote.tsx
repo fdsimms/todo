@@ -1,10 +1,11 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ChainItem } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   step: Pick<ChainItem, 'title' | 'notes'>;
@@ -23,7 +24,7 @@ export function StepNote({ step, onPress }: Props) {
   const has = !!step.notes?.trim();
 
   return (
-    <TouchableOpacity
+    <HoverTouchable
       onPress={() => { haptics.tap(); onPress(); }}
       style={[styles.button, has && styles.buttonSet]}
       activeOpacity={interaction.activeOpacity}
@@ -36,7 +37,7 @@ export function StepNote({ step, onPress }: Props) {
         size={iconSize.sm}
         color={has ? colors.text : colors.textTertiary}
       />
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

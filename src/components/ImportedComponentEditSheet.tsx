@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SheetModal } from './SheetModal';
@@ -31,6 +31,7 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -263,7 +264,7 @@ export function ImportedComponentEditSheet({
                 const kept = draft.acceptedSteps.has(i);
                 return (
                   <View key={`step-${i}`} style={styles.stepRow}>
-                    <TouchableOpacity
+                    <HoverTouchable
                       activeOpacity={interaction.activeOpacity}
                       onPress={() => { haptics.tap(); toggleIn('acceptedSteps', i); }}
                       hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -274,7 +275,7 @@ export function ImportedComponentEditSheet({
                       <View style={[styles.checkbox, kept && styles.checkboxOn]}>
                         {kept && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onFill} />}
                       </View>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                     <Text style={styles.stepIndex}>{i + 1}.</Text>
                     <View style={styles.stepBody}>
                       <InlineEditableText

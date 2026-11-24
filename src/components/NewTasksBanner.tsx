@@ -11,6 +11,9 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import type { Task } from '../types';
 import { RotatingChevron } from './RotatingChevron';
+import { displayTitleFor } from '../utils/visibilityUtils';
+import { plannedRotationItem } from '../utils/rotation';
+import { getCurrentDayStart } from '../utils/dateUtils';
 
 /** How many titles the banner lists before it collapses the rest into "+N more". */
 const PREVIEW_LIMIT = 4;
@@ -168,8 +171,11 @@ function NewTaskRow({
     ? categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category
     : null;
 
+  // The title the Today row shows: the active chain step, or the member a
+  // rotation has planned for today, rather than the task's own name.
+  const title = plannedRotationItem(task, getCurrentDayStart())?.title ?? displayTitleFor(task);
   const description = [
-    task.title,
+    title,
     projectTitle ? `in ${projectTitle}` : null,
     task.category ? `in ${task.category}` : null,
   ].filter(Boolean).join(', ');
@@ -185,7 +191,7 @@ function NewTaskRow({
       <View style={[styles.dot, projectTitle ? styles.dotAligned : null]} />
       <View style={styles.taskBody}>
         <View style={styles.titleLine}>
-          <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
+          <Text style={styles.taskTitle} numberOfLines={1}>{title}</Text>
           {/* A category alone stays on the title's line, where it qualifies it
               ("Play violin, the one in Hobbies"). It moves down to join the
               project rather than trailing it, because two labels behind a

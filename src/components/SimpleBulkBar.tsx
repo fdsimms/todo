@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
@@ -7,6 +7,7 @@ import { spacing, font, fontWeight, radius, border, interaction, type Colors } f
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   selectedCount: number;
@@ -70,17 +71,17 @@ export function SimpleBulkBar({
       onLayout={onHeightChange ? e => onHeightChange(e.nativeEvent.layout.height) : undefined}
     >
       <View style={styles.topRow}>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           style={styles.selectAllBtn}
           onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
         >
           <Text style={styles.selectAllText}>{allSelected ? 'Deselect all' : 'Select all'}</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
         <Text style={styles.countText}>{selectedCount} selected</Text>
-        <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
+        <HoverTouchable activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
           <Ionicons name="close" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
       <View style={styles.actionRow}>
         <PressableScale

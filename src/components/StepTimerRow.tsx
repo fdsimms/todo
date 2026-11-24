@@ -21,6 +21,7 @@ import {
   stepTimerRemaining,
   stepTimerRings,
 } from '../utils/stepTimers';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   timer: RecipeStepTimer;
@@ -155,7 +156,7 @@ export function StepTimerRow({ timer, hideRecipeName, onToggle, onAddTime, onRes
             timer row (`RecipeTimerRow` does the same) and the two line up down
             the card. Cancel is the control furthest from it. No hitSlop on
             any of them: the gaps are even and each target is a full 44pt. */}
-        <TouchableOpacity
+        <HoverTouchable
           onPress={ready ? onRemove : handleRemove}
           style={styles.secondaryBtn}
           activeOpacity={interaction.activeOpacity}
@@ -167,10 +168,10 @@ export function StepTimerRow({ timer, hideRecipeName, onToggle, onAddTime, onRes
             size={iconSize.sm}
             color={ready ? colors.textSecondary : colors.textTertiary}
           />
-        </TouchableOpacity>
+        </HoverTouchable>
 
         {!repeating && (
-          <TouchableOpacity
+          <HoverTouchable
             onPress={onAddTime}
             style={styles.secondaryBtn}
             activeOpacity={interaction.activeOpacity}
@@ -178,11 +179,11 @@ export function StepTimerRow({ timer, hideRecipeName, onToggle, onAddTime, onRes
             accessibilityLabel={`Add a minute to the ${name} timer`}
           >
             <Text style={styles.secondaryBtnText}>+1m</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
 
         {ready ? (
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.primaryBtn, styles.primaryBtnWide]}
             activeOpacity={interaction.activeOpacity}
             onPress={repeating ? onNextRound : onRestart}
@@ -191,9 +192,9 @@ export function StepTimerRow({ timer, hideRecipeName, onToggle, onAddTime, onRes
           >
             <Ionicons name={repeating ? 'play' : 'refresh'} size={14} color={colors.onAccent} />
             <Text style={styles.primaryBtnText}>{repeating ? 'Next' : 'Again'}</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         ) : (
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.primaryBtn, running && styles.primaryBtnRunning]}
             activeOpacity={interaction.activeOpacity}
             onPress={onToggle}
@@ -201,7 +202,7 @@ export function StepTimerRow({ timer, hideRecipeName, onToggle, onAddTime, onRes
             accessibilityLabel={`${running ? 'Pause' : 'Resume'} the ${name} timer`}
           >
             <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.orangeText : colors.onAccent} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
 
       </View>

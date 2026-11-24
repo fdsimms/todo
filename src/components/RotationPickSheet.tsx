@@ -18,6 +18,7 @@ import type { Task } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
 import { openExternalUrl } from '../utils/openExternalUrl';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -149,7 +150,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
           </Text>
           {sub !== '' && <Text style={[styles.ago, isPlanned && styles.agoPlanned]}>{sub}</Text>}
         </View>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onPlan(member.item.id); }}
           hitSlop={8}
@@ -164,9 +165,9 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
             size={iconSize.sm}
             color={isPlanned ? colors.accentText : colors.textSecondary}
           />
-        </TouchableOpacity>
+        </HoverTouchable>
         {link !== null && (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => openLink(link)}
             hitSlop={8}
@@ -175,7 +176,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
             accessibilityLabel={`Open the link for ${member.item.title}`}
           >
             <Ionicons name="open-outline" size={iconSize.sm} color={colors.accentText} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
         {isDone && <Ionicons name="checkmark" size={iconSize.md} color={colors.done} />}
       </TouchableOpacity>

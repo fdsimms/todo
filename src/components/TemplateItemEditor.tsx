@@ -101,6 +101,7 @@ import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { HoverTouchable } from './HoverTouchable';
 
 // Ceilings for the two steppers whose hand-rolled versions had none. Both sit
 // well past any real value; CountStepper needs a bound to disable its + key
@@ -1069,7 +1070,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         >
           <View style={styles.blankRow}>
             {blanks.map(name => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={name}
                 style={styles.blankChip}
                 onPress={() => removeBlank(name)}
@@ -1079,7 +1080,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               >
                 <Text style={styles.blankChipText}>{`{${name}}`}</Text>
                 <Ionicons name="close" size={12} color={colors.accent} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             {addingBlank ? (
               <TextField
@@ -1147,7 +1148,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   {question.options.map(option => {
                     const on = conditions.some(c => c.questionId === question.id && c.values.includes(option));
                     return (
-                      <TouchableOpacity
+                      <HoverTouchable
                         key={option}
                         style={[styles.conditionPill, on && styles.conditionPillOn]}
                         onPress={() => toggleCondition(question.id, option)}
@@ -1157,7 +1158,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         accessibilityLabel={`${questionLabel(question)}: ${option}`}
                       >
                         <Text style={[styles.conditionPillText, on && styles.conditionPillTextOn]}>{option}</Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     );
                   })}
                 </View>
@@ -1295,7 +1296,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 >
                   <Text style={styles.chainItemTitleText}>{sub.title}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
                   hitSlop={8}
@@ -1304,7 +1305,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   accessibilityLabel={`Delete subtask ${sub.title}`}
                 >
                   <Ionicons name="close" size={14} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
           />
@@ -1648,7 +1649,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                           {chainItem.title}
                         </Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => {
                           // Same by-id tracking as the SortableList's own
@@ -1672,7 +1673,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         accessibilityLabel={`Remove chain step ${chainItem.title}`}
                       >
                         <Ionicons name="close" size={14} color={colors.textTertiary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                       </View>
                       <View style={styles.chainStepControls}>
                       <StepMinutes
@@ -1823,7 +1824,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               renderItem={(rotationItem, _displayIndex, drag) => (
               <View>
               <View style={styles.chainItemRow}>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onLongPress={drag}
                   delayLongPress={interaction.delayLongPress}
@@ -1832,7 +1833,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   accessibilityLabel={`Reorder ${rotationItem.title}`}
                 >
                   <Ionicons name="reorder-two-outline" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
                 <TextField
                   style={styles.chainInput}
                   value={rotationItem.title}
@@ -1847,7 +1848,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   taskLinkUrl={null}
                   onPress={() => setLinkMemberId(rotationItem.id)}
                 />
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setRotationItems(prev => prev.filter(r => r.id !== rotationItem.id))}
                   hitSlop={8}
@@ -1855,7 +1856,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   accessibilityLabel={`Remove ${rotationItem.title} from the rotation`}
                 >
                   <Ionicons name="close" size={14} color={colors.textSecondary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
               <View style={styles.rotationCountRow}>
                 <Text style={styles.optionHint}>Times a week</Text>
@@ -1976,7 +1977,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           {deadlineOffsetDays !== null && (
             <>
               <View style={styles.timePillRow}>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   style={[styles.timePill, !!deadlineTime && styles.timePillActive]}
                   onPress={openDeadlineTimePicker}
@@ -1986,9 +1987,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <Text style={[styles.timePillText, !!deadlineTime && styles.timePillTextActive]}>
                     {deadlineTime ? formatHHMM(deadlineTime) : 'Add a time'}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
                 {deadlineTime !== null && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     style={styles.timePill}
                     onPress={() => { setDeadlineTime(null); setDeadlineTimePickerOpen(false); }}
@@ -1996,7 +1997,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     accessibilityLabel="Make the deadline the whole day"
                   >
                     <Text style={styles.timePillText}>Clear</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
               {deadlineTimePickerOpen && (
@@ -2009,22 +2010,22 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     themeVariant={isDark ? 'dark' : 'light'}
                   />
                   <View style={styles.intervalRow}>
-                    <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+                    <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
                       style={styles.intervalBtn}
                       onPress={() => setDeadlineTimePickerOpen(false)}
                       accessibilityRole="button"
                       accessibilityLabel="Cancel deadline time"
                     >
                       <Ionicons name="close" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+                    </HoverTouchable>
+                    <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
                       style={styles.intervalBtn}
                       onPress={confirmDeadlineTimePicker}
                       accessibilityRole="button"
                       accessibilityLabel="Confirm deadline time"
                     >
                       <Ionicons name="checkmark" size={16} color={colors.accent} />
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   </View>
                 </>
               )}
@@ -2045,7 +2046,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
                 const active = timeSegments.includes(tod);
                 return (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={tod}
                     style={[styles.timePill, active && styles.timePillActive]}
@@ -2057,7 +2058,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
                       {capitalize(tod)}
                     </Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 );
               })}
             </View>
@@ -2079,7 +2080,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             </View>
             {(
               dueOffsetDays !== null && reminderOffsetMinutes !== null ? (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setReminderOffsetMinutes(null)}
                   hitSlop={8}
@@ -2087,9 +2088,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   accessibilityLabel="Clear reminder"
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               ) : (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   style={styles.setBtn}
                   onPress={() => {
@@ -2104,7 +2105,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   accessibilityLabel="Set a reminder"
                 >
                   <Text style={styles.setOffsetText}>Set</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )
             )}
           </View>
@@ -2183,7 +2184,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           {showTimeWindow && (
             <>
               <View style={styles.timePillRow}>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   style={[styles.timePill, !!windowStart && styles.timePillActive]}
                   onPress={() => openWindowPicker('start')}
@@ -2191,8 +2192,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
                     {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </HoverTouchable>
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   style={[styles.timePill, !!windowEnd && styles.timePillActive]}
                   onPress={() => openWindowPicker('end')}
@@ -2200,7 +2201,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
                     {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
               {windowPickerMode !== 'none' && (
                 <View style={styles.windowKindRow}>
@@ -2251,22 +2252,22 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     themeVariant={isDark ? 'dark' : 'light'}
                   />
                   <View style={styles.intervalRow}>
-                    <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+                    <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
                       style={styles.intervalBtn}
                       onPress={() => setWindowPickerMode('none')}
                       accessibilityRole="button"
                       accessibilityLabel="Cancel time window"
                     >
                       <Ionicons name="close" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+                    </HoverTouchable>
+                    <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
                       style={styles.intervalBtn}
                       onPress={confirmWindowPicker}
                       accessibilityRole="button"
                       accessibilityLabel="Confirm time window"
                     >
                       <Ionicons name="checkmark" size={16} color={colors.accent} />
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   </View>
                 </>
               )}
@@ -2301,7 +2302,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               {recurrenceType === 'none' && <Text style={styles.optionHint}>Recreates on this schedule when applied and completed</Text>}
             </View>
             {recurrenceType !== 'none' ? (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => setRecurrenceType('none')}
                 hitSlop={8}
@@ -2309,9 +2310,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 accessibilityLabel="Clear repeat schedule"
               >
                 <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ) : (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 style={styles.setBtn}
                 onPress={() => { haptics.tap(); setRecurrenceType('daily'); }}
@@ -2320,7 +2321,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 accessibilityLabel="Set a repeat schedule"
               >
                 <Text style={styles.setOffsetText}>Set</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
           {recurrenceType !== 'none' && (
@@ -2457,7 +2458,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             {polarity !== 'negative' && penaltyMinutes !== null && (
               <>
                 <View style={styles.timePillRow}>
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     style={[styles.timePill, !!penaltyCutoffTime && styles.timePillActive]}
                     onPress={openPenaltyPicker}
@@ -2465,9 +2466,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     <Text style={[styles.timePillText, !!penaltyCutoffTime && styles.timePillTextActive]}>
                       {penaltyCutoffTime ? formatHHMM(penaltyCutoffTime) : 'End of day'}
                     </Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                   {penaltyCutoffTime !== null && (
-                    <TouchableOpacity
+                    <HoverTouchable
                       activeOpacity={interaction.activeOpacity}
                       style={styles.timePill}
                       onPress={() => { setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }}
@@ -2475,7 +2476,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                       accessibilityLabel="Judge at the end of the day instead"
                     >
                       <Text style={styles.timePillText}>Clear</Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   )}
                 </View>
                 {penaltyPickerOpen && (
@@ -2488,22 +2489,22 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                       themeVariant={isDark ? 'dark' : 'light'}
                     />
                     <View style={styles.intervalRow}>
-                      <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+                      <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
                         style={styles.intervalBtn}
                         onPress={() => setPenaltyPickerOpen(false)}
                         accessibilityRole="button"
                         accessibilityLabel="Cancel cutoff time"
                       >
                         <Ionicons name="close" size={16} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+                      </HoverTouchable>
+                      <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
                         style={styles.intervalBtn}
                         onPress={confirmPenaltyPicker}
                         accessibilityRole="button"
                         accessibilityLabel="Confirm cutoff time"
                       >
                         <Ionicons name="checkmark" size={16} color={colors.accent} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </View>
                   </>
                 )}
@@ -2520,17 +2521,17 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onToggle={() => toggleField('effort')}
           >
             <View style={styles.pillRow}>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 style={[styles.pill, effort === 0 && estimatedMinutes === null && styles.pillActiveNeutral]}
                 onPress={() => { haptics.tap(); setEffort(0); setEstimatedMinutes(null); }}
               >
                 <Text style={[styles.pillText, effort === 0 && estimatedMinutes === null && styles.pillTextActive]}>—</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
               {ESTIMATE_PRESET_MINUTES.map(mins => {
                 const active = chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
                 return (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={mins}
                     style={[styles.pill, active && styles.pillActiveNeutral]}
@@ -2542,7 +2543,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     }}
                   >
                     <Text style={[styles.pillText, active && styles.pillTextActive]}>{formatDuration(mins)}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 );
               })}
             </View>
@@ -2559,7 +2560,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     label="Estimate"
                   />
                   <Text style={styles.intervalValueSm}>(custom)</Text>
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => setEstimatedMinutes(null)}
                     hitSlop={8}
@@ -2567,7 +2568,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     accessibilityLabel="Clear custom estimate"
                   >
                     <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </>
               ) : (
                 <InlineAction
@@ -2614,22 +2615,22 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onToggle={() => toggleField('category')}
           >
             <View style={styles.pillRow}>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 style={[styles.pill, !category && styles.pillActiveNeutral]}
                 onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
               >
                 <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
               {allCategories.map(cat => (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   key={cat}
                   style={[styles.pill, category === cat && styles.pillActiveNeutral]}
                   onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
                 >
                   <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               ))}
             </View>
           </CollapsibleField>
@@ -2645,7 +2646,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           >
             <View style={styles.tagRow}>
               {tags.map(tag => (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   key={tag}
                   style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
@@ -2654,7 +2655,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                   <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
                   <Ionicons name="close" size={12} color={tagColor(tag)} />
-                </TouchableOpacity>
+                </HoverTouchable>
               ))}
               {addingTag ? (
                 <TextField
@@ -2714,7 +2715,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   {waitCandidates.map(candidate => {
                     const on = blockedByItemIds.includes(candidate.id);
                     return (
-                      <TouchableOpacity
+                      <HoverTouchable
                         key={candidate.id}
                         style={[styles.conditionPill, on && styles.conditionPillOn]}
                         onPress={() => {
@@ -2729,7 +2730,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         <Text style={[styles.conditionPillText, on && styles.conditionPillTextOn]} numberOfLines={1}>
                           {candidate.title || 'Untitled'}
                         </Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     );
                   })}
                 </View>
@@ -2752,7 +2753,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                       {deliverableOptionsFor(q).map(option => {
                         const on = answerGate?.itemId === q.id && answerGate.answers.includes(option);
                         return (
-                          <TouchableOpacity
+                          <HoverTouchable
                             key={option}
                             style={[styles.conditionPill, on && styles.conditionPillOn]}
                             onPress={() => toggleGateAnswer(q.id, option)}
@@ -2762,7 +2763,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                             accessibilityLabel={`Only if ${q.title} is ${option}`}
                           >
                             <Text style={[styles.conditionPillText, on && styles.conditionPillTextOn]}>{option}</Text>
-                          </TouchableOpacity>
+                          </HoverTouchable>
                         );
                       })}
                     </View>
@@ -3126,7 +3127,7 @@ function OffsetRow({
           )}
         </View>
         {offset !== null ? (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => onChange(null)}
             hitSlop={8}
@@ -3134,9 +3135,9 @@ function OffsetRow({
             accessibilityLabel={`Clear ${label.toLowerCase()}`}
           >
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         ) : (
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             style={styles.setBtn}
             onPress={() => { haptics.tap(); onChange(0); }}
@@ -3145,12 +3146,12 @@ function OffsetRow({
             accessibilityLabel={`Set ${label.toLowerCase()}`}
           >
             <Text style={styles.setOffsetText}>Set</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </View>
       {offset !== null && (
         <View style={styles.intervalRow}>
-          <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+          <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset - 1)}
             // A week at a time on a hold: "6 weeks before" was 42 taps.
@@ -3161,9 +3162,9 @@ function OffsetRow({
             accessibilityHint="Hold to move a week earlier"
           >
             <Ionicons name="remove" size={16} color={colors.text} />
-          </TouchableOpacity>
+          </HoverTouchable>
           <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor, away)}</Text>
-          <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+          <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset + 1)}
             onLongPress={() => { haptics.impactMedium(); onChange(offset + 7); }}
@@ -3173,7 +3174,7 @@ function OffsetRow({
             accessibilityHint="Hold to move a week later"
           >
             <Ionicons name="add" size={16} color={colors.text} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
       )}
     </>

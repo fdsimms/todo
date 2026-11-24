@@ -102,7 +102,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedWithinSuperset, nextSet, previousBadge,
+  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedUpNextOrder, movedWithinSuperset, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   ALL_RESTS_OFF_KEY, restSecondsFor, restsAreOff, supersetColor, supersetColorIndexes, supersetGroup,
@@ -174,6 +174,7 @@ import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { sameMinute } from '../utils/workoutTimes';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /** "today" is this workout's note on the exercise, "always" the exercise's own. */
 type NoteKind = 'today' | 'always';
@@ -656,6 +657,15 @@ export function WorkoutModeScreen() {
       if (!order) return;
       store.reorderExercises(session.id, order);
     }
+    haptics.tap();
+    animateLayout();
+  };
+  // Puts the exercise (its whole superset) right after the one being done now.
+  const moveUpNext = (exerciseId: string) => {
+    if (!session) return;
+    const order = movedUpNextOrder(sets, exerciseId);
+    if (!order) return;
+    useWorkoutStore.getState().reorderExercises(session.id, order);
     haptics.tap();
     animateLayout();
   };
@@ -1352,7 +1362,7 @@ export function WorkoutModeScreen() {
                     <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
                   </TouchableOpacity>
                   <View style={styles.exTitleSpacer} />
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={styles.exMenuButton}
                     hitSlop={8}
                     onPress={() => toggleCollapsed(viewed.exerciseId)}
@@ -1362,8 +1372,8 @@ export function WorkoutModeScreen() {
                     accessibilityLabel={`${collapsed ? 'Show' : 'Hide'} the sets of ${viewedInfo?.name ?? 'this exercise'}`}
                   >
                     <RotatingChevron open={!collapsed} size={iconSize.md} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </HoverTouchable>
+                  <HoverTouchable
                     style={styles.exMenuButton}
                     hitSlop={8}
                     onPress={e => {
@@ -1375,7 +1385,7 @@ export function WorkoutModeScreen() {
                     accessibilityLabel={`More options for ${viewedInfo?.name ?? 'this exercise'}`}
                   >
                     <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                   </View>
                   {collapsed && (
                     <Text style={styles.exMuscles} numberOfLines={1}>{collapsedSummary}</Text>
@@ -1526,6 +1536,7 @@ export function WorkoutModeScreen() {
                       proposal={proposal}
                       unit={unit}
                       scale={scale}
+                      sets={viewed.sets}
                       // Offered until a working set is logged or the plan
                       // already asks for it; after that it is shown plainly,
                       // as the target being worked to.
@@ -1573,7 +1584,7 @@ export function WorkoutModeScreen() {
                       styles={styles}
                     >
                       <View style={styles.setRow}>
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           style={styles.setButton}
                           onPress={e => openSetMenu(set, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
@@ -1584,7 +1595,7 @@ export function WorkoutModeScreen() {
                           accessibilityHint="Changes the set type"
                         >
                           <Text style={setBadge(set.kind) ? styles.setBadge : styles.setNumber}>{label}</Text>
-                        </TouchableOpacity>
+                        </HoverTouchable>
                         {prev ? (
                           <TouchableOpacity
                             activeOpacity={interaction.activeOpacity}
@@ -1604,7 +1615,7 @@ export function WorkoutModeScreen() {
                         )}
                         {lines.length > 0 && (
                           <RecordPop celebrate={recordPopId === set.id}>
-                          <TouchableOpacity
+                          <HoverTouchable
                             style={styles.recordPill}
                             activeOpacity={interaction.activeOpacity}
                             hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }}
@@ -1617,7 +1628,7 @@ export function WorkoutModeScreen() {
                             accessibilityHint="Shows what it was for"
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
-                          </TouchableOpacity>
+                          </HoverTouchable>
                           </RecordPop>
                         )}
                         {fields.map(f => (
@@ -1636,7 +1647,7 @@ export function WorkoutModeScreen() {
                             accessibilityLabel={`${setName(set.kind, label)} ${fieldLabel(f, kind)}`}
                           />
                         ))}
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           style={styles.colCheck}
                           onPress={() => toggleSet(set, viewed)}
@@ -1648,7 +1659,7 @@ export function WorkoutModeScreen() {
                           <CheckPop checked={done} style={styles.check} checkedStyle={styles.checkDone}>
                             <Ionicons name="checkmark" size={14} color={colors.onDone} />
                           </CheckPop>
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       </View>
                       {!!nextPlate && nextSet?.id === set.id && (
                         <View style={styles.nextPlates}>
@@ -1683,7 +1694,7 @@ export function WorkoutModeScreen() {
 
         {session && finishing ? (
           <View style={[styles.footer, styles.footRow, { paddingBottom: insets.bottom + spacing.smd }]}>
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.footButton, styles.footSecondary]}
               onPress={() => { haptics.tap(); setFinishing(false); }}
               activeOpacity={interaction.activeOpacity}
@@ -1692,15 +1703,15 @@ export function WorkoutModeScreen() {
             >
               <Ionicons name="chevron-back" size={iconSize.sm} color={colors.accentText} />
               <Text style={styles.footSecondaryText}>Back</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             {plan.loggedCount === 0 ? (
-              <TouchableOpacity style={[styles.footButton, styles.footDanger]} onPress={discardEmpty} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+              <HoverTouchable style={[styles.footButton, styles.footDanger]} onPress={discardEmpty} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                 <Text style={styles.footDangerText}>Discard workout</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ) : (
-              <TouchableOpacity style={[styles.footButton, styles.footPrimary]} onPress={save} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+              <HoverTouchable style={[styles.footButton, styles.footPrimary]} onPress={save} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                 <Text style={styles.footPrimaryText}>Save workout</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         ) : null}
@@ -1797,6 +1808,12 @@ export function WorkoutModeScreen() {
                   icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
                   onPress: () => moveExercise(menuId, direction),
                 })),
+              ...(movedUpNextOrder(sets, menuId) !== null ? [{
+                key: 'up-next',
+                label: 'Move to up next',
+                icon: 'play-skip-forward-outline' as const,
+                onPress: () => moveUpNext(menuId),
+              }] : []),
               ...(partners.length > 0 ? [{
                 key: 'superset',
                 label: 'Superset with…',
@@ -2044,6 +2061,7 @@ function DeletableSet({ label, onDelete, children, styles }: {
       ref={ref}
       friction={2}
       overshootRight={false}
+      enableTrackpadTwoFingerGesture
       // The panel is laid out behind the whole row, so the row has to be
       // opaque or the red shows through around the inputs as it slides.
       childrenContainerStyle={styles.setFace}
@@ -2065,8 +2083,9 @@ function DeletableSet({ label, onDelete, children, styles }: {
   );
 }
 
-function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
+function SuggestionCard({ proposal, unit, scale, sets, offer, onUse, styles }: {
   proposal: Proposal;
+  sets: readonly WorkoutSet[];
   unit: WeightUnit;
   scale: number;
   offer: boolean;
@@ -2115,9 +2134,9 @@ function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
       {offer && headline && (
         <View style={styles.suggestActions}>
           <InlineAction
-            label={proposalActionLabel(proposal, unit, scale)}
+            label={proposalActionLabel(proposal, unit, scale, sets)}
             onPress={onUse}
-            accessibilityLabel={`${proposalActionLabel(proposal, unit, scale)} on the sets not done yet`}
+            accessibilityLabel={`${proposalActionLabel(proposal, unit, scale, sets)} on the sets not done yet`}
           />
         </View>
       )}

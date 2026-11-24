@@ -11,6 +11,7 @@ import {
   mealThawTitle,
   staleMealThawTasks,
   wantedMealThaws,
+  thawTargetsForMeal,
 } from '../utils/mealThawTasks';
 
 // mealPlan.ts reaches dateUtils and so the settings store, which nothing here
@@ -124,7 +125,11 @@ describe('frozenForMeal', () => {
     const r = stirFry();
     const chicken = frozenChicken();
     const result = frozen(entry(TOMORROW, r.id), byId(r), [chicken, item({ name: 'Rice', isStaple: true })]);
-    expect(result).toEqual({ names: ['chicken thighs'], kitchenEntryId: `grocery-${chicken.id}` });
+    expect(result).toEqual({
+      names: ['chicken thighs'],
+      kitchenEntryId: `grocery-${chicken.id}`,
+      targets: [{ kind: 'grocery', sourceId: chicken.id, name: 'Chicken thighs' }],
+    });
     expect(mealThawLinkUrl(result!)).toBe(`dundundun://kitchen?item=grocery-${encodeURIComponent(chicken.id)}`);
   });
 
@@ -140,7 +145,7 @@ describe('frozenForMeal', () => {
     const scallions = item({ name: 'Scallions', frozenAt: '2026-08-01T09:00:00.000Z' });
     // Chicken bought yesterday, rice not in the kitchen at all, frozen scallions only garnish.
     const fresh = item({ name: 'Chicken thighs', purchaseCount: 1, lastPurchasedAt: '2026-08-21T12:00:00.000Z' });
-    expect(frozen(entry(TOMORROW, r.id), byId(r), [fresh, scallions])).toEqual({ names: [], kitchenEntryId: null });
+    expect(frozen(entry(TOMORROW, r.id), byId(r), [fresh, scallions])).toEqual({ names: [], kitchenEntryId: null, targets: [] });
   });
 
   it('believes "Out of it" over the freezer, the way the Pantry does', () => {
@@ -167,7 +172,11 @@ describe('frozenForMeal', () => {
   it('names a frozen leftover planned for the meal', () => {
     const chili = leftover();
     expect(frozen(entry(TOMORROW, null, { leftoverId: chili.id }), byId(), [], [chili]))
-      .toEqual({ names: ['Chili'], kitchenEntryId: `leftover-${chili.id}` });
+      .toEqual({
+        names: ['Chili'],
+        kitchenEntryId: `leftover-${chili.id}`,
+        targets: [{ kind: 'leftover', sourceId: chili.id, name: 'Chili' }],
+      });
     // Thawed already, or finished: nothing to take out.
     expect(frozen(entry(TOMORROW, null, { leftoverId: chili.id }), byId(), [], [{ ...chili, frozenAt: null }])!.names).toEqual([]);
     expect(frozen(entry(TOMORROW, null, { leftoverId: chili.id }), byId(), [], [{ ...chili, finishedAt: NOW.toISOString(), outcome: 'eaten' }])).toBeNull();
@@ -232,5 +241,36 @@ describe('staleMealThawTasks', () => {
     expect(stale([task('m-x', { completed: true }), task('m-y', { generatedKind: 'mealShortfall' })], [], byId(r), [])).toEqual([]);
     expect(mealThawEntryId(task('m-1'))).toBe('m-1');
     expect(mealThawEntryId(task('m-1', { generatedKind: 'mealShortfall' }))).toBeNull();
+  });
+});
+
+describe('thaw targets', () => {
+  it('lists every frozen thing the meal needs as a row a thaw can write to', () => {
+    const r = recipe('Pie', [ing('Chicken thighs'), ing('Peas')]);
+    const chicken = frozenChicken();
+    const peas = item({ name: 'Peas', frozenAt: '2026-08-01T09:00:00.000Z' });
+    const targets = thawTargetsForMeal(entry(TOMORROW, r.id), byId(r), [], [chicken, peas], [], NO_STANDING_SWAPS, NOW);
+    expect(targets).toEqual([
+      { kind: 'grocery', sourceId: chicken.id, name: 'Chicken thighs' },
+      { kind: 'grocery', sourceId: peas.id, name: 'Peas' },
+    ]);
+  });
+
+  it('is a container for a leftover night', () => {
+    const chili = leftover({ title: 'Chili', frozenAt: '2026-08-02T09:00:00.000Z' });
+    const targets = thawTargetsForMeal(entry(TOMORROW, null, { leftoverId: chili.id }), byId(), [chili], [], [], NO_STANDING_SWAPS, NOW);
+    expect(targets).toEqual([{ kind: 'leftover', sourceId: chili.id, name: 'Chili' }]);
+  });
+
+  it('is null when something is frozen only through a box, which no single write thaws', () => {
+    const r = stirFry();
+    const chicken = item({ name: 'Chicken thighs' });
+    expect(thawTargetsForMeal(entry(TOMORROW, r.id), byId(r), [], [chicken], [], NO_STANDING_SWAPS, NOW, [frozenBox(chicken.id)])).toBeNull();
+  });
+
+  it('is null for a missing meal and for a meal with nothing frozen', () => {
+    expect(thawTargetsForMeal(null, byId(), [], [], [], NO_STANDING_SWAPS, NOW)).toBeNull();
+    const r = stirFry();
+    expect(thawTargetsForMeal(entry(TOMORROW, r.id), byId(r), [], [item({ name: 'Chicken thighs' })], [], NO_STANDING_SWAPS, NOW)).toBeNull();
   });
 });

@@ -300,6 +300,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
 import { loadEventRowMemo, saveEventRowMemo } from '../utils/eventRowMemo';
 import { explainLockedDelete } from '../utils/lockedDelete';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -786,7 +787,7 @@ function ViewModePills({
           ? inboxCount
           : mode === 'unscheduled' ? unscheduledCount : 0;
         return (
-          <TouchableOpacity
+          <HoverTouchable
             key={mode}
             onLayout={e => {
               highlight.onPillLayout(mode)(e);
@@ -840,7 +841,7 @@ function ViewModePills({
                 />
               </View>
             )}
-          </TouchableOpacity>
+          </HoverTouchable>
         );
       })}
     </ScrollView>
@@ -4440,7 +4441,7 @@ export function TodayScreen() {
           <Text style={styles.focusSectionTitle}>Pinned Tasks</Text>
         </View>
         <View style={styles.pinnedSectionActions}>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => {
               // Same first-tap-dismisses rule every header on this screen has.
@@ -4464,7 +4465,7 @@ export function TodayScreen() {
               size={iconSize.sm}
               color={othersHidden ? colors.orangeText : colors.textTertiary}
             />
-          </TouchableOpacity>
+          </HoverTouchable>
           {/* Gone during a bulk edit (same reasoning as Clear, right below)
               and while a session is already running — there's nothing to
               start. Opens the ordinary setup sheet seeded from this block
@@ -4475,7 +4476,7 @@ export function TodayScreen() {
               anchor a header button to; there's no pinned-tasks-style block
               a reach-out set renders inside. */}
           {!selectionMode && !focusSession && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => {
                 haptics.tap();
@@ -4488,7 +4489,7 @@ export function TodayScreen() {
               accessibilityLabel="Start a focus session with pinned tasks"
             >
               <Ionicons name="hourglass-outline" size={iconSize.sm} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
           {/* Gone during a bulk edit. It unpins every task in one tap and has
               no undo, and it sits a thumb's width from the rows being tapped
@@ -4620,7 +4621,7 @@ export function TodayScreen() {
                     <RotatingChevron open={!collapsed} closed="forward" size={13} color={colors.textTertiary} />
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={() => {
                     if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
                     handleOpenProject(band.project.id);
@@ -4631,7 +4632,7 @@ export function TodayScreen() {
                   accessibilityLabel={`Open ${band.project.title}`}
                 >
                   <Ionicons name="open-outline" size={iconSize.sm} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
                 <SpotlightScrim />
               </View>
             </CompletionCollapse>
@@ -5619,7 +5620,7 @@ export function TodayScreen() {
           }
           topRight={
             viewMode === 'today' && showCoinPill ? (
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.coinPill}
                 onPress={() => navigateToTab('Rewards')}
                 activeOpacity={interaction.activeOpacity}
@@ -5636,7 +5637,7 @@ export function TodayScreen() {
                 {savingGoal && (
                   <ProgressBar progress={goalBarFill(goalHave, savingGoal.reward.cost)} height={4} color={colors.done} style={styles.coinPillBar} decorative />
                 )}
-              </TouchableOpacity>
+              </HoverTouchable>
             ) : undefined
           }
         />

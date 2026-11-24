@@ -32,6 +32,7 @@ import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -271,7 +272,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
         </View>
         <Text style={styles.rowMinutes}>{formatDuration(p.minutes)}</Text>
         {/* Inside the row's own tap target, so a near miss would toggle the row. */}
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.scheduleBtn}
           onPress={() => openPicker(p)}
           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
@@ -280,7 +281,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
           accessibilityLabel={`Pick a different day for ${p.task.title}, currently ${dayLabel}`}
         >
           <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </TouchableOpacity>
     );
   };
@@ -370,7 +371,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
             )}
           </ScrollView>
 
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.applyBtn, selected.length === 0 && styles.applyBtnDisabled]}
             onPress={handleApply}
             disabled={selected.length === 0}
@@ -383,7 +384,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
                 ? 'Nothing selected'
                 : `Move ${selected.length} task${selected.length === 1 ? '' : 's'}`}
             </Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">

@@ -32,6 +32,7 @@ import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { HoverTouchable } from './HoverTouchable';
 
 // Ten hours, well past any real estimate. CountStepper needs a bound to
 // disable its + key at; the hand-rolled version it replaced had none.
@@ -231,15 +232,15 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
           onToggle={() => toggleField('category')}
         >
           <View style={styles.pillRow}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !category && styles.pillActiveNeutral]}
               onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
             >
               <Text style={[styles.pillText, !category && styles.pillTextActive]}>Same as this task</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             {allCategories.map(cat => (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 key={cat}
                 style={[styles.pill, category === cat && styles.pillActiveNeutral]}
@@ -248,7 +249,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                 <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>
                   {categoryLabel(cat, categories)}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         </CollapsibleField>
@@ -265,22 +266,22 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
               onToggle={() => toggleField('project')}
             >
               <View style={styles.pillRow}>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   style={[styles.pill, !projectId && styles.pillActiveNeutral]}
                   onPress={() => { haptics.tap(); setProjectId(null); closeField('project'); }}
                 >
                   <Text style={[styles.pillText, !projectId && styles.pillTextActive]}>Same as this task</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
                 {projects.map(p => (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={p.id}
                     style={[styles.pill, projectId === p.id && styles.pillActiveNeutral]}
                     onPress={() => { haptics.tap(); setProjectId(p.id); closeField('project'); }}
                   >
                     <Text style={[styles.pillText, projectId === p.id && styles.pillTextActive]}>{p.title}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 ))}
               </View>
             </CollapsibleField>
@@ -298,7 +299,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
         >
           <View style={styles.tagRow}>
             {tags.map(tag => (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 key={tag}
                 style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
@@ -309,7 +310,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                 <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                 <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
                 <Ionicons name="close" size={12} color={tagColor(tag)} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             {addingTag ? (
               <TextField
@@ -374,17 +375,17 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
           onToggle={() => toggleField('effort')}
         >
           <View style={styles.pillRow}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               style={[styles.pill, effort === 0 && estimatedMinutes === null && styles.pillActiveNeutral]}
               onPress={() => { haptics.tap(); setEffort(0); setEstimatedMinutes(null); }}
             >
               <Text style={[styles.pillText, effort === 0 && estimatedMinutes === null && styles.pillTextActive]}>—</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             {ESTIMATE_PRESET_MINUTES.map(mins => {
               const active = chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
               return (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   key={mins}
                   style={[styles.pill, active && styles.pillActiveNeutral]}
@@ -396,7 +397,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                   }}
                 >
                   <Text style={[styles.pillText, active && styles.pillTextActive]}>{formatDuration(mins)}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               );
             })}
           </View>
@@ -413,7 +414,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                   label="Estimate"
                 />
                 <Text style={styles.intervalValueSm}>(custom)</Text>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setEstimatedMinutes(null)}
                   hitSlop={8}
@@ -421,7 +422,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                   accessibilityLabel="Clear the estimate"
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </>
             ) : (
               <InlineAction label="Set a custom estimate" haptic onPress={() => setEstimatedMinutes(30)} />
@@ -469,7 +470,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
             {TIME_SEGMENTS.map(tod => {
               const active = timeSegments.includes(tod);
               return (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   key={tod}
                   style={[styles.timePill, active && styles.timePillActive]}
@@ -481,7 +482,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                   <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
                     {capitalize(tod)}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               );
             })}
           </View>
@@ -528,7 +529,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                 >
                   <Text style={styles.subtaskTitle}>{sub.title}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
                   hitSlop={8}
@@ -537,7 +538,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                   accessibilityLabel={`Remove subtask ${sub.title}`}
                 >
                   <Ionicons name="close" size={14} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
           />

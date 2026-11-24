@@ -23,6 +23,7 @@ import { RotatingChevron } from './RotatingChevron';
 import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
 import { runningOnMac } from '../utils/runningOnMac';
 import { listCountNote, sectionIsList } from '../utils/listMode';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   group: TaskGroup;
@@ -292,7 +293,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                   rather than outlined, holds a layers glyph, and sits in the
                   gutter to the left of the column its tasks occupy. Keep at
                   least the fill and the size if either ever changes. */}
-              <TouchableOpacity
+              <HoverTouchable
                 // Tap is just the row's own expand/collapse — completing every
                 // child is a long-press instead. Tap used to cascade, which put
                 // an N-task completion (with its recurrence spawns, chain
@@ -317,7 +318,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                   <Reanimated.View key={foldKey} style={[styles.glyphFolded, foldStyle]} pointerEvents="none" />
                   <Ionicons name="layers" size={iconSize.sm} color={colors.textSecondary} />
                 </View>
-              </TouchableOpacity>
+              </HoverTouchable>
 
               <TouchableOpacity
                 style={styles.content}
@@ -403,7 +404,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               </TouchableOpacity>
 
               {onPressOpen && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onPressOpen(group.id); }}
                   hitSlop={8}
@@ -412,10 +413,10 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                   accessibilityLabel={`Open ${group.title} full screen`}
                 >
                   <Ionicons name="expand-outline" size={iconSize.sm} color={colors.textSecondary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
               {onPressPin && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onPressPin(group.id); }}
                   disabled={pinDisabled}
@@ -430,9 +431,9 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                     size={iconSize.sm}
                     color={pinDisabled ? colors.textTertiary : (pinned ? colors.orangeText : colors.textSecondary)}
                   />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => onPressEdit(group.id)}
                 hitSlop={8}
@@ -441,7 +442,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 accessibilityLabel={`Edit ${group.title} ${group.projectId ? 'section' : 'stack'}`}
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
               <SwipeActionButtons overlayOnHover enabled={!selectionMode} whenAction={swipeWhen} selectAction={swipeSelect} />
             </Reanimated.View>
             </PointerView>

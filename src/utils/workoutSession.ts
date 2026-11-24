@@ -169,6 +169,33 @@ export function movedWithinSuperset(
 }
 
 /**
+ * The session's exercise order with one exercise's block moved to sit right
+ * after the block the walk is on now (the one holding `nextSet`), so it is the
+ * next thing done once the current exercise is finished. A superset moves
+ * whole, like `movedExerciseOrder`. Null when there is nothing to do: the
+ * exercise is in the current block, has no set left to do, is unknown, or is
+ * already the one after.
+ */
+export function movedUpNextOrder(
+  sets: readonly WorkoutSet[],
+  exerciseId: string,
+): string[] | null {
+  const current = nextSet(sets);
+  if (!current) return null;
+  const blocks = exerciseBlocks(sets);
+  const from = blocks.findIndex(b => b.some(e => e.exerciseId === exerciseId));
+  const currentAt = blocks.findIndex(b => b.some(e => e.exerciseId === current.exerciseId));
+  if (from < 0 || currentAt < 0 || from === currentAt) return null;
+  if (!blocks[from].some(e => e.sets.some(s => !isDone(s)))) return null;
+  const [moved] = blocks.splice(from, 1);
+  // A block with a set left is never before the current one (the walk would be on it), so `currentAt` still holds.
+  blocks.splice(currentAt + 1, 0, moved);
+  const order = blocks.flat().map(e => e.exerciseId);
+  const before = exerciseBlocks(sets).flat().map(e => e.exerciseId);
+  return order.every((id, i) => id === before[i]) ? null : order;
+}
+
+/**
  * The session's exercises as the blocks a reorder moves: a superset is one
  * block (its run of partners), any other exercise a block of its own. The
  * reorder list drags these, so a pair is never split by a drop.

@@ -63,6 +63,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { HelpText } from './HelpText';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 // The feet stepper's bounds, derived from the same cm bounds the kg stepper
 // uses — so the two units can't drift into disagreeing about the range.
@@ -784,7 +785,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     label says so when that basis is the log. */}
                 {showApplyButton ? (
                   <>
-                    <TouchableOpacity
+                    <HoverTouchable
                       style={styles.applyButton}
                       activeOpacity={interaction.activeOpacity}
                       onPress={commit}
@@ -792,7 +793,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       accessibilityLabel={applyLabel}
                     >
                       <Text style={styles.applyButtonText}>{applyLabel}</Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                     <HelpText style={[styles.help, styles.applyHelp]}>
                       {basis === 'log'
                         ? logBudget === null

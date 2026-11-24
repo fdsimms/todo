@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { interaction } from '../../theme';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useColors, useTheme } from '../../theme/ThemeContext';
 import { makeSettingsStyles } from './settingsStyles';
 import { BUTTON_LABEL } from '../../copy/shared';
+import { HoverTouchable } from '../../components/HoverTouchable';
 
 interface Props {
   value: Date;
@@ -36,7 +37,7 @@ export function InlineTimePicker({ value, onChange, onCancel, onConfirm }: Props
         style={styles.picker}
       />
       <View style={styles.pickerButtons}>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           style={styles.pickerBtn}
           onPress={onCancel}
@@ -44,8 +45,8 @@ export function InlineTimePicker({ value, onChange, onCancel, onConfirm }: Props
           accessibilityLabel={BUTTON_LABEL.cancel}
         >
           <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>{BUTTON_LABEL.cancel}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </HoverTouchable>
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           style={[styles.pickerBtn, styles.pickerBtnPrimary]}
           onPress={onConfirm}
@@ -53,7 +54,7 @@ export function InlineTimePicker({ value, onChange, onCancel, onConfirm }: Props
           accessibilityLabel="Set time"
         >
           <Text style={[styles.pickerBtnText, { color: colors.onAccent }]}>Set</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
     </>
   );

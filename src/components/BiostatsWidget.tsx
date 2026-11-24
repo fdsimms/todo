@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Svg, { Circle } from 'react-native-svg';
 import type { ContextRow, NutrientKey } from '../types';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
@@ -22,15 +21,13 @@ interface Props {
   onNutrientPress: (key: NutrientKey) => void;
 }
 
-const RING_SIZE = 44;
-const RING_STROKE = 5;
 const BAR_HEIGHT = 6;
 const ROW_MIN_HEIGHT = 48;
 
 /**
  * Biostats, at the top of Today: Health's readings and the day's nutrition
- * against its limits and goals, in one card that folds to a calorie ring and the
- * two bars most worth a glance, and opens to a tile per reading.
+ * against its limits and goals, in one card that folds to calories and the
+ * two marks most worth a glance, and opens to a tile per reading.
  *
  * It used to be a category of rows in the list. A day's readings are not tasks
  * and have no use for a category's ordering, dragging or section header, so this
@@ -72,40 +69,10 @@ export function BiostatsWidget({ rows, collapsed, onToggle, onNutrientPress }: P
     </View>
   );
 
-  const radiusPx = (RING_SIZE - RING_STROKE) / 2;
-  const circumference = 2 * Math.PI * radiusPx;
-
   const foldedContent = (
     <View style={styles.marks}>
-      {marks.ring && (
-        <View style={styles.ring} importantForAccessibility="no-hide-descendants">
-          <Svg width={RING_SIZE} height={RING_SIZE}>
-            <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radiusPx} fill="none" stroke={colors.bgTertiary} strokeWidth={RING_STROKE} />
-            <Circle
-              cx={RING_SIZE / 2}
-              cy={RING_SIZE / 2}
-              r={radiusPx}
-              fill="none"
-              stroke={colors.accent}
-              strokeWidth={RING_STROKE}
-              strokeLinecap="round"
-              strokeDasharray={`${circumference * marks.ring.fraction} ${circumference}`}
-              transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-            />
-          </Svg>
-          <Text style={styles.ringLabel}>{marks.ring.label}</Text>
-        </View>
-      )}
-      {/* With no bar beside it the ring would sit alone in an empty row, so it
-          says what it measures. With bars the row is full and the percentage is enough. */}
-      {marks.ring && marks.bars.length === 0 && (
-        <View style={styles.ringCaption}>
-          <Text style={styles.markLabel} numberOfLines={1}>{marks.ring.name}</Text>
-          {!!marks.ring.detail && <Text style={styles.ringDetail} numberOfLines={1}>{marks.ring.detail}</Text>}
-        </View>
-      )}
       {marks.bars.map(renderMark)}
-      {!marks.ring && marks.bars.length === 0 && (
+      {marks.bars.length === 0 && (
         <Text style={styles.fallback} numberOfLines={2}>{marks.text}</Text>
       )}
     </View>
@@ -223,16 +190,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   headerBody: { flex: 1, justifyContent: 'center' },
   marks: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  ring: { width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center' },
-  ringLabel: {
-    position: 'absolute',
-    fontSize: font.xxs,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  ringCaption: { flex: 1, minWidth: 0 },
-  ringDetail: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text, fontVariant: ['tabular-nums'] },
   mark: { flex: 1, minWidth: 0 },
   markLabelRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.xs, marginBottom: spacing.xs },
   markLabel: { flexShrink: 1, fontSize: font.xs, color: colors.textSecondary },

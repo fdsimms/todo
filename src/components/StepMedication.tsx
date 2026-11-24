@@ -1,10 +1,11 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ChainItem } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** The step this button belongs to. */
@@ -41,7 +42,7 @@ export function StepMedication({ step, taskMedicationName, onPress }: Props) {
       : `Record a dose when ${step.title} is completed`;
 
   return (
-    <TouchableOpacity
+    <HoverTouchable
       onPress={() => { haptics.tap(); onPress(); }}
       style={[styles.button, own && styles.buttonSet]}
       activeOpacity={interaction.activeOpacity}
@@ -54,7 +55,7 @@ export function StepMedication({ step, taskMedicationName, onPress }: Props) {
         size={iconSize.sm}
         color={own ? colors.text : colors.textTertiary}
       />
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

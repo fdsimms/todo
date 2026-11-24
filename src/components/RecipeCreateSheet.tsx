@@ -89,6 +89,7 @@ import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -1148,7 +1149,7 @@ export function RecipeCreateSheet({
         >
           <View style={styles.pillRow}>
             {RECIPE_MEAL_TYPES.map(type => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={type}
                 style={[styles.pill, mealType === type && styles.pillActiveNeutral]}
                 activeOpacity={interaction.activeOpacity}
@@ -1160,7 +1161,7 @@ export function RecipeCreateSheet({
                 <Text style={[styles.pillText, mealType === type && styles.pillTextActive]}>
                   {RECIPE_MEAL_TYPE_LABELS[type]}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         </ImportApplyRow>
@@ -1174,7 +1175,7 @@ export function RecipeCreateSheet({
         >
           <View style={styles.tagRow}>
             {tags.map(tag => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={tag}
                 style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
                 activeOpacity={interaction.activeOpacity}
@@ -1185,7 +1186,7 @@ export function RecipeCreateSheet({
                 <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                 <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
                 <Ionicons name="close" size={12} color={tagColor(tag)} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             {addingTag ? (
               <TextField

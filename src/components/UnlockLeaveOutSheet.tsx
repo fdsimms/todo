@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { UnlockIgnoreList } from '../types';
@@ -15,6 +15,7 @@ import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -90,7 +91,7 @@ export function UnlockLeaveOutSheet({ visible, onClose, value, onChange, addingR
                   {shown.map(o => {
                     const on = list[kind].includes(o.key);
                     return (
-                      <TouchableOpacity
+                      <HoverTouchable
                         key={o.key}
                         style={[styles.chip, on && styles.chipOn]}
                         onPress={() => toggle(kind, o.key)}
@@ -101,7 +102,7 @@ export function UnlockLeaveOutSheet({ visible, onClose, value, onChange, addingR
                       >
                         {on ? <Ionicons name="checkmark" size={iconSize.xs} color={colors.onAccent} /> : null}
                         <Text style={[styles.chipText, on && styles.chipTextOn, !on && addingRefused && styles.chipTextDim]} numberOfLines={1}>{o.label}</Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     );
                   })}
                 </View>

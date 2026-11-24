@@ -95,6 +95,7 @@ import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -1393,7 +1394,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
                   <View style={styles.row}>
-                    <TouchableOpacity hitSlop={11}
+                    <HoverTouchable hitSlop={11}
                       style={[
                         styles.check,
                         ready && { backgroundColor: colors.accentFill, borderColor: colors.accent },
@@ -1409,7 +1410,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       {ready && (
                         <Ionicons name="checkmark" size={iconSize.xs} color={colors.onAccent} />
                       )}
-                    </TouchableOpacity>
+                    </HoverTouchable>
 
                     <TouchableOpacity
                       style={styles.rowMain}
@@ -1438,7 +1439,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         own control. Where a thing is kept, which a log has no
                         opinion about: it records that something was eaten. */}
                     {CONTEXT_COPY[context].freezer && !row.pending && (
-                      <TouchableOpacity
+                      <HoverTouchable
                         style={styles.freezerButton}
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => { haptics.tap(); patchRow(row.key, { frozen: !row.frozen }); }}
@@ -1454,7 +1455,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           size={iconSize.sm}
                           color={row.frozen ? colors.accent : colors.textTertiary}
                         />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     )}
                   </View>
 
@@ -1575,7 +1576,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
 
                       <View style={styles.editorFoot}>
                         <Text style={styles.rowGtin}>{row.gtin ? formatGtin(row.gtin) : ''}</Text>
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           style={styles.removeButton}
                           onPress={() => {
@@ -1589,7 +1590,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           accessibilityLabel={`Remove ${row.name.trim() || 'unnamed scan'}`}
                         >
                           <Text style={styles.removeText}>Remove</Text>
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       </View>
                     </View>
                   )}

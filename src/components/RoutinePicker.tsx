@@ -16,6 +16,7 @@ import { catalogExercise } from '../utils/exerciseCatalog';
 import { describeRoutine } from '../utils/workoutRoutine';
 import { filterRoutines, resolveRoutineSubmit } from '../utils/routinePicker';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** The routines on offer. The host decides what is left out (archived ones). */
@@ -65,9 +66,9 @@ export function RoutinePickerList({ routines, selectedId, onSelect, none }: Prop
           accessibilityLabel="Find a routine"
         />
         {!!trimmed && (
-          <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={() => clear()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+          <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={() => clear()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         )}
       </View>
 

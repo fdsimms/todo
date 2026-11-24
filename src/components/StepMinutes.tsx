@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, interaction, radius, spacing, type Colors } from '../theme';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** Minutes on this row; null = none set, and whatever the fallback is applies. */
@@ -80,7 +81,7 @@ export function StepMinutes({ value, label, what = 'Time estimate', onChange, al
         selectTextOnFocus
       />
       {allowSeconds ? (
-        <TouchableOpacity
+        <HoverTouchable
           onPress={flip}
           activeOpacity={interaction.activeOpacity}
           hitSlop={8}
@@ -89,7 +90,7 @@ export function StepMinutes({ value, label, what = 'Time estimate', onChange, al
           accessibilityLabel={`Unit for ${label}, ${inSeconds ? 'seconds' : 'minutes'}. Tap to switch.`}
         >
           <Text style={styles.unit}>{inSeconds ? 's' : 'm'}</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       ) : value != null ? <Text style={styles.unit}>m</Text> : null}
     </View>
   );

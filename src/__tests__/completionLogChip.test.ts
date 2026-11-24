@@ -35,7 +35,9 @@ describe('completionLogChips', () => {
 
   it('names a dose with its amount and unit', () => {
     const t = task({ medicationName: 'Sodium Chloride', medicationAmount: 1, medicationUnit: 'tablet' });
-    expect(completionLogChips(t, true)).toEqual([{ kind: 'dose', text: 'Logs 1 tablet', editable: true }]);
+    expect(completionLogChips(t, true)).toEqual([
+      { kind: 'dose', text: 'Logs 1 tablet', editable: true, stepper: { amount: 1, unit: 'tablet' } },
+    ]);
   });
 
   it('pluralizes a counted unit', () => {
@@ -51,6 +53,15 @@ describe('completionLogChips', () => {
       chainItems: [{ id: 's1', title: 'Morning', medicationName: 'Zinc', medicationAmount: 1, medicationUnit: 'tablet' }, { id: 's2', title: 'Evening' }],
     } as Partial<Task>);
     expect(completionLogChips(t, true)[0].editable).toBeUndefined();
+  });
+
+  it('offers a stepper only for a whole amount of a counted unit', () => {
+    const measured = task({ medicationName: 'Iron', medicationAmount: 50, medicationUnit: 'mg' });
+    expect(completionLogChips(measured, true)[0].stepper).toBeUndefined();
+    const fraction = task({ medicationName: 'Iron', medicationAmount: 0.5, medicationUnit: 'tablet' });
+    expect(completionLogChips(fraction, true)[0].stepper).toBeUndefined();
+    const sprays = task({ medicationName: 'Flonase', medicationAmount: 2, medicationUnit: 'spray' });
+    expect(completionLogChips(sprays, true)[0].stepper).toEqual({ amount: 2, unit: 'spray' });
   });
 
   it('says "Logs dose" when no amount is set', () => {

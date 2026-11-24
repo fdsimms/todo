@@ -55,6 +55,7 @@ import { HelpText } from './HelpText';
 import { sectionIsList, sectionListPatch } from '../utils/listMode';
 import { BUTTON_LABEL } from '../copy/shared';
 import { explainRefusedDeletes } from '../utils/lockedDelete';
+import { HoverTouchable } from './HoverTouchable';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'project';
@@ -577,9 +578,9 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
                   color={pinEligible.length === 0 ? colors.textTertiary : (allPinned ? colors.orangeText : colors.textSecondary)}
                 />
               </TouchableOpacity>
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${sectionWord}`}>
+              <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${sectionWord}`}>
                 <Ionicons name="trash-outline" size={20} color={colors.red} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           }
         />
@@ -672,22 +673,22 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
           onToggle={() => toggleField('category')}
         >
           <View style={styles.pillRow}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !category && styles.pillActive]}
               onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
             >
               <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             {allCategories.map(cat => (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 key={cat}
                 style={[styles.pill, category === cat && styles.pillActive]}
                 onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
               >
                 <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         </CollapsibleField>
@@ -702,22 +703,22 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
               onToggle={() => toggleField('project')}
             >
               <View style={styles.pillRow}>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   style={[styles.pill, !homeProjectId && styles.pillActive]}
                   onPress={() => { haptics.tap(); setHomeProjectId(null); closeField('project'); }}
                 >
                   <Text style={[styles.pillText, !homeProjectId && styles.pillTextActive]}>None</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
                 {projects.map(p => (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={p.id}
                     style={[styles.pill, homeProjectId === p.id && styles.pillActive]}
                     onPress={() => { haptics.tap(); setHomeProjectId(p.id); closeField('project'); }}
                   >
                     <Text style={[styles.pillText, homeProjectId === p.id && styles.pillTextActive]}>{p.title}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 ))}
               </View>
             </CollapsibleField>
@@ -732,9 +733,9 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
         >
           <View style={styles.pillRow}>
             {tags.map(tag => (
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} key={tag} style={styles.pill} onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}>
+              <HoverTouchable activeOpacity={interaction.activeOpacity} key={tag} style={styles.pill} onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}>
                 <Text style={styles.pillText}>{tag} ✕</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             {addingTag ? (
               <TextField
@@ -798,7 +799,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
                     </Text>
                     {subtitle !== '' && <Text style={styles.childSubtitle}>{subtitle}</Text>}
                   </TouchableOpacity>
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => removeFromGroup(child.id)}
                     hitSlop={8}
@@ -807,7 +808,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
                     accessibilityLabel={`Remove ${child.title} from ${sectionWord}`}
                   >
                     <Ionicons name="close" size={14} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
                 </FabDropZone>
               );

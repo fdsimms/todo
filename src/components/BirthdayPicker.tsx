@@ -18,6 +18,7 @@ import { Toggle } from './Toggle';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { pickerCardWidthFor } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * The birthday picker — month, day and an optional year, as three native
@@ -171,12 +172,12 @@ export function BirthdayPicker({
 
           <View style={styles.sectionGap} />
           <View style={styles.footerRow}>
-            <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+            <HoverTouchable style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
               <Text style={styles.clearLabel}>Clear</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={confirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+            </HoverTouchable>
+            <HoverTouchable style={styles.saveBtn} onPress={confirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
               <Text style={styles.saveLabel}>{BUTTON_LABEL.save}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         </Animated.View>
       </View>

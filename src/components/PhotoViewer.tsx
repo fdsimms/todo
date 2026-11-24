@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FadeInImage } from './FadeInImage';
 import { SheetModal } from './SheetModal';
 import { darkColors, font, fontWeight, iconSize, interaction, radius, spacing } from '../theme';
+import { HoverTouchable } from './HoverTouchable';
 
 export interface PhotoViewerShot {
   key: string;
@@ -76,7 +77,7 @@ export function PhotoViewer({ visible, initialIndex, title, shots, aspectRatio, 
           <View style={styles.headerSide} />
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
           <View style={styles.headerSide}>
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.close}
               onPress={onClose}
               activeOpacity={interaction.activeOpacity}
@@ -84,7 +85,7 @@ export function PhotoViewer({ visible, initialIndex, title, shots, aspectRatio, 
               accessibilityLabel="Close photo"
             >
               <Ionicons name="close" size={iconSize.md} color={darkColors.text} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         </View>
         <ScrollView

@@ -52,6 +52,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { AmountUnitField } from './AmountUnitField';
 import { ingredientAmountGroups } from '../utils/amountUnit';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -528,7 +529,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                   sheet is about, and changing which item a recorded link names
                   is a different link, not an edit of this one. */}
               {!editing && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     haptics.tap();
@@ -544,7 +545,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                   accessibilityLabel="Pick a different item"
                 >
                   <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
             </View>
 

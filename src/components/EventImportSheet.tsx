@@ -3,9 +3,7 @@ import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   Keyboard,
   View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
+  Text, ScrollView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -32,6 +30,7 @@ import { TextField } from './TextField';
 import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
 import { useClipboardImage } from '../hooks/useClipboardImage';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 type InputMode = 'paste' | 'photo';
 
@@ -239,7 +238,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     label: string,
     icon: React.ComponentProps<typeof Ionicons>['name'],
   ) => (
-    <TouchableOpacity
+    <HoverTouchable
       style={[styles.photoBtn, picking && styles.photoBtnOff]}
       activeOpacity={interaction.activeOpacity}
       onPress={() => pick(source)}
@@ -249,7 +248,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     >
       <Ionicons name={icon} size={iconSize.md} color={colors.accent} />
       <Text style={styles.photoBtnText}>{label}</Text>
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 
   const body = () => {
@@ -343,7 +342,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
-            <TouchableOpacity hitSlop={8}
+            <HoverTouchable hitSlop={8}
               style={styles.previewClear}
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setPhoto(null); }}
@@ -351,7 +350,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
               accessibilityLabel="Remove this photo"
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         ) : (
           <View style={styles.photoChoices}>
@@ -390,7 +389,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
           />
         )}
 
-        <TouchableOpacity
+        <HoverTouchable
           style={[styles.runBtn, !ready && styles.runBtnOff]}
           activeOpacity={interaction.activeOpacity}
           onPress={run}
@@ -400,7 +399,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
         >
           <Ionicons name="sparkles" size={iconSize.sm} color={colors.onFill} />
           <Text style={styles.runBtnText}>Read the event</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       </>
     );
   };

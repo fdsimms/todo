@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -8,6 +8,7 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 import { rotationPills } from '../utils/rotation';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import type { Task } from '../types';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   task: Task;
@@ -63,7 +64,7 @@ export function RotationPills({ task, onPick, onStartWorkout, disabled = false, 
       {pills.map(pill => {
         const starts = pill.hasWorkout && liveWorkoutIds.split(',').includes(pill.id);
         return (
-        <TouchableOpacity
+        <HoverTouchable
           key={pill.id}
           style={[
             styles.pill,
@@ -89,7 +90,7 @@ export function RotationPills({ task, onPick, onStartWorkout, disabled = false, 
             {pill.title}
             {(!pill.done || pill.over) && pill.progress ? ` ${pill.progress}` : ''}
           </Text>
-        </TouchableOpacity>
+        </HoverTouchable>
         );
       })}
     </View>

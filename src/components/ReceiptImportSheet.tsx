@@ -64,6 +64,7 @@ import { ActionRow } from './ActionRow';
 import { BUTTON_LABEL } from '../copy/shared';
 import { SHOP_NAME_TAKEN } from '../utils/groceryItemWrite';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -787,7 +788,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
    * VoiceOver instead of disappearing into the row's checkbox.
    */
   const freezerToggle = (frozen: boolean, name: string, onPress: () => void) => (
-    <TouchableOpacity
+    <HoverTouchable
       activeOpacity={interaction.activeOpacity}
       style={styles.freezerControl}
       onPress={onPress}
@@ -803,7 +804,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         size={iconSize.sm}
         color={frozen ? colors.accent : colors.textTertiary}
       />
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 
   const renderMatch = (match: ReceiptMatch & { itemId: string }, index: number, at: number) => {

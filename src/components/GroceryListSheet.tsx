@@ -36,6 +36,7 @@ import { listPickerRows } from '../utils/groceryLists';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 /** Kept clear above the lifted sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -249,7 +250,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
                       would then have nowhere to fall back to. */}
                   {row.id !== null && !editing && (
                     <>
-                      <TouchableOpacity
+                      <HoverTouchable
                         onPress={() => { setEditingId(row.id); setEditingName(row.name); }}
                         hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                         activeOpacity={interaction.activeOpacity}
@@ -257,8 +258,8 @@ export function GroceryListSheet({ visible, onClose }: Props) {
                         accessibilityLabel={`Rename ${row.name}`}
                       >
                         <Ionicons name="create-outline" size={iconSize.sm} color={colors.textTertiary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </HoverTouchable>
+                      <HoverTouchable
                         onPress={() => handleDelete(row.id!, row.name, row.count)}
                         hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                         activeOpacity={interaction.activeOpacity}
@@ -266,7 +267,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
                         accessibilityLabel={`Delete ${row.name}`}
                       >
                         <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </>
                   )}
                 </View>

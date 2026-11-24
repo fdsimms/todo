@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { HoverTouchable } from './HoverTouchable';
 
 export type RecipeTab = 'ingredients' | 'steps' | 'timers' | 'details';
 
@@ -35,7 +36,7 @@ export function RecipeTabBar({ value, onChange, timerActive }: Props) {
       {TABS.map(({ key, label }) => {
         const selected = key === value;
         return (
-          <TouchableOpacity
+          <HoverTouchable
             key={key}
             style={[styles.tab, selected && styles.tabSelected]}
             activeOpacity={interaction.activeOpacity}
@@ -51,7 +52,7 @@ export function RecipeTabBar({ value, onChange, timerActive }: Props) {
           >
             <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>{label}</Text>
             {key === 'timers' && timerActive && <View style={styles.dot} />}
-          </TouchableOpacity>
+          </HoverTouchable>
         );
       })}
     </View>

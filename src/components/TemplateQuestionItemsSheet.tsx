@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -14,6 +14,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -86,7 +87,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
                         {question.options.map(option => {
                           const on = existing?.values.includes(option) ?? false;
                           return (
-                            <TouchableOpacity
+                            <HoverTouchable
                               key={option}
                               style={[styles.pill, on && styles.pillOn]}
                               onPress={() => toggle(item.id, item.conditions, option)}
@@ -96,7 +97,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
                               accessibilityLabel={`${describePlaceholderTokens(item.title)}, ${option}`}
                             >
                               <Text style={[styles.pillText, on && styles.pillTextOn]} numberOfLines={1}>{option}</Text>
-                            </TouchableOpacity>
+                            </HoverTouchable>
                           );
                         })}
                       </View>

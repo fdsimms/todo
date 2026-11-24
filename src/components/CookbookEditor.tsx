@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
+  Text, StyleSheet,
 } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { useSheetSubject } from '../hooks/useSheetSubject';
@@ -21,6 +19,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { RECIPE_SOURCE_MAX_LENGTH, type Cookbook } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -152,7 +151,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
       <View style={styles.header}>
         <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} disabled={nameTaken} />
         <Text style={styles.headerTitle}>Edit cookbook</Text>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={handleDelete}
           hitSlop={8}
@@ -160,7 +159,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
           accessibilityLabel={`Delete cookbook ${cookbook.title}`}
         >
           <Ionicons name="trash-outline" size={20} color={colors.red} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
 
       <View style={styles.body}>

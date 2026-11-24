@@ -29,6 +29,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { BUTTON_LABEL } from '../copy/shared';
 import { pickerCardMaxHeightFor, pickerCardWidthFor } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -263,7 +264,7 @@ export function CalendarPicker({
                 const on = selectedDate ? isSameDay(day, selectedDate) : false;
                 const label = dayShortcutLabel(day, shortcutToday);
                 return (
-                  <TouchableOpacity
+                  <HoverTouchable
                     key={dayKeyOf(day)}
                     style={[styles.chip, on && styles.chipOn]}
                     onPress={() => onDayPress(day)}
@@ -273,7 +274,7 @@ export function CalendarPicker({
                     accessibilityState={{ selected: on }}
                   >
                     <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>{label}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 );
               })}
             </View>
@@ -283,7 +284,7 @@ export function CalendarPicker({
           {viewMode !== 'end' && (
           <View style={styles.calSection}>
             <View style={styles.monthNav}>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => setDisplayMonth(m => subMonths(m, 1))}
                 hitSlop={8}
@@ -292,9 +293,9 @@ export function CalendarPicker({
                 accessibilityLabel="Previous month"
               >
                 <Ionicons name="chevron-back" size={16} color={colors.accent} />
-              </TouchableOpacity>
+              </HoverTouchable>
               <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => setDisplayMonth(m => addMonths(m, 1))}
                 hitSlop={8}
@@ -303,7 +304,7 @@ export function CalendarPicker({
                 accessibilityLabel="Next month"
               >
                 <Ionicons name="chevron-forward" size={16} color={colors.accent} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
 
             <View style={styles.dayHeaders}>
@@ -407,7 +408,7 @@ export function CalendarPicker({
                 {EVENT_LENGTH_PRESETS.map(minutes => {
                   const on = shownLength === minutes;
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={minutes}
                       style={[styles.chip, on && styles.chipOn]}
                       onPress={() => pickLength(minutes)}
@@ -417,11 +418,11 @@ export function CalendarPicker({
                       accessibilityState={{ selected: on }}
                     >
                       <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>{describeEventLength(minutes)}</Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
                 {viewMode !== 'end' && onOtherLength && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={[styles.chip, !lengthIsPreset && styles.chipOn]}
                     onPress={() => {
                       const start = startFromSelection();
@@ -435,7 +436,7 @@ export function CalendarPicker({
                     <Text style={[styles.chipText, !lengthIsPreset && styles.chipTextOn]} numberOfLines={1}>
                       {lengthIsPreset ? 'Other…' : describeEventLength(shownLength)}
                     </Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
             </>
@@ -443,7 +444,7 @@ export function CalendarPicker({
 
           {viewMode === 'end' && (
             <View style={styles.chipRow}>
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.chip}
                 onPress={showFullEnd}
                 activeOpacity={interaction.activeOpacity}
@@ -451,7 +452,7 @@ export function CalendarPicker({
                 accessibilityLabel="Pick a different end day"
               >
                 <Text style={styles.chipText} numberOfLines={1}>Different day…</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
 

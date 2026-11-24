@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -20,6 +20,7 @@ import { capitalize } from '../utils/capitalize';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
 import type { ExtractedRecipe } from '../services/aiSuggestions';
+import { HoverTouchable } from './HoverTouchable';
 
 const CHECKBOX_SIZE = 22;
 
@@ -270,7 +271,7 @@ export function ImportedComponentRow({ candidate, imports, parent }: Props) {
   return (
     <View style={styles.row}>
       {tickable ? (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onToggle(); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -281,7 +282,7 @@ export function ImportedComponentRow({ candidate, imports, parent }: Props) {
           <View style={[styles.checkbox, accepted && styles.checkboxOn]}>
             {accepted && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onFill} />}
           </View>
-        </TouchableOpacity>
+        </HoverTouchable>
       ) : busy ? (
         <View style={styles.slot}>
           <ActivityIndicator color={colors.purple} />
@@ -296,7 +297,7 @@ export function ImportedComponentRow({ candidate, imports, parent }: Props) {
         </View>
       )}
       {body}
-      <TouchableOpacity
+      <HoverTouchable
         onPress={() => { haptics.tap(); onDismiss(); }}
         disabled={busy}
         activeOpacity={interaction.activeOpacity}
@@ -305,7 +306,7 @@ export function ImportedComponentRow({ candidate, imports, parent }: Props) {
         accessibilityLabel={`Dismiss ${title}`}
       >
         <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
-      </TouchableOpacity>
+      </HoverTouchable>
     </View>
   );
 }

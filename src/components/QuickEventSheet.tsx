@@ -137,6 +137,7 @@ import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { changedSlots } from '../utils/editorChangeSummary';
+import { HoverTouchable } from './HoverTouchable';
 
 const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
 /** Long enough that a word being typed is one request, not one per letter. */
@@ -1638,7 +1639,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   ? `Filled in from your saved “${draft.title.trim()}”`
                   : `Filled in from your last “${draft.title.trim()}”`}
               </Text>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -1646,7 +1647,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 accessibilityLabel="Don’t fill in from last time"
               >
                 <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
 
@@ -1660,7 +1661,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             <View style={styles.captionRow}>
               <Ionicons name="bookmark" size={13} color={colors.textSecondary} />
               <Text style={styles.captionText} numberOfLines={1}>{savedInUse.text}</Text>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); animateLayout(); setSavedConfirmedKey(null); }}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -1668,7 +1669,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 accessibilityLabel={`Use “${savedInUse.name}” as typed`}
               >
                 <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
 

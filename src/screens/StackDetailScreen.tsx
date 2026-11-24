@@ -47,6 +47,7 @@ import type { Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { reuseUnchangedLists } from '../utils/stableLists';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 type RootStackParamList = {
   StackDetail: { groupId: string };
@@ -254,7 +255,7 @@ export function StackDetailScreen() {
                 </Text>
               )}
               {!!group && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   hitSlop={12}
                   onPress={() => setGroupEditorOpen(true)}
@@ -264,7 +265,7 @@ export function StackDetailScreen() {
                   {/* A pencil, as on a project's page: it opens the editor
                       straight away, where tasks are added to the stack. */}
                   <Ionicons name="create-outline" size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
             </View>
           }

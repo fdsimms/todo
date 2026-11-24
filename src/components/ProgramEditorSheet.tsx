@@ -49,6 +49,7 @@ import { percentExercises } from '../utils/workoutProgramLibrary';
 import { suggestedTrainingMaxKg } from '../utils/workoutProgression';
 import { analyzeExercise, recordSessions } from '../utils/workoutRecords';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -347,7 +348,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
               const label = routine?.name ?? 'A deleted routine';
               return (
                 <View style={[styles.slotRow, index > 0 && styles.rowSep]}>
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onLongPress={drag}
                     delayLongPress={interaction.delayLongPress}
@@ -357,7 +358,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                     accessibilityHint="Touch and hold, then drag"
                   >
                     <Ionicons name="reorder-two-outline" size={iconSize.md} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                   <Text style={styles.slotIndex}>{index + 1}</Text>
                   <TouchableOpacity
                     style={styles.flex}
@@ -371,7 +372,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                     <Text style={styles.slotName}>{label}</Text>
                     {routine && <Text style={styles.slotMeta}>{describeRoutine(routine.items, musclesOf)}</Text>}
                   </TouchableOpacity>
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => removeSlot(slot.id)}
                     hitSlop={10}
@@ -379,7 +380,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                     accessibilityLabel={`Take ${label} out of the rotation`}
                   >
                     <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
               );
             }}
