@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, TouchableOpacity, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useColors } from '../../theme/ThemeContext';
@@ -26,6 +26,7 @@ import { ensureGeneratedTaskCategory } from '../../store/useCategoryStore';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { BUTTON_LABEL } from '../../copy/shared';
+import { HoverTouchable } from '../../components/HoverTouchable';
 
 /** Where + lands from Off: a yearly checkup is the common case. */
 const BOOK_EVERY_START = 12;
@@ -110,7 +111,7 @@ export function SavedEventsRows() {
             onPress={() => setEditing(event)}
             accessibilityLabel={`Edit ${event.title}`}
             trailing={(
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => remove(event)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -118,7 +119,7 @@ export function SavedEventsRows() {
                 accessibilityLabel={`Remove ${event.title}`}
               >
                 <Ionicons name="trash-outline" size={iconSize.sm} color={colors.red} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           />
           <View style={styles.cadenceRow}>

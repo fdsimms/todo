@@ -16,6 +16,7 @@ import type { Cookbook } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * The shelf: every `Cookbook` a recipe has ever been linked to, with a
@@ -79,7 +80,7 @@ export function CookbooksScreen() {
             <Text style={styles.metaText}>{countLabel}</Text>
           </View>
         </View>
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); setEditingId(item.id); }}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -87,7 +88,7 @@ export function CookbooksScreen() {
           accessibilityLabel={`Edit ${item.title}`}
         >
           <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </TouchableOpacity>
     );
   };

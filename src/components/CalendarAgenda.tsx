@@ -14,6 +14,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTextScale } from '../hooks/useTextScale';
 import { checkboxRadius, flattenOverlay, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { CheckPop } from './CheckPop';
+import { HoverTouchable } from './HoverTouchable';
 
 /** The way into a day's tasks that have no time, under its agenda. */
 export interface UntimedLink {
@@ -103,7 +104,7 @@ export function CalendarAgenda({
             {end !== null && <Text style={styles.timeEnd}>{end}</Text>}
           </View>
           {isTask ? (
-            <TouchableOpacity
+            <HoverTouchable
               hitSlop={spacing.sm}
               activeOpacity={interaction.activeOpacity}
               onPress={() => onToggleTask(task)}
@@ -114,7 +115,7 @@ export function CalendarAgenda({
               <CheckPop checked={done} style={styles.checkbox} checkedStyle={styles.checkboxDone}>
                 <Ionicons name="checkmark" size={iconSize.sm - 2} color={colors.onDone} />
               </CheckPop>
-            </TouchableOpacity>
+            </HoverTouchable>
           ) : (
             <View style={[styles.bar, { backgroundColor: barColor }]} />
           )}
@@ -145,7 +146,7 @@ export function CalendarAgenda({
           {agenda.allDay.map(event => {
             const color = colorFor(event.calendarId) ?? colors.accent;
             return (
-              <TouchableOpacity
+              <HoverTouchable
                 key={`${event.id}:${event.start}`}
                 style={[styles.chip, { backgroundColor: tintOf(color, colors) }]}
                 activeOpacity={interaction.activeOpacity}
@@ -155,7 +156,7 @@ export function CalendarAgenda({
               >
                 <View style={[styles.chipDot, { backgroundColor: color }]} />
                 <Text style={styles.chipText} numberOfLines={1}>{event.title || 'Event'}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             );
           })}
         </View>

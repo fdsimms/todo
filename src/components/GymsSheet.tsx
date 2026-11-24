@@ -15,6 +15,7 @@ import type { Gym } from '../types';
 import { haptics } from '../utils/haptics';
 import { EQUIPMENT_LABELS } from '../utils/workoutData';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -82,7 +83,7 @@ export function GymsSheet({ visible, onClose, onPick, currentId = null }: Props)
         {onPick && gym.id === currentId && <Ionicons name="checkmark" size={iconSize.md} color={colors.accent} />}
       </TouchableOpacity>
       {!onPick && !gym.archived && (
-        <TouchableOpacity
+        <HoverTouchable
           onPress={() => { haptics.tap(); setDefaultGymId(isDefault ? null : gym.id); }}
           hitSlop={8}
           activeOpacity={interaction.activeOpacity}
@@ -95,10 +96,10 @@ export function GymsSheet({ visible, onClose, onPick, currentId = null }: Props)
             size={iconSize.md}
             color={isDefault ? colors.accent : colors.textTertiary}
           />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       {onPick && (
-        <TouchableOpacity
+        <HoverTouchable
           onPress={() => open(gym.id)}
           hitSlop={8}
           activeOpacity={interaction.activeOpacity}
@@ -106,7 +107,7 @@ export function GymsSheet({ visible, onClose, onPick, currentId = null }: Props)
           accessibilityLabel={`Edit ${gym.name}`}
         >
           <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
     </View>
     );

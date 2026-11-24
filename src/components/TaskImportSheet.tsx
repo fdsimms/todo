@@ -3,9 +3,7 @@ import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   Keyboard,
   View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
+  Text, ScrollView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -40,6 +38,7 @@ import type { TaskDraft } from '../types';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 type InputMode = 'paste' | 'photo';
 
@@ -210,7 +209,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
     label: string,
     icon: React.ComponentProps<typeof Ionicons>['name'],
   ) => (
-    <TouchableOpacity
+    <HoverTouchable
       style={[styles.photoBtn, picking && styles.photoBtnOff]}
       activeOpacity={interaction.activeOpacity}
       onPress={() => pick(source)}
@@ -220,7 +219,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
     >
       <Ionicons name={icon} size={iconSize.md} color={colors.accent} />
       <Text style={styles.photoBtnText}>{label}</Text>
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 
   const dateRow = candidates?.find(r => r.id === dateFor) ?? null;
@@ -251,7 +250,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
           <React.Fragment key={row.id}>
             {i > 0 && <View style={styles.sep} />}
             <View style={styles.row}>
-              <TouchableOpacity
+              <HoverTouchable
                 hitSlop={8}
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); patch(row.id, { included: !row.included }); }}
@@ -266,7 +265,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
                 >
                   <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
                 </CheckPop>
-              </TouchableOpacity>
+              </HoverTouchable>
               <View style={styles.rowBody}>
                 <TextField
                   style={[styles.titleInput, !row.included && styles.titleOff]}
@@ -278,7 +277,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
                   accessibilityLabel={`Title of ${row.title || 'task'}`}
                 />
                 <View style={styles.chips}>
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={[styles.chip, row.dueDate && styles.chipDated]}
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { Keyboard.dismiss(); setDateFor(row.id); }}
@@ -288,7 +287,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
                     <Text style={[styles.chipText, row.dueDate && styles.chipTextDated]}>
                       {row.dueDate ? format(row.dueDate, 'EEE, MMM d') : 'No date'}
                     </Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
                 {!!row.notes && <Text style={styles.notes} numberOfLines={2}>{row.notes}</Text>}
               </View>
@@ -381,7 +380,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
-            <TouchableOpacity
+            <HoverTouchable
               hitSlop={8}
               style={styles.previewClear}
               activeOpacity={interaction.activeOpacity}
@@ -390,7 +389,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
               accessibilityLabel={extraPhotos.length > 0 ? 'Remove these photos' : 'Remove this photo'}
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
-            </TouchableOpacity>
+            </HoverTouchable>
             {extraPhotos.length > 0 && (
               <View style={styles.previewCount}>
                 <Text style={styles.previewCountText}>+{extraPhotos.length} more</Text>
@@ -420,7 +419,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
         {!!photoError && <Text style={styles.error}>{photoError}</Text>}
         {!!error && <Text style={styles.error}>{error}</Text>}
 
-        <TouchableOpacity
+        <HoverTouchable
           style={[styles.runBtn, !ready && styles.runBtnOff]}
           activeOpacity={interaction.activeOpacity}
           onPress={run}
@@ -430,7 +429,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
         >
           <Ionicons name="sparkles" size={iconSize.sm} color={colors.onFill} />
           <Text style={styles.runBtnText}>Read the tasks</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       </>
     );
   };

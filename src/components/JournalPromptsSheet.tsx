@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { InlineAction } from './InlineAction';
@@ -16,6 +16,7 @@ import {
 } from '../utils/journal';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -71,7 +72,7 @@ export function JournalPromptsSheet({ visible, onClose }: Props) {
               {prompts.map((prompt, index) => (
                 <View key={prompt} style={[styles.row, index > 0 && styles.rowBorder]}>
                   <Text style={styles.rowText}>{prompt}</Text>
-                  <TouchableOpacity
+                  <HoverTouchable
                     onPress={() => remove(index)}
                     activeOpacity={interaction.activeOpacity}
                     hitSlop={8}
@@ -79,7 +80,7 @@ export function JournalPromptsSheet({ visible, onClose }: Props) {
                     accessibilityLabel={`Remove prompt ${prompt}`}
                   >
                     <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
               ))}
             </ScrollView>

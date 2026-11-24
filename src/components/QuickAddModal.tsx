@@ -143,6 +143,7 @@ import { ordinal } from '../utils/ordinal';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayCard } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 /** How long a draft left by tapping outside quick add waits to be picked up. */
 const QUICK_ADD_KEEP_DRAFT_MS = 10 * 60 * 1000;
@@ -2468,7 +2469,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     <View style={styles.reminderRow}>
       <Ionicons name={icon} size={13} color={colors.accent} />
       <Text style={styles.reminderText} numberOfLines={1}>{text}</Text>
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={() => { haptics.tap(); animateLayout(); onClear(); }}
         hitSlop={8}
@@ -2476,7 +2477,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         accessibilityLabel={clearLabel}
       >
         <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
-      </TouchableOpacity>
+      </HoverTouchable>
     </View>
   );
 
@@ -2693,7 +2694,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
               <View style={styles.seedChip}>
                 <Ionicons name="return-down-forward" size={13} color={colors.accent} />
                 <Text style={styles.seedChipText} numberOfLines={1}>{seedLabel}</Text>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     haptics.tap();
@@ -2710,7 +2711,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                   accessibilityLabel={`Remove placement ${seedLabel}`}
                 >
                   <Ionicons name="close" size={13} color={colors.textSecondary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             </View>
           ) : null}
@@ -2782,7 +2783,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
             {/* The arrow moves into the footer as a named button while
                 "Show fewer fields" is on — see the footer row below. */}
             {!simpleTaskForm && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 style={[styles.addBtn, (!title.trim() || blocked !== null) && styles.addBtnDisabled]}
                 onPress={handleAdd}
@@ -2791,7 +2792,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 accessibilityLabel={eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
               >
                 <Ionicons name="arrow-up" size={18} color={!title.trim() || blocked !== null ? colors.textTertiary : colors.onAccent} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
 
@@ -2932,7 +2933,7 @@ parsed
               >
                 <Text style={styles.reminderAccept}>Remind me</Text>
               </TouchableOpacity>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={dismissReminderOffer}
                 hitSlop={8}
@@ -2940,7 +2941,7 @@ parsed
                 accessibilityLabel="Dismiss reminder suggestion"
               >
                 <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
 
@@ -2962,7 +2963,7 @@ parsed
               >
                 <Text style={styles.reminderAccept}>Use template</Text>
               </TouchableOpacity>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={dismissTemplateOffer}
                 hitSlop={8}
@@ -2970,7 +2971,7 @@ parsed
                 accessibilityLabel="Dismiss template suggestion"
               >
                 <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
 
@@ -3033,7 +3034,7 @@ parsed
             <View style={styles.ruleRow}>
               <Ionicons name="funnel-outline" size={13} color={colors.textSecondary} />
               <Text style={styles.ruleText} numberOfLines={1}>{ruleCaption}</Text>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); setRulesOptedOut(true); }}
                 hitSlop={8}
@@ -3041,7 +3042,7 @@ parsed
                 accessibilityLabel="Don’t use title rules on this task"
               >
                 <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
 
@@ -3061,7 +3062,7 @@ parsed
                 {TIMED_MINUTE_OPTIONS.map(m => {
                   const active = timedMinutes === m;
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={m}
                       style={[styles.presetChip, active && styles.presetChipActive]}
                       onPress={() => {
@@ -3077,14 +3078,14 @@ parsed
                       <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
                         {formatDuration(m)}
                       </Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
                 {/* A duration no preset names (typed, or "for two minutes" in
                     the title) gets a checked pill of its own, so it reads as
                     picked rather than as nothing being selected. */}
                 {customTimedActive && timedMinutes != null && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={[styles.presetChip, styles.presetChipCustom]}
                     onPress={() => { haptics.tap(); setTimedMinutes(null); setCustomTimedText(''); }}
                     activeOpacity={interaction.activeOpacity}
@@ -3096,7 +3097,7 @@ parsed
                       <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
                       <Text style={styles.presetChipCustomText}>{formatDuration(timedMinutes)}</Text>
                     </View>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
                 <TextField
                   style={[styles.inlineCustomInput, customTimedActive && customTimedText !== '' && styles.customInputActive]}
@@ -3182,7 +3183,7 @@ parsed
                           <Text style={styles.stepTitle} numberOfLines={1}>{item.title}</Text>
                         </TouchableOpacity>
                       )}
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => removeStep(item.id)}
                         hitSlop={8}
@@ -3190,7 +3191,7 @@ parsed
                         accessibilityLabel={`Remove step ${item.title}`}
                       >
                         <Ionicons name="close" size={14} color={colors.textSecondary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </View>
                   ))}
                 </ScrollView>
@@ -3212,7 +3213,7 @@ parsed
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {pendingStep.length > 0 && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => addStep(newStepTitle)}
                     hitSlop={8}
@@ -3220,7 +3221,7 @@ parsed
                     accessibilityLabel={`Add step ${pendingStep}`}
                   >
                     <Ionicons name="add-circle" size={20} color={colors.accent} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
               {blocked && <Text style={styles.typeBlocked}>{blocked}</Text>}
@@ -3234,7 +3235,7 @@ parsed
           <OnCallWarning text={onCallWarning} style={styles.onCallWarning} />
           <View style={styles.toolbar}>
             {visibleChips.map(chip => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={chip.key}
                 style={[
                   styles.toolChip,
@@ -3269,14 +3270,14 @@ parsed
                 >
                   {chip.value ?? chip.label}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
 
             {/* One disclosure for the rest, rather than four rows of pills
                 above the keyboard. Never appears for a single chip, and never
                 swallows one that's already set — see resolvePillOverflow. */}
             {hiddenChipCount > 0 && (
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.toolChip}
                 onPress={() => { haptics.tap(); setShowAllChips(true); }}
                 activeOpacity={interaction.activeOpacity}
@@ -3285,7 +3286,7 @@ parsed
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textSecondary} />
                 <Text style={styles.toolChipText}>{hiddenChipCount} more</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
 
           </View>
@@ -3303,7 +3304,7 @@ parsed
                     night: colors.timeNight,
                   }[seg.key];
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={seg.key}
                       style={[
                         styles.segmentChip,
@@ -3321,7 +3322,7 @@ parsed
                       ]}>
                         {seg.label}
                       </Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
               </View>
@@ -3501,7 +3502,7 @@ parsed
                 {ESTIMATE_PRESET_MINUTES.map(mins => {
                   const active = !customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={mins}
                       style={[styles.presetChip, active && styles.presetChipActive]}
                       onPress={() => applyEstimatePreset(mins)}
@@ -3510,11 +3511,11 @@ parsed
                       <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
                         {formatDuration(mins)}
                       </Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
                 {customEffortActive && estimatedMinutes != null && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={[styles.presetChip, styles.presetChipCustom]}
                     onPress={() => applyCustomEffort('')}
                     activeOpacity={interaction.activeOpacity}
@@ -3526,7 +3527,7 @@ parsed
                       <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
                       <Text style={styles.presetChipCustomText}>{formatDuration(estimatedMinutes)}</Text>
                     </View>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
               <View style={styles.effortCustomRow}>
@@ -3552,7 +3553,7 @@ parsed
               {tags.length > 0 && (
                 <View style={styles.selectedTagsRow}>
                   {tags.map(tag => (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={tag}
                       style={[styles.selectedTagChip, { backgroundColor: tagColor(tag) + '33' }]}
                       onPress={() => removeTag(tag)}
@@ -3561,7 +3562,7 @@ parsed
                       <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                       <Text style={[styles.selectedTagText, { color: tagColor(tag) }]}>{tag}</Text>
                       <Ionicons name="close" size={10} color={tagColor(tag)} />
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   ))}
                 </View>
               )}
@@ -3582,7 +3583,7 @@ parsed
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {tagInput.trim().length > 0 && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => addTag(tagInput)}
                     hitSlop={8}
@@ -3590,7 +3591,7 @@ parsed
                     accessibilityLabel={`Add tag ${tagInput}`}
                   >
                     <Ionicons name="add-circle" size={20} color={colors.accent} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
               {/* Existing tag suggestions */}
@@ -3598,7 +3599,7 @@ parsed
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll} keyboardShouldPersistTaps="handled">
                   <View style={styles.suggestionsRow}>
                     {suggestedTags.map(tag => (
-                      <TouchableOpacity
+                      <HoverTouchable
                         key={tag}
                         style={styles.suggestionChip}
                         onPress={() => toggleExistingTag(tag)}
@@ -3606,7 +3607,7 @@ parsed
                       >
                         <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                         <Text style={styles.suggestionText}>{tag}</Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     ))}
                   </View>
                 </ScrollView>
@@ -3634,7 +3635,7 @@ parsed
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {linkUrl !== null && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); setLinkUrl(null); setCustomLinkText(''); setActivePanel(null); }}
                     hitSlop={8}
@@ -3642,7 +3643,7 @@ parsed
                     accessibilityLabel="Clear link"
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
               <LinkFieldActions
@@ -3724,7 +3725,7 @@ parsed
                   // keypad away doesn't mean aiming for the sheet's backdrop.
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={commitPhone}
                   hitSlop={8}
@@ -3732,9 +3733,9 @@ parsed
                   accessibilityLabel="Confirm phone number"
                 >
                   <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
-                </TouchableOpacity>
+                </HoverTouchable>
                 {effectivePhone !== null && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); setPhoneNumber(null); setMentionContactOff(true); setPhoneText(''); setActivePanel(null); }}
                     hitSlop={8}
@@ -3742,7 +3743,7 @@ parsed
                     accessibilityLabel="Clear phone number"
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
             </View>
@@ -3768,7 +3769,7 @@ parsed
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {effectiveEmail !== null && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); setEmailAddress(null); setMentionContactOff(true); setEmailText(''); setActivePanel(null); }}
                     hitSlop={8}
@@ -3776,7 +3777,7 @@ parsed
                     accessibilityLabel="Clear email address"
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
             </View>
@@ -3789,7 +3790,7 @@ parsed
               except a section-only one (see keepOpen). */}
           {(!seedActive || sectionOnlySeed) && (
             <View style={styles.burstRow}>
-              <TouchableOpacity
+              <HoverTouchable
                 style={[styles.keepOpenChip, keepOpen && styles.keepOpenChipOn]}
                 onPress={() => {
                   haptics.tap();
@@ -3808,7 +3809,7 @@ parsed
                 <Text style={[styles.keepOpenText, keepOpen && styles.keepOpenTextOn]}>
                   Add another
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
               {burstAdded.length > 0 && (
                 <Text style={styles.burstCount}>
                   {burstAdded.length} added
@@ -3861,10 +3862,10 @@ parsed
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={interaction.activeOpacity}>
+            <HoverTouchable style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={interaction.activeOpacity}>
               <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
               <Text style={styles.moreBtnText}>More details</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
           </ScrollView>
           <ScrollEdgeFade

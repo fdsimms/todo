@@ -18,6 +18,7 @@ import {
   boardColumns, boardMove, columnIndexAt, insertIndexAt, LOOSE_COLUMN_KEY,
   type BoardColumn, type BoardMove,
 } from '../utils/projectBoard';
+import { HoverTouchable } from './HoverTouchable';
 
 const COLUMN_WIDTH = 280;
 const CHECK_SIZE = 20;
@@ -583,7 +584,7 @@ function BoardColumnView({
             accessibilityRole="button"
             accessibilityLabel={`${task.title}, completed`}
           >
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.check, styles.checkDone]}
               onPress={() => { haptics.tap(); onUncheck(task); }}
               hitSlop={8}
@@ -593,7 +594,7 @@ function BoardColumnView({
               accessibilityLabel={`Mark ${task.title} not done`}
             >
               <Ionicons name="checkmark" size={14} color={colors.onDone} />
-            </TouchableOpacity>
+            </HoverTouchable>
             <Text style={[styles.cardTitle, styles.doneTitle]} numberOfLines={2}>{task.title}</Text>
           </TouchableOpacity>
         ))}

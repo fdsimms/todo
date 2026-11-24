@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -28,6 +28,7 @@ import { SettingsSegments } from '../screens/settings/SettingsSegments';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { changedSlots } from '../utils/editorChangeSummary';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -269,7 +270,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
               {orderedDays.map(day => {
                 const on = draft.days.includes(day);
                 return (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={day}
                     style={[settingsStyles.pill, on && settingsStyles.pillActive, styles.dayPill]}
@@ -279,7 +280,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
                     accessibilityState={{ selected: on }}
                   >
                     <Text style={[settingsStyles.pillText, on && settingsStyles.pillTextActive]}>{DAY_INITIALS[day]}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 );
               })}
             </View>

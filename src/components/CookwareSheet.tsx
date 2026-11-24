@@ -19,6 +19,7 @@ import type { CookwareType } from '../types';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDelete } from '../utils/confirmDelete';
+import { HoverTouchable } from './HoverTouchable';
 
 const NAME_MAX_LENGTH = 40;
 
@@ -225,7 +226,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                           />
                           <Text style={styles.unit}>g</Text>
                         </View>
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           onPress={finishEdit}
                           hitSlop={8}
@@ -233,7 +234,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                           accessibilityLabel={`Save ${c.name}`}
                         >
                           <Ionicons name="checkmark" size={22} color={colors.accentText} />
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       </>
                     ) : (
                       <>
@@ -248,7 +249,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                           <Text style={styles.rowValue}>{c.weightG} g</Text>
                           <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
                         </TouchableOpacity>
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           onPress={() => handleDelete(c.id, c.name)}
                           hitSlop={8}
@@ -256,7 +257,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                           accessibilityLabel={`Delete ${c.name}`}
                         >
                           <Ionicons name="trash-outline" size={20} color={colors.red} />
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       </>
                     )}
                   </View>

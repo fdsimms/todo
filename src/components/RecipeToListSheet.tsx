@@ -51,6 +51,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -589,7 +590,7 @@ export function RecipeToListSheet({
                     // ChoiceResolution.undecided.
                     extraChip={group.kind === 'ingredient' ? (
                       <>
-                        <TouchableOpacity
+                        <HoverTouchable
                           style={[styles.choiceChip, open && styles.choiceChipOn]}
                           activeOpacity={interaction.activeOpacity}
                           onPress={() => {
@@ -604,8 +605,8 @@ export function RecipeToListSheet({
                           <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
                             Decide at the store
                           </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
+                        </HoverTouchable>
+                        <HoverTouchable
                           style={[styles.choiceChip, skip && styles.choiceChipOn]}
                           activeOpacity={interaction.activeOpacity}
                           onPress={() => {
@@ -620,7 +621,7 @@ export function RecipeToListSheet({
                           <Text style={[styles.choiceChipText, skip && styles.choiceChipTextOn]}>
                             Not needed
                           </Text>
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       </>
                     ) : null}
                   />
@@ -794,7 +795,7 @@ export function RecipeToListSheet({
                                       </View>
                                     </TouchableOpacity>
                                     {!!subs && (
-                                      <TouchableOpacity
+                                      <HoverTouchable
                                         style={styles.subsButton}
                                         activeOpacity={interaction.activeOpacity}
                                         onPress={() => {
@@ -813,7 +814,7 @@ export function RecipeToListSheet({
                                         {subs.length > 1 && (
                                           <Text style={styles.subsCount}>{subs.length}</Text>
                                         )}
-                                      </TouchableOpacity>
+                                      </HoverTouchable>
                                     )}
                                     {canMarkHave && (
                                       <InlineAction

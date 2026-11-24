@@ -17,6 +17,7 @@ import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtil
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { JOURNAL_KIND_COPY, daysWrittenInMonth } from '../utils/journal';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -61,7 +62,7 @@ export function JournalMonthSheet({ visible, kind, onPickDay, onClose }: Props) 
           right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
         <View style={styles.monthRow}>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setMonth(m => addMonths(m, -1)); }}
             hitSlop={8}
@@ -69,9 +70,9 @@ export function JournalMonthSheet({ visible, kind, onPickDay, onClose }: Props) 
             accessibilityLabel="Previous month"
           >
             <Ionicons name="chevron-back" size={iconSize.md} color={colors.accent} />
-          </TouchableOpacity>
+          </HoverTouchable>
           <Text style={styles.monthTitle}>{format(month, 'MMMM yyyy')}</Text>
-          <TouchableOpacity
+          <HoverTouchable
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setMonth(m => addMonths(m, 1)); }}
             disabled={!canGoForward}
@@ -80,7 +81,7 @@ export function JournalMonthSheet({ visible, kind, onPickDay, onClose }: Props) 
             accessibilityLabel="Next month"
           >
             <Ionicons name="chevron-forward" size={iconSize.md} color={canGoForward ? colors.accent : colors.textTertiary} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
         <View style={styles.grid}>
           <View style={styles.weekRow}>

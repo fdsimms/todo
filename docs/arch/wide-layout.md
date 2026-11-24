@@ -249,8 +249,8 @@ the native half was written against Apple's declarations and can only be checked
   the click lost, so the handle is the way in. React Native reports hover as
   `onPointerEnter`/`onPointerLeave` with no flag. Rows and the
   sidebar get no hover tint, which is the Mac's own convention for lists. A button does get the
-  system pointer effect (`Hoverable`, used by `PressableScale`): `HoverEffect.LIFT` through
-  react-native-gesture-handler's hover gesture, which installs a `UIPointerInteraction`. A swipe
+  system pointer effect (`Hoverable`, used by `PressableScale` and `HoverTouchable`): `HoverEffect.LIFT` through
+  react-native-gesture-handler's hover gesture, which installs a `UIPointerInteraction`. It is skipped on an iPhone (`Platform.isPad`, fixed for the process), so a long list pays for no handler per chip there. A swipe
   row also opens with a two-finger trackpad swipe (`enableTrackpadTwoFingerGesture` on each
   `Swipeable`), otherwise only a click and drag moves it. Neither has run on an iPad or Mac yet.
 - **The keyboard can drive the task list** (`rowCursor.ts`, `rowOrder.ts`, `keyActions.ts`). ↑ and ↓ move

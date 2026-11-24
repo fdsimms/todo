@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { NamedIcon } from './CoinIcon';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -11,6 +11,7 @@ import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 export interface ListBulkAction {
   key: string;
@@ -147,17 +148,17 @@ export function ListBulkBar({
       {panel === 'actions' && (
         <>
           <View style={styles.topRow}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               style={styles.selectAllBtn}
               onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
             >
               <Text style={styles.selectAllText}>{allSelected ? 'Deselect all' : 'Select all'}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             <Text style={styles.countText}>{selectedCount} selected</Text>
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
               <Ionicons name="close" size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
           <View style={styles.actionRow}>
             {/* "Move", purple, filled folder — the same word and treatment
@@ -200,9 +201,9 @@ export function ListBulkBar({
       {panel === 'category' && category && (
         <View style={styles.subPanel}>
           <View style={styles.subHeader}>
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
               <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
             <Text style={styles.subTitle}>{category.title}</Text>
             <View style={{ width: 28 }} />
           </View>
@@ -226,18 +227,18 @@ export function ListBulkBar({
             {...fade.scrollProps}
           >
             {!query && category.allowNone !== false && (
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.categoryChip} onPress={() => handleSetCategory(null)}>
+              <HoverTouchable activeOpacity={interaction.activeOpacity} style={styles.categoryChip} onPress={() => handleSetCategory(null)}>
                 <Text style={styles.categoryChipText}>{category.noneLabel ?? 'None'}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
             {filtered.map(name => (
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} key={name} style={styles.categoryChip} onPress={() => handleSetCategory(name)}>
+              <HoverTouchable activeOpacity={interaction.activeOpacity} key={name} style={styles.categoryChip} onPress={() => handleSetCategory(name)}>
                 <Ionicons name="folder-outline" size={13} color={colors.textSecondary} />
                 <Text style={styles.categoryChipText}>{name}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             {query !== '' && !exact && category.onCreate && (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 style={[styles.categoryChip, styles.categoryCreateChip]}
                 onPress={handleCreateCategory}
@@ -246,7 +247,7 @@ export function ListBulkBar({
                 <Text style={[styles.categoryChipText, styles.categoryCreateChipText]} numberOfLines={1}>
                   Create “{categoryText.trim()}”
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </ScrollView>
           <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, View, Text, ScrollView, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -58,6 +58,7 @@ import type { Effort, FocusSession, FocusStep, Task } from '../types';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
 import { openExternalUrl } from '../utils/openExternalUrl';
+import { HoverTouchable } from './HoverTouchable';
 
 /** How much time "+5 min" adds to a step that needs a little longer. */
 const EXTEND_MINUTES = 5;
@@ -591,7 +592,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           {!isRest && currentTask && (stepLink || callUrl || emailUrl) && (
             <View style={styles.contactRow}>
               {stepLink && (
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={handleOpenLink}
                   style={styles.contactBtn}
                   activeOpacity={interaction.activeOpacity}
@@ -600,10 +601,10 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name={linkIconFor(stepLink) as never} size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Link</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
               {callUrl && (
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={handleContact}
                   style={styles.contactBtn}
                   activeOpacity={interaction.activeOpacity}
@@ -612,10 +613,10 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Call</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
               {emailUrl && (
-                <TouchableOpacity
+                <HoverTouchable
                   onPress={handleEmail}
                   style={styles.contactBtn}
                   activeOpacity={interaction.activeOpacity}
@@ -624,7 +625,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Email</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
             </View>
           )}
@@ -745,7 +746,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
           <View style={styles.secondaryRow}>
             {!isRest && currentTask && (
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.secondaryBtn}
                 onPress={quotaTask ? handleLog : handleDone}
                 activeOpacity={interaction.activeOpacity}
@@ -758,13 +759,13 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               >
                 <Ionicons name="checkmark-circle-outline" size={iconSize.md} color={colors.done} />
                 <Text style={styles.secondaryLabel}>{quotaTask ? 'Log one' : BUTTON_LABEL.done}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
 
             {/* Past the estimate the primary button is "Next", so pausing moves
                 here. Running over is not a reason to lose the pause. */}
             {stepDone && (
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.secondaryBtn}
                 onPress={taskTimed ? handleTaskTimer : handlePauseResume}
                 activeOpacity={interaction.activeOpacity}
@@ -773,10 +774,10 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               >
                 <Ionicons name={(taskTimed ? taskTimerRunning : running) ? 'pause-circle-outline' : 'play-circle-outline'} size={iconSize.md} color={colors.textSecondary} />
                 <Text style={styles.secondaryLabel}>{(taskTimed ? taskTimerRunning : running) ? 'Pause' : 'Resume'}</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
 
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.secondaryBtn}
               onPress={() => {
                 clearPendingUndo();
@@ -789,9 +790,9 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             >
               <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.textSecondary} />
               <Text style={styles.secondaryLabel}>{`${EXTEND_MINUTES} min`}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
 
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.secondaryBtn}
               onPress={onPace ? handleFinishForNow : handleSkip}
               activeOpacity={interaction.activeOpacity}
@@ -808,7 +809,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 color={onPace ? colors.green : colors.textSecondary}
               />
               <Text style={styles.secondaryLabel}>{onPace ? 'Done for now' : 'Skip'}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
 
           {pendingUndo && pendingUndo.sessionBefore.id === session.id && (
@@ -856,7 +857,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity
+          <HoverTouchable
             onPress={handleClose}
             style={styles.closeBtn}
             activeOpacity={interaction.activeOpacity}
@@ -864,7 +865,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             accessibilityLabel="Close, keeping the session running"
           >
             <Ionicons name="chevron-down" size={iconSize.md} color={colors.textSecondary} />
-          </TouchableOpacity>
+          </HoverTouchable>
 
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Focus</Text>
@@ -882,7 +883,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           </View>
 
           <View style={styles.headerRight}>
-            <TouchableOpacity
+            <HoverTouchable
               onPress={handleOpenSettings}
               style={styles.settingsBtn}
               activeOpacity={interaction.activeOpacity}
@@ -890,7 +891,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               accessibilityLabel="Focus session settings"
             >
               <Ionicons name="settings-outline" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
             <SheetHeaderButton label="End" role="cancel" onPress={handleEnd} accessibilityLabel="End session" />
           </View>
         </View>

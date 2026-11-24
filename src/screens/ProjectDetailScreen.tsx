@@ -137,6 +137,7 @@ import { isOpenEnded, listItemFinder, sectionIsList } from '../utils/listMode';
 import { openExternalUrl } from '../utils/openExternalUrl';
 import { shareContent } from '../utils/shareContent';
 import { RotatingChevron } from '../components/RotatingChevron';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string; returnTo?: string };
@@ -345,7 +346,7 @@ function NewLineField({
         // onPressIn rather than onPress: tapping away blurs the field, which
         // adds the line and closes it, and a press that waits for the finger
         // to lift would find the button already gone.
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.newLineConfirm}
           onPressIn={() => { haptics.tap(); submit(); }}
           activeOpacity={interaction.activeOpacity}
@@ -354,13 +355,13 @@ function NewLineField({
           accessibilityLabel={`Add ${placeholder.replace(/^New /, '')}`}
         >
           <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       </View>
       {pendingLabels.length > 0 && (
         <View style={styles.newLinePending}>
           <Text style={styles.newLinePendingText} numberOfLines={1}>{pendingLabels.join(' · ')}</Text>
-          <TouchableOpacity
+          <HoverTouchable
             onPress={() => { haptics.tap(); setPendingBoth(NO_LINE_PENDING); }}
             activeOpacity={interaction.activeOpacity}
             hitSlop={8}
@@ -368,7 +369,7 @@ function NewLineField({
             accessibilityLabel={`Clear ${pendingLabels.join(' and ')}`}
           >
             <Ionicons name="close-circle" size={iconSize.sm} color={placeholderColor} />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
       )}
       {!plain && (
@@ -1820,7 +1821,7 @@ function ProjectDetailContent() {
           {projectPeople.length > 0 && (
             <View style={styles.peopleRow}>
               {projectPeople.map(person => (
-                <TouchableOpacity
+                <HoverTouchable
                   key={person.id}
                   style={styles.personChip}
                   onPress={() => { haptics.tap(); (navigation as any).navigate('PersonDetail', { personId: person.id }); }}
@@ -1831,7 +1832,7 @@ function ProjectDetailContent() {
                 >
                   <Ionicons name="person-circle-outline" size={16} color={colors.textSecondary} />
                   <Text style={styles.personChipText} numberOfLines={1}>{displayNameOf(person)}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               ))}
             </View>
           )}
@@ -1891,7 +1892,7 @@ function ProjectDetailContent() {
                   headed for a message, not the clipboard. Long-press still
                   copies in one step. */}
               {!!copyText && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     void shareContent({ message: `${project?.title ?? ''}\n\n${copyText}` });
@@ -1904,10 +1905,10 @@ function ProjectDetailContent() {
                   accessibilityHint="Long press to copy instead"
                 >
                   <Ionicons name={copied ? 'checkmark' : 'share-outline'} size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
               {!!anthropicApiKey && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setSuggestionsVisible(true); }}
                   hitSlop={8}
@@ -1915,9 +1916,9 @@ function ProjectDetailContent() {
                   accessibilityLabel="Suggest tasks with AI"
                 >
                   <Ionicons name="sparkles-outline" size={20} color={colors.purple} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={12}
+              <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={12}
                 onPress={() => project && setEditingProject(project)}
                 accessibilityRole="button"
                 accessibilityLabel="Edit project"
@@ -1925,9 +1926,9 @@ function ProjectDetailContent() {
                 {/* A pencil, not "…": it opens the editor straight away, and
                     three dots promise a menu of choices first. */}
                 <Ionicons name="create-outline" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
               {!!project && (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   hitSlop={12}
                   onPress={(e) => {
@@ -1938,7 +1939,7 @@ function ProjectDetailContent() {
                   accessibilityLabel="Project options"
                 >
                   <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
             </View>
           }

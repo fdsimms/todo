@@ -19,6 +19,7 @@ import { spacing, radius, font, fontWeight, animation, interaction, type Colors,
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 import { overlayCard } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -187,7 +188,7 @@ export function QuickAddNameSheet({
               autoCapitalize={autoCapitalize}
               blurOnSubmit={false}
             />
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
+            <HoverTouchable activeOpacity={interaction.activeOpacity} hitSlop={8}
               style={[styles.addBtn, !trimmedName && styles.addBtnDisabled]}
               onPress={handleAdd}
               disabled={!trimmedName}
@@ -195,11 +196,11 @@ export function QuickAddNameSheet({
               accessibilityLabel={`Create ${noun}`}
             >
               <Ionicons name="arrow-up" size={18} color={trimmedName ? colors.onAccent : colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
 
           {!!moreLabel && !!onOpenFull && (
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.moreBtn, !trimmedName && styles.moreBtnDisabled]}
               onPress={handleOpenFull}
               disabled={!trimmedName}
@@ -208,7 +209,7 @@ export function QuickAddNameSheet({
             >
               <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
               <Text style={styles.moreBtnText}>{moreLabel}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </Animated.View>
       </View>

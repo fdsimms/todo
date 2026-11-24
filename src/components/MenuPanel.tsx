@@ -33,6 +33,7 @@ import type { CardAnchor } from './CardSheet';
 import { haptics } from '../utils/haptics';
 import { PointerView } from './PointerView';
 import { deviceHasWideWindows } from '../utils/deviceKind';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /**
@@ -512,7 +513,7 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
                 again from the same corner. The drawer has nothing to fold. */}
             {variant === 'sidebar' && (
               <PointerView toolTip="Collapse sidebar (⌃⌘S)">
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.collapseButton}
                   onPress={() => { haptics.tap(); useSettingsStore.getState().setSidebarCollapsed(true); }}
                   activeOpacity={interaction.activeOpacity}
@@ -520,7 +521,7 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
                   accessibilityLabel="Collapse sidebar"
                 >
                   <Ionicons name="chevron-back" size={COMPACT_ICON} color={colors.textSecondary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </PointerView>
             )}
           </View>
@@ -598,7 +599,7 @@ function MenuChip({
 }) {
   const tint = active ? colors.accent : size === 'recent' ? colors.text : colors.textSecondary;
   return (
-    <TouchableOpacity
+    <HoverTouchable
       style={[
         styles.chip,
         size === 'recent' && styles.chipRecent,
@@ -631,7 +632,7 @@ function MenuChip({
           <Text style={[styles.chipCountText, { color: colors.accent }]}>{count}</Text>
         </View>
       )}
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

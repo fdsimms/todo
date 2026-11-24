@@ -26,6 +26,7 @@ import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -219,7 +220,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
                 returnKeyType="done"
                 accessibilityLabel={`Answer ${index + 1}`}
               />
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => removeOption(index)}
                 hitSlop={8}
@@ -227,7 +228,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
                 accessibilityLabel={`Remove answer ${option || index + 1}`}
               >
                 <Ionicons name="close-circle" size={20} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           ))}
           <InlineAction

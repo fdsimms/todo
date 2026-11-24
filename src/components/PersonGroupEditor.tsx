@@ -16,6 +16,7 @@ import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -111,9 +112,9 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
             title="Group"
             left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
             right={
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDeleteGroup} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete group">
+              <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={handleDeleteGroup} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete group">
                 <Ionicons name="trash-outline" size={20} color={colors.red} />
-              </TouchableOpacity>
+              </HoverTouchable>
             }
           />
         }
@@ -207,7 +208,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
           </View>
         </View>
       </View>
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         style={[styles.createButton, !newGroupName.trim() && styles.createButtonDisabled]}
         onPress={startNewGroup}
@@ -216,7 +217,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
         accessibilityLabel={`Add ${displayNameOf(person)} to a new group`}
       >
         <Text style={styles.createButtonText}>Create & add {displayNameOf(person)}</Text>
-      </TouchableOpacity>
+      </HoverTouchable>
 
       {groups.length > 0 && (
         <>

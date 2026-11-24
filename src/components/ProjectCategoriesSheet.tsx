@@ -29,6 +29,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -296,7 +297,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                         {editing && !!renameTakenBy && <FieldError>{takenMessage(renameTakenBy)}</FieldError>}
                         <Text style={styles.rowCount}>{describeCount(name)}</Text>
                       </View>
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => handleDelete(name)}
                         hitSlop={8}
@@ -305,8 +306,8 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                         accessibilityLabel={`Delete category ${name}`}
                       >
                         <Ionicons name="trash-outline" size={18} color={colors.red} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </HoverTouchable>
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         onLongPress={drag}
                         delayLongPress={interaction.delayLongPress}
@@ -316,7 +317,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                         accessibilityLabel={`Reorder ${name}`}
                       >
                         <Ionicons name="reorder-three" size={20} color={colors.textTertiary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </View>
                   );
                 }}

@@ -31,6 +31,7 @@ import { spacing, font, fontWeight, radius, interaction, type Colors, textScale 
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatCategorySchedule } from '../utils/categorySchedule';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 export function CategoriesScreen() {
   const pullSearch = usePullToSearch();
@@ -185,7 +186,7 @@ export function CategoriesScreen() {
                     )}
                   </View>
                 </View>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setEditingCategory(cat); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -193,7 +194,7 @@ export function CategoriesScreen() {
                   accessibilityLabel={`Edit ${cat}`}
                 >
                   <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </TouchableOpacity>
             );
           }}

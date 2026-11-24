@@ -67,6 +67,7 @@ import { useLingering } from '../hooks/useLingering';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /** How many recent doses the list shows at first, and how many more each tap adds. */
 const RECENT_PAGE = 25;
@@ -302,7 +303,7 @@ export function MedicationScreen() {
   const recordHeader = (title: string) => (
     <View style={styles.sectionHeaderRow}>
       <Text style={[styles.sectionTitle, styles.sectionTitleInRow]}>{title}</Text>
-      <TouchableOpacity
+      <HoverTouchable
         onPress={openNew}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         activeOpacity={interaction.activeOpacity}
@@ -310,7 +311,7 @@ export function MedicationScreen() {
         accessibilityLabel="Record a dose"
       >
         <Ionicons name="add-circle-outline" size={iconSize.lg} color={colors.accent} />
-      </TouchableOpacity>
+      </HoverTouchable>
     </View>
   );
 

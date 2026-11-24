@@ -20,6 +20,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * The minimum a list item has to carry to have a link button, satisfied by
@@ -154,7 +155,7 @@ export function ChainStepLinkSheet({
             <>
             <View style={styles.chipRow}>
               {savedLinks.chips.map(app => (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   key={app.scheme}
                   style={[styles.chip, linkUrl === app.scheme && styles.chipActive]}
@@ -170,7 +171,7 @@ export function ChainStepLinkSheet({
                   <Text style={[styles.chipText, linkUrl === app.scheme && styles.chipTextActive]}>
                     {app.name}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               ))}
             </View>
             <SavedLinksHint links={savedLinks} />

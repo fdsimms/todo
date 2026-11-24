@@ -1,10 +1,11 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { LinkableItem } from './ChainStepLinkSheet';
 import { useColors } from '../theme/ThemeContext';
 import { radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** The step or rotation member this button belongs to. */
@@ -42,7 +43,7 @@ export function StepLink({ step, taskLinkUrl, onPress }: Props) {
       : `Set a link for ${step.title}`;
 
   return (
-    <TouchableOpacity
+    <HoverTouchable
       onPress={() => { haptics.tap(); onPress(); }}
       style={[styles.button, own && styles.buttonSet]}
       activeOpacity={interaction.activeOpacity}
@@ -55,7 +56,7 @@ export function StepLink({ step, taskLinkUrl, onPress }: Props) {
         size={iconSize.sm}
         color={own ? colors.text : colors.textTertiary}
       />
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

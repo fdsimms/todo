@@ -51,6 +51,7 @@ import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { UnlockLeaveOutSheet } from './UnlockLeaveOutSheet';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * The Rewards screen's Unlocks section: treats opened by the day's work
@@ -201,7 +202,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
         <FormField label="Icon">
         <View style={styles.presetRow}>
           {UNLOCK_GLYPHS.map(g => (
-            <TouchableOpacity
+            <HoverTouchable
               key={g}
               style={[styles.presetChip, fields.glyph === g && styles.presetChipActive]}
               onPress={() => { haptics.tap(); set('glyph', fields.glyph === g ? null : g); }}
@@ -211,7 +212,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
               accessibilityLabel={`Icon ${g}`}
             >
               <Text style={styles.glyphChipText}>{g}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           ))}
         </View>
         <TextField
@@ -245,7 +246,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
             const task = taskById.get(id);
             const title = task ? displayTitleFor(task) : 'A task that’s gone';
             return (
-              <TouchableOpacity
+              <HoverTouchable
                 key={id}
                 style={styles.taskChip}
                 onPress={() => { haptics.tap(); set('requiredTaskIds', fields.requiredTaskIds.filter(x => x !== id)); }}
@@ -255,7 +256,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
               >
                 <Text style={styles.taskChipText} numberOfLines={1}>{title}</Text>
                 <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             );
           })}
           <InlineAction label="Add a task" icon="add" variant="neutral" onPress={() => { haptics.tap(); setTaskPickerOpen(true); }} />
@@ -352,7 +353,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
             ['projectIds', 'briefcase-outline', (id: string) => projectTitles[id] ?? 'A project that’s gone'],
           ] as const).flatMap(([kind, icon, labelOf]) =>
             (fields.ignoreList?.[kind] ?? []).map(key => (
-              <TouchableOpacity
+              <HoverTouchable
                 key={`${kind}:${key}`}
                 style={styles.taskChip}
                 onPress={() => {
@@ -368,7 +369,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
                 <Ionicons name={icon} size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.taskChipText} numberOfLines={1}>{labelOf(key)}</Text>
                 <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             )))}
           <InlineAction label="Add" icon="add" variant="neutral" onPress={() => { haptics.tap(); setLeaveOutOpen(true); }} />
         </View>

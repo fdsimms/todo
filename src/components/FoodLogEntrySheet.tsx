@@ -161,6 +161,7 @@ import {
   typedEstimateFactor,
   type RecalledHelping,
 } from '../utils/foodRecall';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * Writing down something eaten.
@@ -2193,7 +2194,7 @@ export function FoodLogEntrySheet({
         >
           {body}
         </TouchableOpacity>
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.helpingAdd}
           activeOpacity={interaction.activeOpacity}
           onPress={() => quickLog(item)}
@@ -2201,7 +2202,7 @@ export function FoodLogEntrySheet({
           accessibilityLabel={`Log ${item.label} again, ${describeRecalledAmount(recalled)}`}
         >
           <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
     );
   };
@@ -2239,7 +2240,7 @@ export function FoodLogEntrySheet({
               </View>
             </TouchableOpacity>
             {/* The plus logs it as it was, or at the weight typed, at once. */}
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.helpingAdd}
               activeOpacity={interaction.activeOpacity}
               onPress={() => (typed ? logHelpingTyped(entry, typed) : logHelpingAgain(entry))}
@@ -2247,7 +2248,7 @@ export function FoodLogEntrySheet({
               accessibilityLabel={`Log ${entry.label} again, ${meta}`}
             >
               <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         );
       })}
@@ -2280,7 +2281,7 @@ export function FoodLogEntrySheet({
                 <Text style={styles.rowMeta}>{meta}</Text>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.helpingAdd}
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.success(); Keyboard.dismiss(); onLogSavedMeal?.(meal, chosenSlot); }}
@@ -2288,7 +2289,7 @@ export function FoodLogEntrySheet({
               accessibilityLabel={`Log ${meal.name} as saved, ${meta}`}
             >
               <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         );
       })}
@@ -2328,7 +2329,7 @@ export function FoodLogEntrySheet({
                 <Text style={styles.rowMeta}>{figures ? meta : `${meta} · no nutrition yet`}</Text>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.helpingAdd}
               activeOpacity={interaction.activeOpacity}
               onPress={() => (figures ? askContainerShare(l, figures) : startContainerFigures(l))}
@@ -2336,7 +2337,7 @@ export function FoodLogEntrySheet({
               accessibilityLabel={figures ? `Choose how much of ${l.title} to log, ${meta}` : `Estimate the nutrition of ${l.title}`}
             >
               <Ionicons name={figures ? 'add-circle-outline' : 'sparkles-outline'} size={iconSize.md} color={colors.accent} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         );
       })}
@@ -2512,7 +2513,7 @@ export function FoodLogEntrySheet({
           <View style={styles.lookupHead}>
             <Text style={[styles.label, styles.lookupTitle]}>FOOD DATABASE</Text>
             {db.searching && <ActivityIndicator size="small" color={colors.textSecondary} />}
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.lookupClose}
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); closeDatabase(); }}
@@ -2521,7 +2522,7 @@ export function FoodLogEntrySheet({
               accessibilityLabel="Close the food database results"
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
           {!!db.error && (
             <View style={styles.lookupNote}>
@@ -3255,7 +3256,7 @@ export function FoodLogEntrySheet({
                 one: it says what happens after a save. */}
             {estimateOpen && !!estimateLog && (
               <View style={[styles.estimateLogBar, glassSupported() && styles.estimateLogBarGlass, { marginBottom: keyboardHeight }]}>
-                <TouchableOpacity
+                <HoverTouchable
                   style={[styles.estimateLogButton, glassSupported() && styles.estimateLogButtonGlass, estimateLog.loading && styles.estimateLogOff]}
                   activeOpacity={interaction.activeOpacity}
                   disabled={estimateLog.loading}
@@ -3265,7 +3266,7 @@ export function FoodLogEntrySheet({
                 >
                   <GlassLayer interactive tintColor={colors.accentFill} style={styles.estimateLogGlass} />
                   <Text style={styles.estimateLogText}>{estimateLog.label}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
             )}
           </>

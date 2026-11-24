@@ -37,6 +37,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { pickerCardWidthFor } from '../utils/frameWidth';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
 import { FieldLabel } from './FieldLabel';
+import { HoverTouchable } from './HoverTouchable';
 
 type Mode = 'date' | 'before' | 'visible';
 
@@ -219,9 +220,9 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
           <View style={styles.header}>
             <View style={styles.headerSpacer} />
             <Text style={styles.headerTitle}>Remind me</Text>
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={cancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={cancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="close" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
 
           <View style={styles.scrollWrap}>
@@ -280,7 +281,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             <View style={styles.calSection}>
               <Text style={styles.sectionLabel}>Date</Text>
               <View style={styles.monthNav}>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setDisplayMonth(m => subMonths(m, 1))}
                   hitSlop={8}
@@ -289,9 +290,9 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                   accessibilityLabel="Previous month"
                 >
                   <Ionicons name="chevron-back" size={16} color={colors.accent} />
-                </TouchableOpacity>
+                </HoverTouchable>
                 <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setDisplayMonth(m => addMonths(m, 1))}
                   hitSlop={8}
@@ -300,7 +301,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                   accessibilityLabel="Next month"
                 >
                   <Ionicons name="chevron-forward" size={16} color={colors.accent} />
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>
 
               <View style={styles.dayHeaders}>
@@ -487,7 +488,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
           {/* Footer — Done/Clear pinned outside the scroll, so confirming or
               clearing a reminder never needs scrolling to find. */}
           <View style={styles.footer}>
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.doneBtn, !canConfirm && styles.doneBtnDisabled]}
               onPress={confirm}
               disabled={!canConfirm}
@@ -496,14 +497,14 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               accessibilityState={{ disabled: !canConfirm }}
             >
               <Text style={styles.doneBtnLabel}>{BUTTON_LABEL.done}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
 
             {onClear && (
               <>
                 <View style={styles.sectionGapSm} />
-                <TouchableOpacity style={styles.clearBtn} onPress={() => { Keyboard.dismiss(); onClear(); }} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+                <HoverTouchable style={styles.clearBtn} onPress={() => { Keyboard.dismiss(); onClear(); }} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                   <Text style={styles.clearLabel}>Clear reminder</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               </>
             )}
           </View>

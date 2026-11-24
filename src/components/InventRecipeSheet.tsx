@@ -31,6 +31,7 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -262,7 +263,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
           <ActivityIndicator color={colors.purple} />
         ) : (
           <View style={styles.ideaActions}>
-            <TouchableOpacity
+            <HoverTouchable
               onPress={() => dismissIdea(idea)}
               activeOpacity={interaction.activeOpacity}
               disabled={disabled}
@@ -271,7 +272,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
               hitSlop={8}
             >
               <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
             <Ionicons
               name="add-circle-outline"
               size={iconSize.md}

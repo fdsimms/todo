@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { interaction } from '../../theme';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
@@ -31,6 +31,7 @@ import {
 import {
   DEFAULT_SLOT_IN_MAX_WAIT_DAYS, MIN_SLOT_IN_MAX_WAIT_DAYS, MAX_SLOT_IN_MAX_WAIT_DAYS,
 } from '../../utils/slotIn';
+import { HoverTouchable } from '../../components/HoverTouchable';
 
 const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -304,7 +305,7 @@ export function TasksProjectsSettings() {
               // When I ask has no unit — leaving all three unlit is what says so.
               const active = defaultCadence.count !== null && defaultCadence.unit === unit;
               return (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   key={unit}
                   style={[styles.pill, { flex: 0 }, active && styles.pillActive]}
@@ -319,7 +320,7 @@ export function TasksProjectsSettings() {
                   <Text style={[styles.pillText, active && styles.pillTextActive]}>
                     {cadenceUnitLabel(unit)}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               );
             })}
           </View>

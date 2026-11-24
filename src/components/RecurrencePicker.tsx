@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { HolidayRule, RecurrenceType } from '../types';
@@ -13,6 +13,7 @@ import { haptics } from '../utils/haptics';
 import { ordinal } from '../utils/ordinal';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { HOLIDAY_SET_LABELS, hasAnyHolidays } from '../utils/holidays';
+import { HoverTouchable } from './HoverTouchable';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -433,7 +434,7 @@ export function RecurrencePicker({
         />
         {endDate && endMode === 'date' && endDate.value && (
           <View style={styles.stepperRow}>
-            <TouchableOpacity
+            <HoverTouchable
               style={styles.endDateChip}
               onPress={() => { haptics.tap(); endDate.onOpenPicker(); }}
               activeOpacity={interaction.activeOpacity}
@@ -442,7 +443,7 @@ export function RecurrencePicker({
             >
               <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
               <Text style={styles.endDateChipText}>{format(endDate.value, 'MMM d, yyyy')}</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         )}
         {endMode === 'count' && (

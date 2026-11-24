@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
@@ -15,6 +15,7 @@ import {
 } from '../utils/journalTimer';
 import { ChoiceMenuChip } from './ChoiceMenuChip';
 import { CustomMinutesPrompt } from './CustomMinutesPrompt';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   /** Whether the sheet is open. Closing it ends a running timer. */
@@ -99,7 +100,7 @@ export function JournalTimer({ active, children }: Props) {
       <View style={styles.row}>
         <View style={styles.left}>{children}</View>
         {run ? (
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.chip, styles.running]}
             activeOpacity={interaction.activeOpacity}
             onPress={stop}
@@ -108,9 +109,9 @@ export function JournalTimer({ active, children }: Props) {
           >
             <Ionicons name="timer-outline" size={iconSize.sm} color={colors.accentText} />
             <Text style={[styles.chipText, styles.runningText]}>{formatJournalTimerClock(remaining)}</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         ) : finished ? (
-          <TouchableOpacity
+          <HoverTouchable
             style={[styles.chip, styles.done]}
             activeOpacity={interaction.activeOpacity}
             onPress={() => setFinished(false)}
@@ -119,10 +120,10 @@ export function JournalTimer({ active, children }: Props) {
           >
             <Ionicons name="timer-outline" size={iconSize.sm} color={colors.warningText} />
             <Text style={[styles.chipText, styles.doneText]}>Time’s up</Text>
-          </TouchableOpacity>
+          </HoverTouchable>
         ) : (
           <View style={styles.controls}>
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.chip, styles.start]}
               activeOpacity={interaction.activeOpacity}
               onPress={start}
@@ -131,7 +132,7 @@ export function JournalTimer({ active, children }: Props) {
             >
               <Ionicons name="timer-outline" size={iconSize.sm} color={colors.onAccent} />
               <Text style={[styles.chipText, styles.startText]}>Start</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             <ChoiceMenuChip
               groups={lengthGroups(minutes)}
               selectedKey={String(minutes)}

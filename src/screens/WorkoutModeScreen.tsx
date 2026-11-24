@@ -174,6 +174,7 @@ import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { sameMinute } from '../utils/workoutTimes';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /** "today" is this workout's note on the exercise, "always" the exercise's own. */
 type NoteKind = 'today' | 'always';
@@ -1361,7 +1362,7 @@ export function WorkoutModeScreen() {
                     <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
                   </TouchableOpacity>
                   <View style={styles.exTitleSpacer} />
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={styles.exMenuButton}
                     hitSlop={8}
                     onPress={() => toggleCollapsed(viewed.exerciseId)}
@@ -1371,8 +1372,8 @@ export function WorkoutModeScreen() {
                     accessibilityLabel={`${collapsed ? 'Show' : 'Hide'} the sets of ${viewedInfo?.name ?? 'this exercise'}`}
                   >
                     <RotatingChevron open={!collapsed} size={iconSize.md} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </HoverTouchable>
+                  <HoverTouchable
                     style={styles.exMenuButton}
                     hitSlop={8}
                     onPress={e => {
@@ -1384,7 +1385,7 @@ export function WorkoutModeScreen() {
                     accessibilityLabel={`More options for ${viewedInfo?.name ?? 'this exercise'}`}
                   >
                     <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                   </View>
                   {collapsed && (
                     <Text style={styles.exMuscles} numberOfLines={1}>{collapsedSummary}</Text>
@@ -1582,7 +1583,7 @@ export function WorkoutModeScreen() {
                       styles={styles}
                     >
                       <View style={styles.setRow}>
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           style={styles.setButton}
                           onPress={e => openSetMenu(set, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
@@ -1593,7 +1594,7 @@ export function WorkoutModeScreen() {
                           accessibilityHint="Changes the set type"
                         >
                           <Text style={setBadge(set.kind) ? styles.setBadge : styles.setNumber}>{label}</Text>
-                        </TouchableOpacity>
+                        </HoverTouchable>
                         {prev ? (
                           <TouchableOpacity
                             activeOpacity={interaction.activeOpacity}
@@ -1613,7 +1614,7 @@ export function WorkoutModeScreen() {
                         )}
                         {lines.length > 0 && (
                           <RecordPop celebrate={recordPopId === set.id}>
-                          <TouchableOpacity
+                          <HoverTouchable
                             style={styles.recordPill}
                             activeOpacity={interaction.activeOpacity}
                             hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }}
@@ -1626,7 +1627,7 @@ export function WorkoutModeScreen() {
                             accessibilityHint="Shows what it was for"
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
-                          </TouchableOpacity>
+                          </HoverTouchable>
                           </RecordPop>
                         )}
                         {fields.map(f => (
@@ -1645,7 +1646,7 @@ export function WorkoutModeScreen() {
                             accessibilityLabel={`${setName(set.kind, label)} ${fieldLabel(f, kind)}`}
                           />
                         ))}
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           style={styles.colCheck}
                           onPress={() => toggleSet(set, viewed)}
@@ -1657,7 +1658,7 @@ export function WorkoutModeScreen() {
                           <CheckPop checked={done} style={styles.check} checkedStyle={styles.checkDone}>
                             <Ionicons name="checkmark" size={14} color={colors.onDone} />
                           </CheckPop>
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       </View>
                       {!!nextPlate && nextSet?.id === set.id && (
                         <View style={styles.nextPlates}>
@@ -1692,7 +1693,7 @@ export function WorkoutModeScreen() {
 
         {session && finishing ? (
           <View style={[styles.footer, styles.footRow, { paddingBottom: insets.bottom + spacing.smd }]}>
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.footButton, styles.footSecondary]}
               onPress={() => { haptics.tap(); setFinishing(false); }}
               activeOpacity={interaction.activeOpacity}
@@ -1701,15 +1702,15 @@ export function WorkoutModeScreen() {
             >
               <Ionicons name="chevron-back" size={iconSize.sm} color={colors.accentText} />
               <Text style={styles.footSecondaryText}>Back</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             {plan.loggedCount === 0 ? (
-              <TouchableOpacity style={[styles.footButton, styles.footDanger]} onPress={discardEmpty} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+              <HoverTouchable style={[styles.footButton, styles.footDanger]} onPress={discardEmpty} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                 <Text style={styles.footDangerText}>Discard workout</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ) : (
-              <TouchableOpacity style={[styles.footButton, styles.footPrimary]} onPress={save} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+              <HoverTouchable style={[styles.footButton, styles.footPrimary]} onPress={save} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                 <Text style={styles.footPrimaryText}>Save workout</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         ) : null}

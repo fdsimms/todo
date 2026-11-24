@@ -7,6 +7,7 @@ import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { RotatingChevron } from './RotatingChevron';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   icon: string;
@@ -61,7 +62,7 @@ export function EditorRow({ icon, label, value, hint, caption, expanded, onPress
         <View style={styles.valueRow}>
           <Text style={styles.value} numberOfLines={1}>{value}</Text>
           {onClear && (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={onClear}
               hitSlop={8}
@@ -69,7 +70,7 @@ export function EditorRow({ icon, label, value, hint, caption, expanded, onPress
               accessibilityLabel={`Clear ${label.toLowerCase()}`}
             >
               <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
           {chevron}
         </View>

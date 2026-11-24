@@ -1,8 +1,9 @@
 import React from 'react';
-import { Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, radius, font, fontWeight, interaction } from '../theme';
 import { haptics } from '../utils/haptics';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * One filter a list is narrowed by, shown on the screen with a × to lift it.
@@ -24,7 +25,7 @@ export function ActiveFilterPill({
   onRemove: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <HoverTouchable
       style={[styles.pill, { backgroundColor: color + '33' }]}
       onPress={() => {
         haptics.tap();
@@ -36,7 +37,7 @@ export function ActiveFilterPill({
     >
       <Text style={[styles.text, { color }]} numberOfLines={1}>{label}</Text>
       <Ionicons name="close" size={13} color={color} />
-    </TouchableOpacity>
+    </HoverTouchable>
   );
 }
 

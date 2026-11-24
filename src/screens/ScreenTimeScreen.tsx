@@ -30,6 +30,7 @@ import {
 } from '../utils/shieldReasonText';
 import { ScreenTimeSettings } from './settings/ScreenTimeSettings';
 import { SettingsFocusProvider, useSettingsFocusScroll } from './settings/SettingsFocus';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 type ScreenTimeParams = {
   ScreenTime: {
@@ -301,7 +302,7 @@ export function ScreenTimeScreen() {
             )}
             {showTagCta && (
               canScanInApp ? (
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.cta}
                   onPress={() => { void scanToEnd(); }}
                   activeOpacity={interaction.activeOpacity}
@@ -310,7 +311,7 @@ export function ScreenTimeScreen() {
                 >
                   <Ionicons name="radio-outline" size={20} color={colors.onAccent} />
                   <Text style={styles.ctaText}>Scan key tag to end the block</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               ) : (
                 <View style={styles.ctaHint} accessible accessibilityLabel="Hold your key tag to the top of your phone to end the block">
                   <Ionicons name="radio-outline" size={20} color={colors.accent} />
@@ -319,7 +320,7 @@ export function ScreenTimeScreen() {
               )
             )}
             {blocked && (
-              <TouchableOpacity
+              <HoverTouchable
                 style={[styles.endAll, showTagCta && styles.endAllBelowCta]}
                 onPress={openEmergency}
                 activeOpacity={interaction.activeOpacity}
@@ -327,7 +328,7 @@ export function ScreenTimeScreen() {
                 accessibilityLabel="End all blocks"
               >
                 <Text style={styles.endAllText}>End all blocks…</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
           </View>
         </View>

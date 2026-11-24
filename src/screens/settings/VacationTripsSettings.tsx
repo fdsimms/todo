@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, TouchableOpacity, Alert } from 'react-native';
+import { View, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -13,6 +13,7 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsNested } from './SettingsNested';
 import { makeSettingsStyles } from './settingsStyles';
+import { HoverTouchable } from '../../components/HoverTouchable';
 
 /**
  * Vacation mode and the destination forecast, rendered at the end of Day & time.
@@ -100,7 +101,7 @@ export function VacationTripsSettings() {
               onPress={() => setShowVacationStartPicker(true)}
               accessibilityLabel="Vacation start date"
               trailing={vacationScheduledStart ? (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setVacationScheduledStart(null)}
                   hitSlop={8}
@@ -109,7 +110,7 @@ export function VacationTripsSettings() {
                   accessibilityLabel="Clear vacation start date"
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               ) : undefined}
             />
           </>
@@ -127,7 +128,7 @@ export function VacationTripsSettings() {
               onPress={() => setShowVacationEndPicker(true)}
               accessibilityLabel="Vacation end date"
               trailing={vacationEnd ? (
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setVacationEnd(null)}
                   hitSlop={8}
@@ -136,7 +137,7 @@ export function VacationTripsSettings() {
                   accessibilityLabel="Clear vacation end date"
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
+                </HoverTouchable>
               ) : undefined}
             />
           </>

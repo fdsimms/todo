@@ -23,6 +23,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { overlayDocked } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -143,13 +144,13 @@ export function RecipeSortFilterSheet({
             <Text style={styles.sheetTitle}>Sort & filter</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
-                <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={reset} style={styles.resetBtn}>
+                <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={reset} style={styles.resetBtn}>
                   <Text style={styles.resetText}>Clear all ({activeCount})</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
-              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+              <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           </View>
 
@@ -185,7 +186,7 @@ export function RecipeSortFilterSheet({
 
             <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter</Text>
             <View style={styles.chips}>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 style={[styles.chip, lovedOnly && styles.chipActive]}
                 onPress={() => {
@@ -202,7 +203,7 @@ export function RecipeSortFilterSheet({
                 <Text style={[styles.chipText, lovedOnly && styles.chipTextActive]}>
                   Loved only
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
 
             {tags.length > 0 && (
@@ -217,7 +218,7 @@ export function RecipeSortFilterSheet({
                     const count = tagCounts.get(tag) ?? 0;
                     const color = tagColor(tag);
                     return (
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         key={tag}
                         style={[styles.chip, { backgroundColor: on ? color + '33' : colors.bgTertiary }]}
@@ -232,7 +233,7 @@ export function RecipeSortFilterSheet({
                         {on && <Ionicons name="checkmark" size={13} color={color} />}
                         <Text style={[styles.chipText, on && { color }]}>{tag}</Text>
                         <Text style={styles.chipCount}>{count}</Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     );
                   })}
                 </View>
@@ -248,7 +249,7 @@ export function RecipeSortFilterSheet({
                   {cookbooks.map(book => {
                     const on = cookbookId === book.id;
                     return (
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         key={book.id}
                         style={[styles.chip, on && styles.chipActive]}
@@ -260,7 +261,7 @@ export function RecipeSortFilterSheet({
                         accessibilityState={{ selected: on }}
                       >
                         <Text style={[styles.chipText, on && styles.chipTextActive]}>{book.title}</Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     );
                   })}
                 </View>

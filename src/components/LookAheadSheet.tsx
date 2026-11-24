@@ -61,6 +61,7 @@ import { awayStatus, nextAwayProject } from '../utils/awayDates';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -394,7 +395,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
             {backOn ? dayLabel(backOn) : 'Not set'}
           </Text>
           {backOn ? (
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => {
                 haptics.tap();
@@ -407,7 +408,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
               accessibilityLabel="Clear the return date"
             >
               <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           ) : (
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           )}
@@ -667,7 +668,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
 
           {mode === 'read'
             ? canMove && (
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.actionBtn}
                   onPress={enterMoveMode}
                   activeOpacity={interaction.activeOpacity}
@@ -677,10 +678,10 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
                   <Text style={styles.actionBtnText}>
                     Move work to after {dayLabel(returnDay!)}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )
             : (
-              <TouchableOpacity
+              <HoverTouchable
                 style={[styles.actionBtn, selected.length === 0 && styles.actionBtnDisabled]}
                 onPress={handleApply}
                 disabled={selected.length === 0}
@@ -697,7 +698,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
                     ? 'Nothing selected'
                     : `Move ${selected.length} task${selected.length === 1 ? '' : 's'}`}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             )}
         </View>
       </Animated.View>

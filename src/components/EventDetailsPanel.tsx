@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type TextStyle } from 'react-native';
+import { Alert, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useShallow } from 'zustand/react/shallow';
@@ -18,6 +18,7 @@ import { placeSubtitle, type PlaceResult } from '../utils/places';
 import { searchPlaces } from '../services/placeSearch';
 import { haptics } from '../utils/haptics';
 import { isDemoModeActive } from '../utils/demoState';
+import { HoverTouchable } from './HoverTouchable';
 
 /** The day and time under an event's title: "Fri, Nov 20 · 7:00 PM". */
 function whenLabel(event: BusyEvent): string {
@@ -135,7 +136,7 @@ export function EventDetailsPanel({ taskId }: { taskId: string }) {
                 <Text style={styles.eventTitle} numberOfLines={1}>{event.title || 'Event'}</Text>
                 <Text style={styles.eventWhen}>{whenLabel(event)}</Text>
               </View>
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); skipEventDetails(event, taskId); }}
                 hitSlop={10}
@@ -143,7 +144,7 @@ export function EventDetailsPanel({ taskId }: { taskId: string }) {
                 accessibilityLabel={`Skip ${event.title || 'this event'}`}
               >
                 <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
 
             {entry.people.map(({ personId, done }) => {

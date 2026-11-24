@@ -13,6 +13,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -119,7 +120,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, ove
                           accessibilityLabel={`Log ${meal.name} as saved`}
                         />
                       )}
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         style={styles.deleteBtn}
                         hitSlop={8}
@@ -128,7 +129,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, ove
                         accessibilityLabel={`Forget ${meal.name}`}
                       >
                         <Ionicons name="trash-outline" size={iconSize.sm} color={colors.textTertiary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </View>
                   </View>
                 );

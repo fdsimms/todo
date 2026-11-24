@@ -31,6 +31,7 @@ import { WEIGHT_PLACES, WEIGHT_STEP, weightFromDisplay, weightToDisplay } from '
 import { useSettingsStore } from '../store/useSettingsStore';
 import { GYM_DEFAULT_RADIUS_M, GYM_MAX_RADIUS_M, GYM_MIN_RADIUS_M, GYM_RADIUS_STEP_M } from '../utils/gyms';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -250,7 +251,7 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
                 <View style={styles.row}>
                   <Ionicons name="location" size={iconSize.md} color={colors.accentText} />
                   <Text style={[styles.rowLabel, styles.grow]} numberOfLines={2}>{v.placeText.trim() || 'Current location'}</Text>
-                  <TouchableOpacity
+                  <HoverTouchable
                     onPress={() => { haptics.tap(); patch({ pin: null, placeText: '' }); }}
                     hitSlop={8}
                     activeOpacity={interaction.activeOpacity}
@@ -258,7 +259,7 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
                     accessibilityLabel="Clear the location"
                   >
                     <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
                 <View style={[styles.row, styles.ruled]}>
                   <Text style={styles.rowLabel}>Within</Text>

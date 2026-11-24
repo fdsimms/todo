@@ -51,6 +51,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 const CHECKBOX_SIZE = 22;
 
@@ -365,7 +366,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
 
         {/* Long-press still opens the same sheet, but nothing on screen says
             so — same quiet trailing target GroceryRow uses for its rows. */}
-        <TouchableOpacity
+        <HoverTouchable
           onPress={() => { haptics.tap(); setEditingId(item.id); }}
           activeOpacity={interaction.activeOpacity}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -373,7 +374,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
           accessibilityLabel={`Edit ${item.name}`}
         >
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
     );
   };

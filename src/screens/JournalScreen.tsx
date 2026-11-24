@@ -66,6 +66,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
+import { HoverTouchable } from '../components/HoverTouchable';
 
 /**
  * The labels and people on an entry, under its words. A tag is a button that
@@ -85,7 +86,7 @@ function EntryMeta({ entry, personName, onTag, styles }: {
     <View style={styles.metaRow}>
       {names.length > 0 && <Text style={styles.metaText}>{`About ${names.join(', ')}`}</Text>}
       {tags.map(tag => (
-        <TouchableOpacity
+        <HoverTouchable
           key={tag}
           style={styles.tagChip}
           activeOpacity={interaction.activeOpacity}
@@ -94,7 +95,7 @@ function EntryMeta({ entry, personName, onTag, styles }: {
           accessibilityLabel={`Show only entries tagged ${tag}`}
         >
           <Text style={styles.tagChipText}>{tag}</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       ))}
     </View>
   );

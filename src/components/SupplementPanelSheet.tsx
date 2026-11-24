@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSheetOpening } from '../hooks/useSheetOpening';
-import { Alert, Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -38,6 +38,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * What one serving of a supplement contains, typed in from its label.
@@ -320,7 +321,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
                       autoCapitalize="sentences"
                       accessibilityLabel={`Ingredient ${i + 1} name`}
                     />
-                    <TouchableOpacity
+                    <HoverTouchable
                       onPress={() => removeOther(i)}
                       activeOpacity={interaction.activeOpacity}
                       hitSlop={8}
@@ -328,7 +329,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
                       accessibilityLabel={`Remove ${row.name.trim() || `ingredient ${i + 1}`}`}
                     >
                       <Ionicons name="close" size={iconSize.md} color={colors.textSecondary} />
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   </View>
                   <View style={styles.numberRow}>
                     <TextField

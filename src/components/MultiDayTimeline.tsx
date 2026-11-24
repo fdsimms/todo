@@ -16,6 +16,7 @@ import {
   type TimelineDragKind,
 } from '../utils/dayTimeline';
 import type { BusyEvent } from '../utils/calendarBusy';
+import { HoverTouchable } from './HoverTouchable';
 
 /** One hour of the axis: a little shorter than the Day view's, so more of the day fits three across. */
 const HOUR_HEIGHT = 48;
@@ -264,7 +265,7 @@ export function MultiDayTimeline({
             const day = columns[bar.startColumn];
             segments.push(
               <View key={`${bar.event.id}:${bar.event.start}:${bar.startColumn}`} style={{ flex: bar.span }}>
-                <TouchableOpacity
+                <HoverTouchable
                   style={[styles.allDayChip, { backgroundColor: tintFor(color) ?? flattenOverlay(colors.accentSubtle, colors.bg) }]}
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => onPressAllDay(day.key, bar.event)}
@@ -272,7 +273,7 @@ export function MultiDayTimeline({
                   accessibilityLabel={`${bar.event.title || 'Event'}, all day${bar.span > 1 ? `, ${bar.span} days` : ''}`}
                 >
                   <Text style={styles.allDayText} numberOfLines={1}>{bar.event.title || 'Event'}</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               </View>,
             );
             cursor = bar.startColumn + bar.span;
@@ -293,7 +294,7 @@ export function MultiDayTimeline({
                 <View key={column.key} style={styles.offAxisCell}>
                   {more > 0 && <Text style={styles.moreText}>+{more} more</Text>}
                   {column.untimed > 0 && (
-                    <TouchableOpacity
+                    <HoverTouchable
                       style={styles.untimedChip}
                       activeOpacity={interaction.activeOpacity}
                       onPress={() => onPressUntimed(column.key)}
@@ -303,7 +304,7 @@ export function MultiDayTimeline({
                       <Text style={styles.untimedText} numberOfLines={1}>
                         {column.untimed} {column.untimed === 1 ? 'task' : 'tasks'} ›
                       </Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   )}
                 </View>
               );

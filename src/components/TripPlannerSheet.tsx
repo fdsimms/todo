@@ -14,6 +14,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { BUTTON_LABEL } from '../copy/shared';
 import { TextField } from './TextField';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -77,9 +78,9 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
             autoCapitalize="words"
           />
           {query.length > 0 && (
-            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={() => clearQuery()} hitSlop={8} accessibilityLabel="Clear search">
+            <HoverTouchable activeOpacity={interaction.activeOpacity} onPress={() => clearQuery()} hitSlop={8} accessibilityLabel="Clear search">
               <Ionicons name="close-circle" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </HoverTouchable>
           )}
         </View>
 

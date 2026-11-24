@@ -26,6 +26,7 @@ import { haptics } from '../utils/haptics';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDocked } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -76,7 +77,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
           {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
         </View>
         <View style={styles.qaButtons}>
-          <TouchableOpacity
+          <HoverTouchable
             style={styles.qaButton}
             activeOpacity={interaction.activeOpacity}
             onPress={() => toggleQaStatus(note.id, 'pass')}
@@ -90,8 +91,8 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               size={22}
               color={qaStatus === 'pass' ? colors.green : colors.textTertiary}
             />
-          </TouchableOpacity>
-          <TouchableOpacity
+          </HoverTouchable>
+          <HoverTouchable
             style={styles.qaButton}
             activeOpacity={interaction.activeOpacity}
             onPress={() => toggleQaStatus(note.id, 'fail')}
@@ -105,7 +106,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               size={22}
               color={qaStatus === 'fail' ? colors.red : colors.textTertiary}
             />
-          </TouchableOpacity>
+          </HoverTouchable>
         </View>
       </View>
     );
@@ -176,7 +177,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               <Ionicons name="gift-outline" size={20} color={colors.accent} />
               <Text style={styles.title}>What’s New</Text>
               <View style={styles.titleSpacer} />
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.hideReviewedButton}
                 activeOpacity={interaction.activeOpacity}
                 onPress={toggleHideReviewed}
@@ -190,7 +191,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
                   size={20}
                   color={hideReviewed ? colors.accent : colors.textTertiary}
                 />
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
 
             <FlatList

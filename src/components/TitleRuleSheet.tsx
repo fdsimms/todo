@@ -34,6 +34,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
+import { HoverTouchable } from './HoverTouchable';
 
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'link';
 
@@ -201,7 +202,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         <View style={styles.keywordSection}>
           <View style={styles.tagRow}>
             {normalizeKeywords(draft.keywords).map(keyword => (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 key={keyword}
                 style={styles.keywordChip}
@@ -211,7 +212,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               >
                 <Text style={styles.keywordChipText}>{keyword}</Text>
                 <Ionicons name="close" size={12} color={colors.accent} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             <TextField
               style={styles.keywordInput}
@@ -249,15 +250,15 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           onToggle={() => toggleField('category')}
         >
           <View style={styles.pillRow}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !draft.category && styles.pillActive]}
               onPress={() => { haptics.tap(); patch({ category: null }); closeField('category'); }}
             >
               <Text style={[styles.pillText, !draft.category && styles.pillTextActive]}>Not set</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             {allCategories.map(cat => (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 key={cat}
                 style={[styles.pill, draft.category === cat && styles.pillActive]}
@@ -266,7 +267,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                 <Text style={[styles.pillText, draft.category === cat && styles.pillTextActive]}>
                   {categoryLabel(cat, categories)}
                 </Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
           </View>
         </CollapsibleField>
@@ -283,22 +284,22 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               onToggle={() => toggleField('project')}
             >
               <View style={styles.pillRow}>
-                <TouchableOpacity
+                <HoverTouchable
                   activeOpacity={interaction.activeOpacity}
                   style={[styles.pill, !draft.projectId && styles.pillActive]}
                   onPress={() => { haptics.tap(); patch({ projectId: null }); closeField('project'); }}
                 >
                   <Text style={[styles.pillText, !draft.projectId && styles.pillTextActive]}>Not set</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
                 {projects.map(p => (
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     key={p.id}
                     style={[styles.pill, draft.projectId === p.id && styles.pillActive]}
                     onPress={() => { haptics.tap(); patch({ projectId: p.id }); closeField('project'); }}
                   >
                     <Text style={[styles.pillText, draft.projectId === p.id && styles.pillTextActive]}>{p.title}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 ))}
               </View>
             </CollapsibleField>
@@ -317,7 +318,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         >
           <View style={styles.tagRow}>
             {draft.tags.map(tag => (
-              <TouchableOpacity
+              <HoverTouchable
                 activeOpacity={interaction.activeOpacity}
                 key={tag}
                 style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
@@ -328,7 +329,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                 <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                 <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
                 <Ionicons name="close" size={12} color={tagColor(tag)} />
-              </TouchableOpacity>
+              </HoverTouchable>
             ))}
             {addingTag ? (
               <TextField
@@ -457,13 +458,13 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           </TouchableOpacity>
           {linkAppsOpen && (
           <View style={styles.pillRow}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !draft.linkUrl && styles.pillActive]}
               onPress={() => { haptics.tap(); patch({ linkUrl: null }); setCustomLinkText(''); closeField('link'); }}
             >
               <Text style={[styles.pillText, !draft.linkUrl && styles.pillTextActive]}>Not set</Text>
-            </TouchableOpacity>
+            </HoverTouchable>
             {savedLinks.chips.map(app => (
               <TouchableOpacity
                 activeOpacity={interaction.activeOpacity}

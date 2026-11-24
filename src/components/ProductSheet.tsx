@@ -5,9 +5,7 @@ import {
   Keyboard,
   ScrollView,
   StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+  Text, View,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
@@ -38,6 +36,7 @@ import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDelete } from '../utils/confirmDelete';
 import { useGroceryWhileOpen } from '../hooks/useGroceryWhileOpen';
+import { HoverTouchable } from './HoverTouchable';
 
 /** What a catalog list reads as before the sheet has ever been opened (see `useGroceryWhileOpen`). */
 const NO_ROWS: never[] = [];
@@ -400,7 +399,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
                   ?? `Nothing recorded for this one, so ${item.name.toLowerCase()}’s figures are used.`}
               </Text>
               <View style={styles.actions}>
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.action}
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setPanelOpen(true); }}
@@ -410,9 +409,9 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
                   <Text style={styles.actionText}>
                     {editing.nutrition ? 'Edit these figures' : 'Add nutrition info'}
                   </Text>
-                </TouchableOpacity>
+                </HoverTouchable>
                 {!!editing.nutrition && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={styles.action}
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); setProductNutrition(editing.id, null); }}
@@ -420,7 +419,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
                     accessibilityLabel="Clear this product’s nutrition"
                   >
                     <Text style={styles.actionText}>Clear these figures</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
             </>
@@ -431,7 +430,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
               {/* Only when it isn't already the one — a button that does
                   nothing is a button you have to read twice to find that out. */}
               {!isPreferred && (
-                <TouchableOpacity
+                <HoverTouchable
                   style={styles.action}
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => {
@@ -444,9 +443,9 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
                   accessibilityLabel={`Make ${describeProduct(editing) ?? 'this'} the one you want`}
                 >
                   <Text style={styles.actionText}>Make this the one I want</Text>
-                </TouchableOpacity>
+                </HoverTouchable>
               )}
-              <TouchableOpacity
+              <HoverTouchable
                 style={styles.action}
                 activeOpacity={interaction.activeOpacity}
                 onPress={handleDelete}
@@ -454,7 +453,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
                 accessibilityLabel={`Forget ${describeProduct(editing) ?? 'this product'}`}
               >
                 <Text style={[styles.actionText, styles.actionDestructive]}>Forget this one</Text>
-              </TouchableOpacity>
+              </HoverTouchable>
             </View>
           )}
         </ScrollView>
@@ -489,7 +488,7 @@ function Chips({
   return (
     <View style={styles.chips}>
       {values.map(value => (
-        <TouchableOpacity
+        <HoverTouchable
           key={value}
           style={styles.chip}
           activeOpacity={interaction.activeOpacity}
@@ -498,7 +497,7 @@ function Chips({
           accessibilityLabel={`Use ${noun} ${value}`}
         >
           <Text style={styles.chipText} numberOfLines={1}>{value}</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       ))}
     </View>
   );

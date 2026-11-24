@@ -83,6 +83,7 @@ import { plainGramsReading } from '../utils/cookware';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * "Cheeseburger and fries at Five Guys", read into figures to confirm.
@@ -1156,7 +1157,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                 {UNIT_OPTIONS.map(option => {
                   const on = amount.unit === option.value;
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={option.value}
                       style={[styles.confirmChip, on && styles.confirmChipOn]}
                       activeOpacity={interaction.activeOpacity}
@@ -1176,7 +1177,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                       <Text style={[styles.confirmChipText, on && styles.confirmChipTextOn]}>
                         {option.value === 'grams' ? 'g' : '% of last'}
                       </Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
               </View>
@@ -1337,7 +1338,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         <Text style={offersFirst ? [styles.label, styles.panelLabel] : styles.panelTitle}>
           {offersFirst ? 'YOU’VE HAD THIS BEFORE' : 'ESTIMATE'}
         </Text>
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.panelClose}
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onDismiss(); }}
@@ -1346,7 +1347,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
           accessibilityLabel="Close the estimate"
         >
           <Ionicons name="close" size={iconSize.sm} color={colors.textSecondary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       </View>
 
       {typedWeight && !loading && (
@@ -1625,7 +1626,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
         {estimate && !onLogAction && (
           <View>
-            <TouchableOpacity
+            <HoverTouchable
               style={[styles.action, loading && styles.actionOff]}
               activeOpacity={interaction.activeOpacity}
               disabled={loading}
@@ -1636,7 +1637,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
               <Text style={styles.actionText}>
                 {kcal !== undefined ? `Log ${Math.round(kcal).toLocaleString()} cal` : 'Log'}
               </Text>
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
         )}
     </View>

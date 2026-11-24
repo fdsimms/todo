@@ -46,6 +46,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -495,7 +496,7 @@ export function MealEntrySheet({
                   const on = !skipped && option.id === group.active.id;
                   const name = option.name || 'Deleted recipe';
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={option.id}
                       style={[styles.chip, on && styles.chipOn]}
                       onPress={() => { haptics.tap(); onChoose?.(group, option.id); }}
@@ -505,11 +506,11 @@ export function MealEntrySheet({
                       accessibilityLabel={`${group.label}: ${name}`}
                     >
                       <Text style={[styles.chipText, on && styles.chipTextOn]}>{name}</Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
                 {group.kind === 'ingredient' && !!onSkipGroup && (
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={[styles.chip, skipped && styles.chipOn]}
                     onPress={() => { haptics.tap(); onSkipGroup(group); }}
                     activeOpacity={interaction.activeOpacity}
@@ -518,7 +519,7 @@ export function MealEntrySheet({
                     accessibilityLabel={`${group.label}: not needed`}
                   >
                     <Text style={[styles.chipText, skipped && styles.chipTextOn]}>Not needed</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 )}
               </View>
             </View>
@@ -534,7 +535,7 @@ export function MealEntrySheet({
                 {pair.items.map(item => {
                   const on = pair.use === item.nameKey;
                   return (
-                    <TouchableOpacity
+                    <HoverTouchable
                       key={item.id}
                       style={[styles.chip, on && styles.chipOn]}
                       onPress={() => { haptics.tap(); onPickItem?.(pair, item.nameKey); }}
@@ -544,7 +545,7 @@ export function MealEntrySheet({
                       accessibilityLabel={`Used ${item.name}`}
                     >
                       <Text style={[styles.chipText, on && styles.chipTextOn]}>{item.name}</Text>
-                    </TouchableOpacity>
+                    </HoverTouchable>
                   );
                 })}
               </View>
@@ -562,7 +563,7 @@ export function MealEntrySheet({
               <Text style={styles.label}>Optional</Text>
               <View style={styles.chips}>
                 {optionalLines.map(line => (
-                  <TouchableOpacity
+                  <HoverTouchable
                     key={line.id}
                     style={[styles.chip, line.picked && styles.chipOn]}
                     onPress={() => { haptics.tap(); onToggleOptional?.(line.id); }}
@@ -572,7 +573,7 @@ export function MealEntrySheet({
                     accessibilityLabel={`Optional: ${line.name}`}
                   >
                     <Text style={[styles.chipText, line.picked && styles.chipTextOn]}>{line.name}</Text>
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 ))}
               </View>
               <HelpText style={styles.optionalHint}>Only what’s picked is shopped for and counted.</HelpText>
@@ -599,7 +600,7 @@ export function MealEntrySheet({
               {overrideLines.map(line => (
                 <View key={line.targetId} style={styles.overrideRow}>
                   <Text style={styles.overrideText}>{line.text}</Text>
-                  <TouchableOpacity
+                  <HoverTouchable
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); onRemoveOverride?.(line.targetId); }}
                     hitSlop={10}
@@ -607,7 +608,7 @@ export function MealEntrySheet({
                     accessibilityLabel={`Undo this change: ${line.text}`}
                   >
                     <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  </HoverTouchable>
                 </View>
               ))}
             </View>

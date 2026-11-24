@@ -26,6 +26,7 @@ import { useFastStore } from '../store/useFastStore';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDelete } from '../utils/confirmDelete';
+import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
   visible: boolean;
@@ -164,7 +165,7 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
           )}
 
           <View style={styles.day}>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setStart(shiftDays(start, -1)); }}
               hitSlop={8}
@@ -173,11 +174,11 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
               accessibilityLabel="Previous day"
             >
               <Ionicons name="chevron-back" size={18} color={colors.accentText} />
-            </TouchableOpacity>
+            </HoverTouchable>
             <Text style={styles.dayText} accessibilityLiveRegion="polite">
               {`Started ${startDay}, ${formatTimeOfDay(start)}`}
             </Text>
-            <TouchableOpacity
+            <HoverTouchable
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setStart(shiftDays(start, 1)); }}
               hitSlop={8}
@@ -186,7 +187,7 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
               accessibilityLabel="Next day"
             >
               <Ionicons name="chevron-forward" size={18} color={colors.accentText} />
-            </TouchableOpacity>
+            </HoverTouchable>
           </View>
 
           <View style={styles.wheel}>

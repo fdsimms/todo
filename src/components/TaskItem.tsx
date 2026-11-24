@@ -228,6 +228,7 @@ import { RotatingChevron } from './RotatingChevron';
 import { useRowCursorStore } from '../store/useRowCursorStore';
 import * as Clipboard from 'expo-clipboard';
 import { explainLockedDelete } from '../utils/lockedDelete';
+import { HoverTouchable } from './HoverTouchable';
 
 /**
  * This device's id for the event a "Leave for X" row was written for. The row
@@ -3526,7 +3527,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const trailingActions = (
     <>
     {!selectionMode && showActions && canOpenTravelEvent && (
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={handleOpenTravelEvent}
         hitSlop={8}
@@ -3535,11 +3536,11 @@ const TaskItemRow = React.memo(function TaskItem({
         accessibilityLabel={`Open the calendar event for ${task.title}`}
       >
         <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
-      </TouchableOpacity>
+      </HoverTouchable>
     )}
 
     {!selectionMode && showActions && mapsUrl && (
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={handleDirections}
         hitSlop={8}
@@ -3548,11 +3549,11 @@ const TaskItemRow = React.memo(function TaskItem({
         accessibilityLabel={`Get directions to ${task.location} for ${task.title}`}
       >
         <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
-      </TouchableOpacity>
+      </HoverTouchable>
     )}
 
     {!selectionMode && showActions && showPin && canPinTask(task) && !pinWaiting && (
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={() => {
           haptics.tap();
@@ -3582,7 +3583,7 @@ const TaskItemRow = React.memo(function TaskItem({
           size={iconSize.sm}
           color={(pinOverride ?? pinLit) ? colors.orangeText : colors.textSecondary}
         />
-      </TouchableOpacity>
+      </HoverTouchable>
     )}
     </>
   );
@@ -3799,7 +3800,7 @@ const TaskItemRow = React.memo(function TaskItem({
         </View>
       )}
       {rotationPlanned !== null && (
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.metaChip}
           activeOpacity={interaction.activeOpacity}
           onPress={() => setShowRotationPick(true)}
@@ -3808,7 +3809,7 @@ const TaskItemRow = React.memo(function TaskItem({
         >
           <Ionicons name="flag" size={iconSize.xs} color={colors.accent} />
           <Text style={styles.quotaLabel} numberOfLines={1}>Today: {rotationPlanned.title}</Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       {rotationLast !== null && (
         // Its own chip, so a long member name truncates itself rather
@@ -4049,7 +4050,7 @@ const TaskItemRow = React.memo(function TaskItem({
           buttons whatever the width; with the start time, in the warning
           colour, when the arrival is after the start. */}
       {travelArrival !== null && (
-        <TouchableOpacity
+        <HoverTouchable
           style={[styles.metaChip, styles.travelDisruptionChip]}
           disabled={selectionMode}
           onPress={() => { haptics.tap(); setShowArrivePicker(true); }}
@@ -4064,7 +4065,7 @@ const TaskItemRow = React.memo(function TaskItem({
             {travelArrival.text}
           </Text>
           <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       {placeReminderLabel !== null && (
         <View style={styles.metaChip} accessibilityLabel={`Reminder when ${placeReminderLabel.toLowerCase()}`}>
@@ -4089,7 +4090,7 @@ const TaskItemRow = React.memo(function TaskItem({
         </View>
       )}
       {travelNote !== null && travelOptions.length === 0 && (
-        <TouchableOpacity
+        <HoverTouchable
           style={styles.metaChip}
           disabled={selectionMode}
           onPress={() => { haptics.tap(); setShowTravelPicker(true); }}
@@ -4103,7 +4104,7 @@ const TaskItemRow = React.memo(function TaskItem({
           <Text style={styles.scheduledLabel} numberOfLines={1}>
             {travelNote}
           </Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       {/* The prep tasks that have to be done before walking out. Same
           line-of-its-own treatment as the notice below, in the plain
@@ -4136,7 +4137,7 @@ const TaskItemRow = React.memo(function TaskItem({
       {/* What ticking this row records (a dose, a meal), so a row that
           logs something is told apart from one that doesn't. */}
       {logChips.map(chip => (
-        <TouchableOpacity
+        <HoverTouchable
           key={chip.kind}
           style={styles.logsChip}
           disabled={!chip.editable}
@@ -4154,7 +4155,7 @@ const TaskItemRow = React.memo(function TaskItem({
             {chip.text}
           </Text>
           {chip.editable && <Ionicons name="chevron-down" size={iconSize.xs} color={colors.accentText} />}
-        </TouchableOpacity>
+        </HoverTouchable>
       ))}
       {mealSlot !== null && (
         <View style={styles.metaChip}>
@@ -4210,7 +4211,7 @@ const TaskItemRow = React.memo(function TaskItem({
       {!!blockerTitle && (onEdit && blockerId ? (
         // Opens the blocker so what this task is waiting on is one tap
         // away, rather than something to go and find in the list.
-        <TouchableOpacity
+        <HoverTouchable
           style={[styles.metaChip, styles.waitingChip]}
           onPress={() => {
             haptics.tap();
@@ -4224,7 +4225,7 @@ const TaskItemRow = React.memo(function TaskItem({
           <Text style={styles.waitingLabel} numberOfLines={1}>
             After {blockerTitle}
           </Text>
-        </TouchableOpacity>
+        </HoverTouchable>
       ) : (
         <View style={[styles.metaChip, styles.waitingChip]} accessibilityLabel={`Waiting on ${blockerTitle}`}>
           <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
@@ -4239,7 +4240,7 @@ const TaskItemRow = React.memo(function TaskItem({
           chip is the way out, so it has to be here on the row and not
           only in the editor. */}
       {!!waitingPersonName && (
-        <TouchableOpacity
+        <HoverTouchable
           style={[styles.metaChip, styles.waitingChip]}
           onPress={() => {
             haptics.tap();
@@ -4268,7 +4269,7 @@ const TaskItemRow = React.memo(function TaskItem({
               not a button, and the one way out of a wait nothing else
               ends would be undiscoverable. */}
           <Ionicons name="close" size={iconSize.xs} color={colors.warningText} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
       {/* How long this project has been silent — the one thing the
           quiet-projects banner said that the row's own title doesn't.
@@ -4456,7 +4457,7 @@ const TaskItemRow = React.memo(function TaskItem({
       )}
 
       {!nutrientRow && (
-      <TouchableOpacity
+      <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={
           selectionMode ? () => onSelect?.(task.id)
@@ -4746,7 +4747,7 @@ const TaskItemRow = React.memo(function TaskItem({
             <Ionicons name="restaurant" size={iconSize.xs} color={colors.textSecondary} />
           )}
         </View>
-      </TouchableOpacity>
+      </HoverTouchable>
       )}
 
       <TouchableOpacity
@@ -4958,7 +4959,7 @@ const TaskItemRow = React.memo(function TaskItem({
           and the next tap is the checkbox. Reset/discard stay in the panel;
           they're the rarer, more destructive half. */}
       {!selectionMode && showActions && timed && !completing && !task.completed && !(timerReady && !timerRunning) && (
-        <TouchableOpacity
+        <HoverTouchable
           onPress={handleTimerToggle}
           hitSlop={8}
           style={[styles.rowTimerBtn, timerRunning && styles.rowTimerBtnRunning]}
@@ -4977,11 +4978,11 @@ const TaskItemRow = React.memo(function TaskItem({
             style={!timerRunning && styles.rowTimerGlyphPlay}
             color={timerRunning ? colors.onAccent : colors.accent}
           />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
 
       {!selectionMode && showActions && recordMic && !completing && (
-        <TouchableOpacity
+        <HoverTouchable
           onPress={() => handleOpenLink(recordMic)}
           hitSlop={8}
           style={styles.rowTimerBtn}
@@ -4990,11 +4991,11 @@ const TaskItemRow = React.memo(function TaskItem({
           accessibilityLabel={`Say your ${task.generatedKind === 'dreamLog' ? 'dream' : 'journal entry'} out loud`}
         >
           <Ionicons name="mic" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
 
       {!selectionMode && showActions && peopleLink && (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => handleOpenLink(peopleLink)}
           hitSlop={8}
@@ -5003,11 +5004,11 @@ const TaskItemRow = React.memo(function TaskItem({
           accessibilityLabel={`Open people page for ${task.title}`}
         >
           <Ionicons name={linkIconFor(peopleLink) as never} size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
 
       {!selectionMode && showActions && morning && (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); setShowAlarmCard(true); }}
           hitSlop={8}
@@ -5016,11 +5017,11 @@ const TaskItemRow = React.memo(function TaskItem({
           accessibilityLabel={`Tomorrow’s alarm for ${task.title}`}
         >
           <Ionicons name="alarm-outline" size={iconSize.sm} color={morning.ring ? colors.accent : colors.warningText} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
 
       {!selectionMode && showActions && rowLink && rowLink !== peopleLink && !reviewOpensLink && (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={() => handleOpenLink()}
           hitSlop={8}
@@ -5029,7 +5030,7 @@ const TaskItemRow = React.memo(function TaskItem({
           accessibilityLabel={`Open link for ${task.title}`}
         >
           <Ionicons name={linkIconFor(rowLink!) as never} size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
 
       {/* One button for both, because they're one fact about the task — a
@@ -5037,7 +5038,7 @@ const TaskItemRow = React.memo(function TaskItem({
           few action slots on the same phone number. Which of call or text you
           want is a per-tap decision, so it's asked per tap. */}
       {!selectionMode && showActions && callUrl && (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={handleContact}
           hitSlop={8}
@@ -5050,11 +5051,11 @@ const TaskItemRow = React.memo(function TaskItem({
               timer buttons beside it are what "a control on this row" looks
               like here. The handset glyph is what separates it from the link. */}
           <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
 
       {!selectionMode && showActions && emailUrl && (
-        <TouchableOpacity
+        <HoverTouchable
           activeOpacity={interaction.activeOpacity}
           onPress={handleEmail}
           hitSlop={8}
@@ -5063,7 +5064,7 @@ const TaskItemRow = React.memo(function TaskItem({
           accessibilityLabel={`Email ${contact.emailAddress} for ${task.title}`}
         >
           <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
+        </HoverTouchable>
       )}
 
       {trailingActions}
@@ -5236,7 +5237,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     // true last row, except on a notice, which has none.
                     <View style={styles.subtaskRow}>
                       <SubtaskRail last={!!notice && i === subtasks.length - 1} color={colors.separator} />
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         // A check is the small-check haptic (a grocery row's
                         // too); unchecking is a tap.
@@ -5257,7 +5258,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         <CheckPop checked={sub.completed} style={styles.subtaskCheck} checkedStyle={styles.subtaskCheckDone}>
                           <Ionicons name="checkmark" size={8} color={colors.done} />
                         </CheckPop>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                       {editingSubtaskId === sub.id ? (
                         <TextField
                           ref={subtaskTitleInputRef}
@@ -5309,7 +5310,7 @@ const TaskItemRow = React.memo(function TaskItem({
                             : formatDuration(segment.minutes)}
                         </Text>
                       )}
-                      <TouchableOpacity
+                      <HoverTouchable
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => {
                           haptics.tap();
@@ -5321,7 +5322,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         accessibilityLabel={`Delete ${sub.title}`}
                       >
                         <Ionicons name="close" size={14} color={colors.textSecondary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </View>
                     );
                   }}
@@ -5500,7 +5501,7 @@ const TaskItemRow = React.memo(function TaskItem({
                             rather than taking a callback prop, the same way the
                             Sync row below does — a fresh closure per row would
                             cost every TaskItem on the list its memo. */}
-                        <TouchableOpacity
+                        <HoverTouchable
                           activeOpacity={interaction.activeOpacity}
                           onPress={() => {
                             haptics.success();
@@ -5515,7 +5516,7 @@ const TaskItemRow = React.memo(function TaskItem({
                           accessibilityLabel={`Add a task for ${event.title || 'this event'}`}
                         >
                           <Ionicons name="add-circle-outline" size={12} color={colors.accent} />
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       </View>
                     ))
                   ) : (
@@ -5699,7 +5700,7 @@ const TaskItemRow = React.memo(function TaskItem({
                   )}
                   {showActions && timed && (
                     <View style={styles.timerRunningGroup}>
-                      <TouchableOpacity
+                      <HoverTouchable
                         onPress={handleTimerToggle}
                         hitSlop={8}
                         style={[styles.timerPill, timerReady && styles.timerPillReady]}
@@ -5718,9 +5719,9 @@ const TaskItemRow = React.memo(function TaskItem({
                         <Text style={[styles.timerPillText, timerReady && styles.timerPillTextReady]}>
                           {formatStopwatch(remainingSeconds)}
                         </Text>
-                      </TouchableOpacity>
+                      </HoverTouchable>
                       {(timerRunning || task.timerElapsedSeconds > 0) && (
-                        <TouchableOpacity
+                        <HoverTouchable
                           onPress={handleResetTimer}
                           hitSlop={8}
                           activeOpacity={interaction.activeOpacity}
@@ -5728,14 +5729,14 @@ const TaskItemRow = React.memo(function TaskItem({
                           accessibilityLabel={`Reset timer for ${task.title}`}
                         >
                           <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textSecondary} />
-                        </TouchableOpacity>
+                        </HoverTouchable>
                       )}
                     </View>
                   )}
                   {showActions && !timed && !listRow && (
                     timerRunning ? (
                     <View style={styles.timerRunningGroup}>
-                      <TouchableOpacity
+                      <HoverTouchable
                         onPress={handleTimerToggle}
                         hitSlop={8}
                         style={styles.timerPill}
@@ -5746,8 +5747,8 @@ const TaskItemRow = React.memo(function TaskItem({
                       >
                         <Ionicons name="stop" size={10} color={colors.onAccent} />
                         <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </HoverTouchable>
+                      <HoverTouchable
                         onPress={handleDiscardTimer}
                         hitSlop={8}
                         activeOpacity={interaction.activeOpacity}
@@ -5755,7 +5756,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         accessibilityLabel={`Discard timer for ${task.title}`}
                       >
                         <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textSecondary} />
-                      </TouchableOpacity>
+                      </HoverTouchable>
                     </View>
                     ) : (
                     <PressableScale
@@ -5849,7 +5850,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       <Ionicons name="trash-outline" size={iconSize.sm} color={colors.red} />
                     </PressableScale>
                   ) : (
-                  <TouchableOpacity
+                  <HoverTouchable
                     style={[styles.editBtn, !task.dueDate && styles.editBtnIconOnly]}
                     onPress={() => setShowWhenPicker(true)}
                     activeOpacity={interaction.activeOpacity}
@@ -5863,7 +5864,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     {task.dueDate && (
                       <Text style={styles.editBtnText}>{formatTaskDate(task)}</Text>
                     )}
-                  </TouchableOpacity>
+                  </HoverTouchable>
                   )}
                   {!completionMenuOffered && (
                     <PressableScale
