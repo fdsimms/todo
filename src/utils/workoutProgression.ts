@@ -413,11 +413,23 @@ function pastSessions(input: ProposalInput): PastSession[] {
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
-/** The heaviest weight among a session's working sets; null when none carries one. */
-function topWeight(sets: readonly WorkoutSet[]): number | null {
-  let top: number | null = null;
-  for (const s of sets) if (s.weightKg !== null && s.weightKg > 0 && (top === null || s.weightKg > top)) top = s.weightKg;
-  return top;
+/**
+ * The weight a session was really worked at, for the next proposal to move
+ * from; null when no working set carries one. Normally the heaviest. The
+ * exception is a weight given up on: a heavier set that fell short of the rep
+ * target, followed by a lighter set (the person failed at 40 and dropped to
+ * 35), is a try that didn't work, so the weight they ended on is the one. A
+ * heavier set that did reach the target means the lighter one is a back-off,
+ * and the heaviest stays. With no rep target (RPE) it is always the heaviest.
+ */
+function workingWeight(sets: readonly WorkoutSet[], target: number | null): number | null {
+  const loaded = sets.filter(s => s.weightKg !== null && s.weightKg > 0);
+  if (loaded.length === 0) return null;
+  const top = Math.max(...loaded.map(s => s.weightKg!));
+  if (target === null) return top;
+  const end = loaded[loaded.length - 1].weightKg!;
+  if (end >= top) return top;
+  return loaded.some(s => s.weightKg! > end && (s.reps ?? 0) >= target) ? top : end;
 }
 
 /** "8", "8 and 7", "8, 7 and 6". */
@@ -477,7 +489,10 @@ export function proposeNext(input: ProposalInput): Proposal | null {
 
   const past = pastSessions(input);
   const last = past[0];
-  const lastKg = last ? topWeight(last.sets) : null;
+  // The rep count a set has to reach, for the schemes that have one.
+  const repTarget = scheme === 'double' ? first?.repsMax ?? first?.repsMin ?? null
+    : scheme === 'linear' ? first?.repsMin ?? first?.repsMax ?? null : null;
+  const lastKg = last ? workingWeight(last.sets, repTarget) : null;
   if (!last || lastKg === null) return null;
   const kinds = setKinds(input.item, last.sets.length);
   const planned = kinds.length;
@@ -529,7 +544,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     // starts the count again, which is what a deload is for.
     let misses = 0;
     for (const p of past) {
-      const top = topWeight(p.sets);
+      const top = workingWeight(p.sets, reps);
       if (top === null || !sameLoad(top, lastKg, unit) || hit(p)) break;
       misses++;
     }
