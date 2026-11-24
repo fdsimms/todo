@@ -1727,7 +1727,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                     {extras != null && <View style={styles.sep} />}
                     <SettingsRow
                       entryId={`gen:${spec.kind}:taskSettings`}
-                      label="Task settings"
+                      label="Category and defaults"
                       hint={describeGeneratedTaskSettings(
                         categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? null,
                         s.generatedTaskDefaults[spec.kind],

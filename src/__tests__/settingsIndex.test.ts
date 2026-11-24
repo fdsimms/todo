@@ -136,7 +136,7 @@ describe('settings index', () => {
       }
     });
 
-    it('gives every generator one Task settings row, filed under its own name', () => {
+    it('gives every generator one Category and defaults row, filed under its own name', () => {
       // Its category and defaults are in that sheet, so the two rows that held
       // them are gone.
       for (const spec of GENERATED_KIND_LIST) {
@@ -312,7 +312,7 @@ describe('settings index', () => {
       expect(SETTINGS_ENTRIES.filter(e => e.requires).length).toBeGreaterThan(0);
     });
 
-    // The screen renders "Task settings" inside the generator's open options,
+    // The screen renders "Category and defaults" inside the generator's open options,
     // so every derived row is gated on its own generator's toggle.
     it('gates every generator Task settings row on its own generator', () => {
       const rows = SETTINGS_ENTRIES.filter(e => e.id.endsWith(':taskSettings'));

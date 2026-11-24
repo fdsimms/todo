@@ -472,9 +472,9 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
     ...(hasTaskSettingsSheet(spec.kind) ? [{
       ...shared,
       id: `gen:${spec.kind}:taskSettings`,
-      label: 'Task settings',
+      label: 'Category and defaults',
       section: spec.label,
-      keywords: ['priority', 'difficulty', 'estimate', 'category', 'file them under', 'tags', 'time of day', 'ask on completion', 'backfill'],
+      keywords: ['task settings', 'priority', 'difficulty', 'estimate', 'file them under', 'tags', 'time of day', 'ask on completion', 'backfill'],
       requires: `gen:${spec.kind}`,
     }] : []),
   ];
