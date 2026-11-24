@@ -671,10 +671,27 @@ export function proposalHeadline(p: Proposal, unit: WeightUnit, scale = 1): stri
     : `Today ${p.sets.length} × ${reps} at ${weights} ${unit}.`;
 }
 
-/** "Use 82.5 kg", or "Use these weights" for sets at different loads. */
-export function proposalActionLabel(p: Proposal, unit: WeightUnit, scale = 1): string {
+/**
+ * "Use 82.5 kg", or "Use these weights" for sets at different loads. When the
+ * planned working sets already sit at the proposal's weights, tapping changes
+ * only the reps, so the label says that instead (`proposalRepsLabel`).
+ */
+export function proposalActionLabel(
+  p: Proposal,
+  unit: WeightUnit,
+  scale: number,
+  exerciseSets: readonly WorkoutSet[],
+): string {
+  if (weightsPlanned(exerciseSets, p, unit)) return proposalRepsLabel(p);
   const shown = p.sets.map(s => formatWeightNumber(s.weightKg * scale, unit));
   return shown.length > 0 && shown.every(w => w === shown[0]) ? `Use ${shown[0]} ${unit}` : 'Use these weights';
+}
+
+/** "Use 9 reps", or "Use these reps" when the sets ask for different counts. */
+export function proposalRepsLabel(p: Proposal): string {
+  const reps = p.sets.map(s => s.reps).filter((r): r is number => r !== null);
+  if (reps.length === 0) return 'Use these reps';
+  return reps.every(r => r === reps[0]) ? `Use ${reps[0]} ${reps[0] === 1 ? 'rep' : 'reps'}` : 'Use these reps';
 }
 
 // ==== applying it, on the person's tap ====
@@ -732,6 +749,16 @@ export function proposalEdits(
 export function rampWarmupsToAdd(exerciseSets: readonly WorkoutSet[], ramp: readonly RampStep[] | null): RampStep[] {
   if (!ramp || ramp.length === 0) return [];
   return exerciseSets.some(s => s.kind === 'warmup') ? [] : [...ramp];
+}
+
+/** Whether every planned working set is already at the proposal's weight (its reps may still differ). */
+export function weightsPlanned(exerciseSets: readonly WorkoutSet[], p: Proposal, unit: WeightUnit): boolean {
+  const planned = exerciseSets.filter(isPlannedWorking);
+  if (planned.length === 0) return false;
+  return planned.every((s, i) => {
+    const want = p.sets[i];
+    return !want || (s.weightKg !== null && sameLoad(s.weightKg, want.weightKg, unit));
+  });
 }
 
 /** Whether the planned working sets already ask for what the proposal does: nothing to offer then. */

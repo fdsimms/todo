@@ -1526,6 +1526,7 @@ export function WorkoutModeScreen() {
                       proposal={proposal}
                       unit={unit}
                       scale={scale}
+                      sets={viewed.sets}
                       // Offered until a working set is logged or the plan
                       // already asks for it; after that it is shown plainly,
                       // as the target being worked to.
@@ -2065,8 +2066,9 @@ function DeletableSet({ label, onDelete, children, styles }: {
   );
 }
 
-function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
+function SuggestionCard({ proposal, unit, scale, sets, offer, onUse, styles }: {
   proposal: Proposal;
+  sets: readonly WorkoutSet[];
   unit: WeightUnit;
   scale: number;
   offer: boolean;
@@ -2115,9 +2117,9 @@ function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
       {offer && headline && (
         <View style={styles.suggestActions}>
           <InlineAction
-            label={proposalActionLabel(proposal, unit, scale)}
+            label={proposalActionLabel(proposal, unit, scale, sets)}
             onPress={onUse}
-            accessibilityLabel={`${proposalActionLabel(proposal, unit, scale)} on the sets not done yet`}
+            accessibilityLabel={`${proposalActionLabel(proposal, unit, scale, sets)} on the sets not done yet`}
           />
         </View>
       )}
