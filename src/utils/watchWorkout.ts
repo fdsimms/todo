@@ -19,7 +19,7 @@ import { plannedSetsFromHistory, restSecondsFor, sessionExercises, setBadge, set
 import { tickOutcome } from './workoutTick';
 import { WEIGHT_STEP, formatWeightNumber, weightToDisplay } from './workoutData';
 import { exerciseProposal, proposalRamp } from './workoutProposal';
-import { proposalApplied, workingSetLogged } from './workoutProgression';
+import { proposalApplied, proposalRepsLabel, weightsPlanned, workingSetLogged } from './workoutProgression';
 import { stepTimerRemaining, isStepTimerRunning } from './stepTimers';
 import { myWorkoutStart } from './workoutSiri';
 import { programProgress } from './workoutProgram';
@@ -385,7 +385,9 @@ export function watchSuggestion(exerciseId: string, ctx: ExerciseContext, exerci
   const shown = p.proposal.sets.map(s => formatWeightNumber(s.weightKg * scale, ctx.unit));
   const out: WatchSuggestion = {
     weight: weightToDisplay(p.proposal.sets[0].weightKg * scale, ctx.unit),
-    use: shown.every(w => w === shown[0]) ? `Use ${shown[0]}` : 'Use these',
+    use: weightsPlanned(exerciseSets, p.proposal, ctx.unit)
+      ? proposalRepsLabel(p.proposal).replace('Use these reps', 'Use these')
+      : shown.every(w => w === shown[0]) ? `Use ${shown[0]}` : 'Use these',
     reason: p.proposal.brief,
     sets: p.proposal.sets.map(s => (s.reps === null
       ? { weight: weightToDisplay(s.weightKg * scale, ctx.unit) }

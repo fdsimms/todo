@@ -10,6 +10,7 @@ import {
   loadContextFor,
   proposalActionLabel,
   proposalApplied,
+  weightsPlanned,
   proposalEdits,
   proposalHeadline,
   proposeNext,
@@ -134,7 +135,7 @@ describe('proposeNext, rep range (double)', () => {
     // The few words the Apple Watch's card has room for.
     expect(p.brief).toBe('All sets hit 8 last time');
     expect(proposalHeadline(p, 'kg')).toBe('Today 3 × 6–8 at 82.5 kg.');
-    expect(proposalActionLabel(p, 'kg')).toBe('Use 82.5 kg');
+    expect(proposalActionLabel(p, 'kg', 1, [])).toBe('Use 82.5 kg');
   });
 
   it('keeps the weight and aims for more reps until then', () => {
@@ -217,7 +218,7 @@ describe('proposeNext, rep range (double)', () => {
     const p = proposeNext(input({ history, load: lbBarbell }))!;
     expect(sameLoad(p.sets[0].weightKg, unitToKg(140, 'lb'), 'lb')).toBe(true);
     expect(p.reason).toBe('Up 5 lb because every set last time reached 8.');
-    expect(proposalActionLabel(p, 'lb')).toBe('Use 140 lb');
+    expect(proposalActionLabel(p, 'lb', 1, [])).toBe('Use 140 lb');
   });
 
   it('has nothing to say without history, a scheme, a range or a load', () => {
@@ -371,7 +372,7 @@ describe('proposeNext, percent of a training max', () => {
     ]);
     expect(p.reason).toBe('Week 1 of 4: 65%, 75% and 85% of a 100 kg training max.');
     expect(proposalHeadline(p, 'kg')).toBe('Today 3 × 5 at 65, 75 and 85 kg.');
-    expect(proposalActionLabel(p, 'kg')).toBe('Use these weights');
+    expect(proposalActionLabel(p, 'kg', 1, [])).toBe('Use these weights');
   });
 
   it('climbs through the weeks and eases off in the last of four, on loadable weights', () => {
@@ -446,6 +447,14 @@ describe('applying a proposal', () => {
   it('never touches a done set', () => {
     const sets = [planned('a', 'working', 80, 8, true), planned('b', 'working', 80, 8)];
     expect(proposalEdits(sets, p)).toEqual([{ setId: 'b', weightKg: 82.5, reps: 6 }]);
+  });
+
+  it('says it is only the reps when the planned weights already match', () => {
+    const sets = [planned('a', 'working', 82.5, 8), planned('b', 'working', 82.5, 9)];
+    expect(proposalApplied(sets, p, 'kg')).toBe(false);
+    expect(weightsPlanned(sets, p, 'kg')).toBe(true);
+    expect(proposalActionLabel(p, 'kg', 1, sets)).toBe('Use 6 reps');
+    expect(proposalActionLabel(p, 'kg', 1, [planned('a', 'working', 80, 8)])).toBe('Use 82.5 kg');
   });
 
   it('knows when it is already in the plan, and when a working set is logged', () => {
