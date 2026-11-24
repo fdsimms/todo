@@ -85,6 +85,7 @@ import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type Deliverab
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { completionLogChips } from '../utils/completionLogChip';
 import { TaskDoseSheet } from './TaskDoseSheet';
+import { DoseStepper } from './DoseStepper';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { activeChainStep, chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
 import { isAnsweredByRecord, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
@@ -4135,7 +4136,16 @@ const TaskItemRow = React.memo(function TaskItem({
           the Settings row that switches the meal on wears. */}
       {/* What ticking this row records (a dose, a meal), so a row that
           logs something is told apart from one that doesn't. */}
-      {logChips.map(chip => (
+      {logChips.map(chip => chip.stepper ? (
+        <DoseStepper
+          key={chip.kind}
+          amount={chip.stepper.amount}
+          unit={chip.stepper.unit}
+          medication={task.medicationName ?? 'medication'}
+          onChange={amount => updateTask(task.id, { medicationAmount: amount })}
+          onOpenSheet={() => setShowDoseSheet(true)}
+        />
+      ) : (
         <TouchableOpacity
           key={chip.kind}
           style={styles.logsChip}
