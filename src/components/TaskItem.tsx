@@ -98,6 +98,8 @@ import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl, linkIconFor, isDeloadUrl } from '../utils/deepLinks';
+import { MealThawSheet, mealThawTargetsNow } from './MealThawSheet';
+import { mealThawEntryId } from '../utils/mealThawTasks';
 import { linkFor } from '../constants/linkApps';
 import { parseHealthSourceId } from '../utils/healthRules';
 import { pantryCheckItemId, pantryCheckLapse } from '../utils/pantryCheckTasks';
@@ -148,7 +150,9 @@ import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { EventDetailsCount, EventDetailsPanel } from './EventDetailsPanel';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { useOnCallSwapContext } from '../hooks/useOnCallSwapContext';
-import { automationEntryIdFor, canPinTask, isNoticeTask } from '../utils/generatedTasks';
+import { automationEntryIdFor, canPinTask, generatedSourceOf, isNoticeTask } from '../utils/generatedTasks';
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -689,6 +693,8 @@ const TaskItemRow = React.memo(function TaskItem({
   // The People page for whoever the task names. Its own button, so it is
   // always reachable and never displaces a link somebody chose.
   const peopleLink = peoplePageLinkFor(task);
+  const [showMealThaw, setShowMealThaw] = useState(false);
+  const mountMealThaw = useSheetMount(showMealThaw);
   const handleOpenLink = async (target: string | null = rowLink) => {
     const url = target;
     if (!url) return;
@@ -698,6 +704,32 @@ const TaskItemRow = React.memo(function TaskItem({
     if (pantryCheckId && url === rowLink) {
       setShowPantryCheck(true);
       return;
+    }
+    // A "Use up X" task answers in the same card ticking it raises
+    // (UseUpResolveSheet) rather than leaving Today for the item's editor. An
+    // item or container that is already out or gone has nothing to ask, so
+    // that case still navigates.
+    if (url === rowLink && !task.completed) {
+      const useUpItemId = generatedSourceOf(task, 'groceryUseUp');
+      const useUpItem = useUpItemId ? useGroceryStore.getState().itemById(useUpItemId) : null;
+      if (useUpItem && useUpItem.onHandUntil !== OUT_OF_IT_UNTIL) {
+        useGroceryStore.getState().setPendingUseUpItem(useUpItem.id);
+        return;
+      }
+      const useUpLeftoverId = generatedSourceOf(task, 'leftoverUseUp');
+      if (useUpLeftoverId && useLeftoverStore.getState().leftovers.some(l => l.id === useUpLeftoverId)) {
+        useLeftoverStore.getState().setPendingUseUpLeftover(useUpLeftoverId);
+        return;
+      }
+    }
+    // A thaw task answers in a card too, when every frozen thing in the meal
+    // is one it can thaw. Otherwise (a box, a meal gone or cooked, nothing
+    // frozen any more) the link still opens the Pantry.
+    if (url === rowLink && mealThawEntryId(task) && !task.completed) {
+      if (mealThawTargetsNow(mealThawEntryId(task) as string)) {
+        setShowMealThaw(true);
+        return;
+      }
     }
     // A link this app owns (dundundun://groceries) navigates in place. Going
     // out through Linking would come back to us anyway, but as an app-switch
@@ -6203,6 +6235,13 @@ const TaskItemRow = React.memo(function TaskItem({
           visible={showPantryCheck}
           itemId={pantryCheckId}
           onClose={() => setShowPantryCheck(false)}
+        />
+      )}
+      {mountMealThaw && mealThawEntryId(task) && (
+        <MealThawSheet
+          visible={showMealThaw}
+          entryId={mealThawEntryId(task) as string}
+          onClose={() => setShowMealThaw(false)}
         />
       )}
       {mountWhenPicker && (
