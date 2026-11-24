@@ -68,37 +68,36 @@ describe('reading on a row', () => {
 });
 
 describe('biostatsCollapsed', () => {
-  it('draws calories as the ring and never repeats them as a bar', () => {
-    const { ring, bars } = biostatsCollapsed(rows());
-    expect(ring?.label).toBe('73%');
-    expect(ring).toMatchObject({ name: 'Calories', detail: '366 of 500 cal' });
-    expect(bars.map(b => b.id)).not.toContain('goal-calorieKcal');
+  it('leads with calories as a labeled bar, never a bare ring', () => {
+    const { bars } = biostatsCollapsed(rows());
+    expect(bars[0]).toMatchObject({ id: 'goal-calorieKcal', label: 'Calories', value: '73%' });
+    expect(bars.filter(b => b.id === 'goal-calorieKcal')).toHaveLength(1);
   });
 
-  it('puts a limit that is close ahead of steps', () => {
+  it('puts a limit that is close ahead of steps, after calories', () => {
     const { bars } = biostatsCollapsed(rows());
-    expect(bars.map(b => b.id)).toEqual(['limit-sodiumMg', 'health-steps']);
-    expect(bars[0]).toMatchObject({ label: 'Sodium', value: '86%', tone: 'near' });
-    expect(bars[1]).toMatchObject({ label: 'Steps', value: '4,229' });
+    expect(bars.map(b => b.id)).toEqual(['goal-calorieKcal', 'limit-sodiumMg', 'health-steps']);
+    expect(bars[1]).toMatchObject({ label: 'Sodium', value: '86%', tone: 'near' });
+    expect(bars[2]).toMatchObject({ label: 'Steps', value: '4,229' });
   });
 
   it('puts steps first while every limit is comfortably within', () => {
     const { bars } = biostatsCollapsed(rows({ sodium: 500 }));
-    expect(bars.map(b => b.id)).toEqual(['health-steps', 'limit-sodiumMg']);
-    expect(bars[1].tone).toBeUndefined();
+    expect(bars.map(b => b.id)).toEqual(['goal-calorieKcal', 'health-steps', 'limit-sodiumMg']);
+    expect(bars[2].tone).toBeUndefined();
   });
 
   it('says Over rather than a percentage past a limit', () => {
     const { bars } = biostatsCollapsed(rows({ sodium: 3000 }));
-    expect(bars[0]).toMatchObject({ id: 'limit-sodiumMg', value: 'Over', tone: 'over', fraction: 1 });
+    expect(bars[1]).toMatchObject({ id: 'limit-sodiumMg', value: 'Over', tone: 'over', fraction: 1 });
   });
 
-  it('shows at most two bars', () => {
+  it('shows calories and at most two more', () => {
     const many = [
       ...rows(),
       ...limitContextRows({ satFatG: 19, sugarG: 49 }, { ...targets, satFatG: 20, sugarG: 50 }, ['satFatG', 'sugarG'], { category: null, warnPercent: 80 }),
     ];
-    expect(biostatsCollapsed(many).bars).toHaveLength(2);
+    expect(biostatsCollapsed(many).bars).toHaveLength(3);
   });
 
   it('falls back to the rows’ own titles when there is nothing to draw', () => {
@@ -107,7 +106,6 @@ describe('biostatsCollapsed', () => {
       { todayKey: TODAY, category: null },
     );
     const collapsed = biostatsCollapsed(only);
-    expect(collapsed.ring).toBeNull();
     expect(collapsed.bars).toEqual([]);
     expect(collapsed.text).toBe('352 active cal');
   });
