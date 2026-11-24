@@ -16,7 +16,7 @@ import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import type { StandingSwapMap } from './standingSwaps';
 import { onHandNameKeys } from './grocerySuggest';
-import { kitchenEntryId, kitchenLinkUrl, parseKitchenEntryId } from './kitchenInventory';
+import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { isLiveLeftover } from './leftovers';
 import { joinNames } from './shoppingTrip';
 import { entryResolution } from './recipeComponents';
@@ -97,6 +97,20 @@ export interface FrozenForMeal {
   names: string[];
   /** The one Pantry row to open, when there is exactly one thing to take out. */
   kitchenEntryId: string | null;
+  /**
+   * Every frozen thing the meal needs, as the rows a thaw can be written to,
+   * or null when any of them can't be named that way (frozen only through a
+   * box, a variety or a substitute). Null sends the task's link to the Pantry
+   * rather than offering a card that thaws some of what it lists.
+   */
+  targets: ThawTarget[] | null;
+}
+
+/** One frozen grocery item or container a thaw card can take out of the freezer. */
+export interface ThawTarget {
+  kind: 'grocery' | 'leftover';
+  sourceId: string;
+  name: string;
 }
 
 /**
@@ -130,8 +144,12 @@ export function frozenForMeal(
     const leftover = leftovers.find(l => l.id === entry.leftoverId);
     if (!leftover || !isLiveLeftover(leftover)) return null;
     return leftover.frozenAt
-      ? { names: [leftover.title], kitchenEntryId: kitchenEntryId('leftover', leftover.id) }
-      : { names: [], kitchenEntryId: null };
+      ? {
+          names: [leftover.title],
+          kitchenEntryId: kitchenEntryId('leftover', leftover.id),
+          targets: [{ kind: 'leftover', sourceId: leftover.id, name: leftover.title }],
+        }
+      : { names: [], kitchenEntryId: null, targets: [] };
   }
 
   if (!entry.recipeId) return null;
@@ -154,37 +172,24 @@ export function frozenForMeal(
   ).filter(row => row.category === 'probablyHave' && row.reason === FROZEN_REASON && !row.optional);
 
   const only = rows.length === 1 ? items.find(i => i.nameKey === rows[0].nameKey) : undefined;
+  const frozenItems = rows.map(row => items.find(i => i.nameKey === row.nameKey && i.frozenAt));
   return {
     names: rows.map(row => row.name.toLowerCase()),
     kitchenEntryId: only ? kitchenEntryId('grocery', only.id) : null,
+    targets: frozenItems.every(item => !!item)
+      ? frozenItems.map(item => ({ kind: 'grocery' as const, sourceId: item!.id, name: item!.name }))
+      : null,
   };
 }
 
 /**
  * Where the row goes: the Pantry, opened on the one frozen row when there is
  * only one, since marking it thawed there is what the user does next. Several
- * open the Pantry itself, whose Freezer section leads the list. From a task row
- * the one-thing case answers in `MealThawSheet` instead (`thawTargetOf`).
+ * open the Pantry itself, whose Freezer section leads the list. A task row
+ * answers in `MealThawSheet` instead when `FrozenForMeal.targets` names them all.
  */
 export function mealThawLinkUrl(frozen: Pick<FrozenForMeal, 'kitchenEntryId'>): string {
   return kitchenLinkUrl(frozen.kitchenEntryId);
-}
-
-/**
- * The one thing a thaw task's link names, when the card can answer for it: a
- * grocery item or a container (`FrozenForMeal.kitchenEntryId`, read back from
- * the link). Null for the bare link (several frozen things, which the Pantry's
- * Freezer section is for) and for a box, which the card has no write for.
- *
- * Takes the link's `item` value rather than the URL so this module needn't
- * import `deepLinks`, which imports the stores.
- */
-export function thawTargetOf(
-  linkedEntryId: string | null
-): { kind: 'grocery' | 'leftover'; sourceId: string } | null {
-  const parsed = linkedEntryId ? parseKitchenEntryId(linkedEntryId) : null;
-  if (!parsed || parsed.kind === 'product') return null;
-  return { kind: parsed.kind, sourceId: parsed.sourceId };
 }
 
 /**
@@ -306,4 +311,29 @@ export function answeredMealThawTasks<
     const frozen = frozenForMeal(entry, recipesById, leftovers, items, itemSubs, swaps, now, products);
     return !!frozen && frozen.names.length === 0;
   });
+}
+
+/**
+ * What a thaw task's card offers right now, read live from the stores when the
+ * row's link is tapped or the card is open: the planned meal's frozen things,
+ * or null when there is nothing the card can answer for (the meal is gone or
+ * cooked, or something in it is frozen in a way no single write thaws), in
+ * which case the link opens the Pantry.
+ *
+ * Calls `frozenForMeal`, the function the task itself is created and cleared
+ * by, so the card can't offer a different list than the title promised.
+ */
+export function thawTargetsForMeal(
+  entry: MealPlanEntry | null,
+  recipesById: ReadonlyMap<string, Recipe>,
+  leftovers: readonly Leftover[],
+  items: readonly GroceryItem[],
+  itemSubs: readonly ItemSubLink[],
+  swaps: StandingSwapMap,
+  now: Date,
+  products: readonly ItemProduct[] = []
+): ThawTarget[] | null {
+  if (!entry) return null;
+  const frozen = frozenForMeal(entry, recipesById, leftovers, items, itemSubs, swaps, now, products);
+  return frozen && frozen.targets && frozen.targets.length > 0 ? frozen.targets : null;
 }

@@ -97,9 +97,9 @@ import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
 import { haptics } from '../utils/haptics';
-import { openInAppUrl, linkIconFor, isDeloadUrl, kitchenUrlItemId } from '../utils/deepLinks';
-import { thawTargetOf } from '../utils/mealThawTasks';
-import { MealThawSheet } from './MealThawSheet';
+import { openInAppUrl, linkIconFor, isDeloadUrl } from '../utils/deepLinks';
+import { MealThawSheet, mealThawTargetsNow } from './MealThawSheet';
+import { mealThawEntryId } from '../utils/mealThawTasks';
 import { linkFor } from '../constants/linkApps';
 import { parseHealthSourceId } from '../utils/healthRules';
 import { pantryCheckItemId, pantryCheckLapse } from '../utils/pantryCheckTasks';
@@ -692,8 +692,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // The People page for whoever the task names. Its own button, so it is
   // always reachable and never displaces a link somebody chose.
   const peopleLink = peoplePageLinkFor(task);
-  const mealThawTarget =
-    task.generatedKind === 'mealThaw' && task.linkUrl ? thawTargetOf(kitchenUrlItemId(task.linkUrl)) : null;
   const [showMealThaw, setShowMealThaw] = useState(false);
   const mountMealThaw = useSheetMount(showMealThaw);
   const handleOpenLink = async (target: string | null = rowLink) => {
@@ -723,14 +721,11 @@ const TaskItemRow = React.memo(function TaskItem({
         return;
       }
     }
-    // A thaw task naming one frozen thing answers in a card too. Gone or
-    // already thawed, or several things, still opens the Pantry.
-    if (url === rowLink && mealThawTarget && !task.completed) {
-      const frozen =
-        mealThawTarget.kind === 'grocery'
-          ? !!useGroceryStore.getState().itemById(mealThawTarget.sourceId)?.frozenAt
-          : !!useLeftoverStore.getState().leftovers.find(l => l.id === mealThawTarget.sourceId)?.frozenAt;
-      if (frozen) {
+    // A thaw task answers in a card too, when every frozen thing in the meal
+    // is one it can thaw. Otherwise (a box, a meal gone or cooked, nothing
+    // frozen any more) the link still opens the Pantry.
+    if (url === rowLink && mealThawEntryId(task) && !task.completed) {
+      if (mealThawTargetsNow(mealThawEntryId(task) as string)) {
         setShowMealThaw(true);
         return;
       }
@@ -6241,11 +6236,10 @@ const TaskItemRow = React.memo(function TaskItem({
           onClose={() => setShowPantryCheck(false)}
         />
       )}
-      {mountMealThaw && mealThawTarget && (
+      {mountMealThaw && mealThawEntryId(task) && (
         <MealThawSheet
           visible={showMealThaw}
-          kind={mealThawTarget.kind}
-          sourceId={mealThawTarget.sourceId}
+          entryId={mealThawEntryId(task) as string}
           onClose={() => setShowMealThaw(false)}
         />
       )}
