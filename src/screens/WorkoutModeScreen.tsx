@@ -2059,6 +2059,7 @@ function DeletableSet({ label, onDelete, children, styles }: {
       ref={ref}
       friction={2}
       overshootRight={false}
+      enableTrackpadTwoFingerGesture
       // The panel is laid out behind the whole row, so the row has to be
       // opaque or the red shows through around the inputs as it slides.
       childrenContainerStyle={styles.setFace}

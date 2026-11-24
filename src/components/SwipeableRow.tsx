@@ -269,6 +269,8 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
         // ends up, so the reveal now tracks a swipe long enough to feel
         // deliberate.
         friction={FRICTION}
+        // A two-finger swipe on a trackpad opens the row too, not only a click and drag.
+        enableTrackpadTwoFingerGesture
         enabled={enabled}
         onSwipeableOpenStartDrag={() => { committed.current = false; startWatching(); }}
         onSwipeableWillClose={stopWatching}

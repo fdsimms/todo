@@ -254,6 +254,7 @@ Where each component can appear.
 - `src/components/HelpText.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookModeScreen, ExperimentDetailScreen, ExperimentsScreen, FoodLogScreen, GroceryScreen, JournalScreen, +32 more
 - `src/components/HighlightedText.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, SettingsScreen, +7 more
 - `src/components/HoldToConfirmButton.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, ScreenTimeScreen, +7 more
+- `src/components/Hoverable.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookModeScreen, CookbookDetailScreen, CookbooksScreen, ExperimentDetailScreen, ExperimentsScreen, +41 more
 - `src/components/HubPills.tsx` — on ArchivedScreen, BloodPressureScreen, CategoriesScreen, ExperimentsScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MoodInsightsScreen, +11 more
 - `src/components/ImportApplyRow.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/ImportedComponentEditSheet.tsx` — on RecipeDetailScreen, RecipesScreen

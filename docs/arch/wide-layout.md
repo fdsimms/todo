@@ -248,7 +248,11 @@ the native half was written against Apple's declarations and can only be checked
   scroll, so a click-drag could never lift one. A shorter hold would turn a slow click into a lifted row with
   the click lost, so the handle is the way in. React Native reports hover as
   `onPointerEnter`/`onPointerLeave` with no flag. Rows and the
-  sidebar get no hover tint, which is the Mac's own convention for lists.
+  sidebar get no hover tint, which is the Mac's own convention for lists. A button does get the
+  system pointer effect (`Hoverable`, used by `PressableScale`): `HoverEffect.LIFT` through
+  react-native-gesture-handler's hover gesture, which installs a `UIPointerInteraction`. A swipe
+  row also opens with a two-finger trackpad swipe (`enableTrackpadTwoFingerGesture` on each
+  `Swipeable`), otherwise only a click and drag moves it. Neither has run on an iPad or Mac yet.
 - **The keyboard can drive the task list** (`rowCursor.ts`, `rowOrder.ts`, `keyActions.ts`). ↑ and ↓ move
   a **row cursor** down the rows a view draws (a dashed outline, distinct from the pane's solid one); Return
   opens the task (in the pane, or a sheet below the breakpoint), Space completes it, Delete or ⌘Delete
