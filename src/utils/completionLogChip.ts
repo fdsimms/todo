@@ -1,7 +1,7 @@
 import type { Task } from '../types';
 import { offersMealLogOnCompletion } from './completionTap';
 import { activeChainStep } from './chain';
-import { formatDose, medicationsFor } from './medicationLog';
+import { DOSE_UNITS, formatDose, medicationsFor } from './medicationLog';
 
 /**
  * The chips a task row shows to say that ticking it records something: a dose
@@ -25,6 +25,13 @@ export interface CompletionLogChip {
    * from the row. A chain step's dose or several doses are edited in the editor.
    */
   editable?: boolean;
+  /**
+   * Set when the row can step the amount in place (`DoseStepper`) instead of
+   * showing the chip: an `editable` dose in a counted unit (tablets, sprays)
+   * with an amount. A measured dose (mg, ml) or one with no amount keeps the
+   * chip and its sheet, since there is no natural step of 1 to offer.
+   */
+  stepper?: { amount: number; unit: string };
 }
 
 export function completionLogChips(task: Task, mealLogPromptEnabled: boolean): CompletionLogChip[] {
@@ -35,7 +42,13 @@ export function completionLogChips(task: Task, mealLogPromptEnabled: boolean): C
   if (doses.length === 1) {
     const phrase = formatDose({ amount: doses[0].amount, unit: doses[0].unit, strength: null });
     const own = !activeChainStep(task)?.medicationName?.trim() && !!task.medicationName?.trim();
-    chips.push({ kind: 'dose', text: phrase ? `Logs ${phrase}` : 'Logs dose', ...(own ? { editable: true } : {}) });
+    const unit = doses[0].unit;
+    const counted = !!unit && DOSE_UNITS.some(u => u.value === unit && u.plural !== null);
+    const amount = doses[0].amount;
+    const stepper = own && counted && amount !== null && Number.isInteger(amount) && amount >= 1
+      ? { stepper: { amount, unit: unit as string } }
+      : {};
+    chips.push({ kind: 'dose', text: phrase ? `Logs ${phrase}` : 'Logs dose', ...(own ? { editable: true } : {}), ...stepper });
   } else if (doses.length > 1) {
     chips.push({ kind: 'dose', text: `Logs ${doses.length} doses` });
   }
