@@ -96,7 +96,9 @@ import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
 import { haptics } from '../utils/haptics';
-import { openInAppUrl, linkIconFor, isDeloadUrl } from '../utils/deepLinks';
+import { openInAppUrl, linkIconFor, isDeloadUrl, kitchenUrlItemId } from '../utils/deepLinks';
+import { thawTargetOf } from '../utils/mealThawTasks';
+import { MealThawSheet } from './MealThawSheet';
 import { linkFor } from '../constants/linkApps';
 import { parseHealthSourceId } from '../utils/healthRules';
 import { pantryCheckItemId, pantryCheckLapse } from '../utils/pantryCheckTasks';
@@ -689,6 +691,10 @@ const TaskItemRow = React.memo(function TaskItem({
   // The People page for whoever the task names. Its own button, so it is
   // always reachable and never displaces a link somebody chose.
   const peopleLink = peoplePageLinkFor(task);
+  const mealThawTarget =
+    task.generatedKind === 'mealThaw' && task.linkUrl ? thawTargetOf(kitchenUrlItemId(task.linkUrl)) : null;
+  const [showMealThaw, setShowMealThaw] = useState(false);
+  const mountMealThaw = useSheetMount(showMealThaw);
   const handleOpenLink = async (target: string | null = rowLink) => {
     const url = target;
     if (!url) return;
@@ -713,6 +719,18 @@ const TaskItemRow = React.memo(function TaskItem({
       const useUpLeftoverId = generatedSourceOf(task, 'leftoverUseUp');
       if (useUpLeftoverId && useLeftoverStore.getState().leftovers.some(l => l.id === useUpLeftoverId)) {
         useLeftoverStore.getState().setPendingUseUpLeftover(useUpLeftoverId);
+        return;
+      }
+    }
+    // A thaw task naming one frozen thing answers in a card too. Gone or
+    // already thawed, or several things, still opens the Pantry.
+    if (url === rowLink && mealThawTarget && !task.completed) {
+      const frozen =
+        mealThawTarget.kind === 'grocery'
+          ? !!useGroceryStore.getState().itemById(mealThawTarget.sourceId)?.frozenAt
+          : !!useLeftoverStore.getState().leftovers.find(l => l.id === mealThawTarget.sourceId)?.frozenAt;
+      if (frozen) {
+        setShowMealThaw(true);
         return;
       }
     }
@@ -6211,6 +6229,14 @@ const TaskItemRow = React.memo(function TaskItem({
           visible={showPantryCheck}
           itemId={pantryCheckId}
           onClose={() => setShowPantryCheck(false)}
+        />
+      )}
+      {mountMealThaw && mealThawTarget && (
+        <MealThawSheet
+          visible={showMealThaw}
+          kind={mealThawTarget.kind}
+          sourceId={mealThawTarget.sourceId}
+          onClose={() => setShowMealThaw(false)}
         />
       )}
       {mountWhenPicker && (

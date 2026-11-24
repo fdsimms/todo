@@ -305,6 +305,7 @@ Where each component can appear.
 - `src/components/MealReplaceItemSheet.tsx` — on MealPlanScreen
 - `src/components/MealSlotRow.tsx` — on MealPlanScreen
 - `src/components/MealStrip.tsx` — on TodayScreen
+- `src/components/MealThawSheet.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/MedicationAddSheet.tsx` — on MedicationScreen
 - `src/components/MedicationLogSheet.tsx` — on MedicationDetailScreen, MedicationScreen
 - `src/components/MedicationRenameSheet.tsx` — on MedicationDetailScreen

@@ -11,6 +11,7 @@ import {
   mealThawTitle,
   staleMealThawTasks,
   wantedMealThaws,
+  thawTargetOf,
 } from '../utils/mealThawTasks';
 
 // mealPlan.ts reaches dateUtils and so the settings store, which nothing here
@@ -232,5 +233,18 @@ describe('staleMealThawTasks', () => {
     expect(stale([task('m-x', { completed: true }), task('m-y', { generatedKind: 'mealShortfall' })], [], byId(r), [])).toEqual([]);
     expect(mealThawEntryId(task('m-1'))).toBe('m-1');
     expect(mealThawEntryId(task('m-1', { generatedKind: 'mealShortfall' }))).toBeNull();
+  });
+});
+
+describe('thawTargetOf', () => {
+  it('names the one item or container a thaw link points at', () => {
+    expect(thawTargetOf('grocery-abc-1')).toEqual({ kind: 'grocery', sourceId: 'abc-1' });
+    expect(thawTargetOf('leftover-xyz')).toEqual({ kind: 'leftover', sourceId: 'xyz' });
+  });
+
+  it('is null for the bare link, a box and anything unreadable', () => {
+    expect(thawTargetOf(null)).toBeNull();
+    expect(thawTargetOf('product-p1')).toBeNull();
+    expect(thawTargetOf('nonsense')).toBeNull();
   });
 });

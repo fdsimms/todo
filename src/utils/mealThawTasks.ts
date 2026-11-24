@@ -16,7 +16,7 @@ import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import type { StandingSwapMap } from './standingSwaps';
 import { onHandNameKeys } from './grocerySuggest';
-import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
+import { kitchenEntryId, kitchenLinkUrl, parseKitchenEntryId } from './kitchenInventory';
 import { isLiveLeftover } from './leftovers';
 import { joinNames } from './shoppingTrip';
 import { entryResolution } from './recipeComponents';
@@ -163,10 +163,28 @@ export function frozenForMeal(
 /**
  * Where the row goes: the Pantry, opened on the one frozen row when there is
  * only one, since marking it thawed there is what the user does next. Several
- * open the Pantry itself, whose Freezer section leads the list.
+ * open the Pantry itself, whose Freezer section leads the list. From a task row
+ * the one-thing case answers in `MealThawSheet` instead (`thawTargetOf`).
  */
 export function mealThawLinkUrl(frozen: Pick<FrozenForMeal, 'kitchenEntryId'>): string {
   return kitchenLinkUrl(frozen.kitchenEntryId);
+}
+
+/**
+ * The one thing a thaw task's link names, when the card can answer for it: a
+ * grocery item or a container (`FrozenForMeal.kitchenEntryId`, read back from
+ * the link). Null for the bare link (several frozen things, which the Pantry's
+ * Freezer section is for) and for a box, which the card has no write for.
+ *
+ * Takes the link's `item` value rather than the URL so this module needn't
+ * import `deepLinks`, which imports the stores.
+ */
+export function thawTargetOf(
+  linkedEntryId: string | null
+): { kind: 'grocery' | 'leftover'; sourceId: string } | null {
+  const parsed = linkedEntryId ? parseKitchenEntryId(linkedEntryId) : null;
+  if (!parsed || parsed.kind === 'product') return null;
+  return { kind: parsed.kind, sourceId: parsed.sourceId };
 }
 
 /**
