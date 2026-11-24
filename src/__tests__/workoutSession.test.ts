@@ -15,6 +15,7 @@ import {
   previousBadge,
   movedExerciseOrder,
   movedWithinSuperset,
+  movedUpNextOrder,
   exerciseBlocks,
   nextSet,
   plannedSetsFor,
@@ -128,6 +129,34 @@ describe('movedExerciseOrder', () => {
     expect(movedExerciseOrder(session(), 'bench', 'up')).toBeNull();
     expect(movedExerciseOrder(session(), 'triceps', 'down')).toBeNull();
     expect(movedExerciseOrder(session(), 'squat', 'up')).toBeNull();
+  });
+});
+
+describe('movedUpNextOrder', () => {
+  const plain = (done: string[] = []) => ['a', 'b', 'c', 'd'].flatMap((id, p) =>
+    [0, 1].map(i => set(id, p, i, done.includes(id) ? { completedAt: DONE } : {})));
+
+  it('puts the exercise right after the one being done', () => {
+    expect(movedUpNextOrder(plain(), 'd')).toEqual(['a', 'd', 'b', 'c']);
+  });
+
+  it('counts the exercise in progress as current, not the first in the list', () => {
+    expect(movedUpNextOrder(plain(['a']), 'd')).toEqual(['a', 'b', 'd', 'c']);
+  });
+
+  it('moves a superset whole', () => {
+    const sets = [
+      set('a', 0, 0), set('b', 1, 0), set('c', 2, 0, { supersetKey: 'k' }), set('d', 3, 0, { supersetKey: 'k' }),
+    ];
+    expect(movedUpNextOrder(sets, 'd')).toEqual(['a', 'c', 'd', 'b']);
+  });
+
+  it('is null for the current exercise, one already next, a finished one or a finished workout', () => {
+    expect(movedUpNextOrder(plain(), 'a')).toBeNull();
+    expect(movedUpNextOrder(plain(), 'b')).toBeNull();
+    expect(movedUpNextOrder(plain(['a', 'b', 'c', 'd']), 'c')).toBeNull();
+    expect(movedUpNextOrder(plain(['a', 'c']), 'c')).toBeNull();
+    expect(movedUpNextOrder(plain(), 'zzz')).toBeNull();
   });
 });
 

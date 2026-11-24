@@ -102,7 +102,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedWithinSuperset, nextSet, previousBadge,
+  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedUpNextOrder, movedWithinSuperset, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   ALL_RESTS_OFF_KEY, restSecondsFor, restsAreOff, supersetColor, supersetColorIndexes, supersetGroup,
@@ -656,6 +656,15 @@ export function WorkoutModeScreen() {
       if (!order) return;
       store.reorderExercises(session.id, order);
     }
+    haptics.tap();
+    animateLayout();
+  };
+  // Puts the exercise (its whole superset) right after the one being done now.
+  const moveUpNext = (exerciseId: string) => {
+    if (!session) return;
+    const order = movedUpNextOrder(sets, exerciseId);
+    if (!order) return;
+    useWorkoutStore.getState().reorderExercises(session.id, order);
     haptics.tap();
     animateLayout();
   };
@@ -1797,6 +1806,12 @@ export function WorkoutModeScreen() {
                   icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
                   onPress: () => moveExercise(menuId, direction),
                 })),
+              ...(movedUpNextOrder(sets, menuId) !== null ? [{
+                key: 'up-next',
+                label: 'Move to up next',
+                icon: 'play-skip-forward-outline' as const,
+                onPress: () => moveUpNext(menuId),
+              }] : []),
               ...(partners.length > 0 ? [{
                 key: 'superset',
                 label: 'Superset with…',
