@@ -101,7 +101,7 @@ const TREND_DAYS = 14;
  * Top to bottom: the milestone offer for a medicine just started, Today (the
  * scheduled doses due, read off their tasks rather than kept as a second
  * list, then every dose taken today, as-needed ones included), What you take (a row per medication, opening its page, with a quick
- * button on the as-needed ones), Archived, and Recent.
+ * button on the as-needed ones, and a swipe left that archives it as stopped), Archived, and Recent.
  */
 export function MedicationScreen() {
   const timeToken = useClockTimeToken();
@@ -119,6 +119,7 @@ export function MedicationScreen() {
   const settings = useMedicationStore(s => s.settings);
   const milestoneDismissed = useMedicationStore(s => s.milestoneDismissed);
   const dismissMilestoneOffer = useMedicationStore(s => s.dismissMilestoneOffer);
+  const archiveMedication = useMedicationStore(s => s.archiveMedication);
   const milestones = useMilestoneStore(s => s.milestones);
   const addMilestone = useMilestoneStore(s => s.addMilestone);
   const completeTask = useTaskStore(s => s.completeTask);
@@ -478,9 +479,9 @@ export function MedicationScreen() {
         {allStats.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>WHAT YOU TAKE</Text>
-            <View style={styles.card}>
+            <View style={[styles.card, styles.todayCard]}>
               {stats.length === 0 && (
-                <Text style={styles.emptyNote}>
+                <Text style={[styles.emptyNote, styles.cardInset]}>
                   Everything is archived. Record a dose to bring a medication back.
                 </Text>
               )}
@@ -498,6 +499,7 @@ export function MedicationScreen() {
                   colors={colors}
                   onPress={() => openDetail(stat)}
                   onRecord={stat.asNeeded ? () => { void quickRecord(stat); } : undefined}
+                  onStop={() => { haptics.tap(); archiveMedication(stat.name); }}
                 />
               ))}
             </View>
@@ -507,7 +509,7 @@ export function MedicationScreen() {
         {archivedStats.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>ARCHIVED</Text>
-            <View style={styles.card}>
+            <View style={[styles.card, styles.todayCard]}>
               {archivedStats.map((stat, index) => (
                 <MedicationRow
                   key={stat.key}
@@ -648,7 +650,7 @@ function statusParts(
  * width rather than a labelled pill, so the name keeps the row.
  */
 function MedicationRow({
-  stat, today, now, logs, settings, supplyTask, archivedRow, first, styles, colors, onPress, onRecord,
+  stat, today, now, logs, settings, supplyTask, archivedRow, first, styles, colors, onPress, onRecord, onStop,
 }: {
   stat: MedicationStat;
   today: string;
@@ -662,6 +664,7 @@ function MedicationRow({
   colors: Colors;
   onPress: () => void;
   onRecord?: () => void;
+  onStop?: () => void;
 }) {
   const timeToken = useClockTimeToken();
   // An archived medication is not one you are taking now, so its use is not
@@ -670,8 +673,8 @@ function MedicationRow({
   const trend = stat.asNeeded && !archivedRow ? frequencyTrend(logs, stat.key, today, TREND_DAYS) : null;
   const status = archivedRow ? [] : statusParts(stat, logs, settings, supplyTask, now, timeToken);
 
-  return (
-    <View style={[styles.medRow, first && styles.firstRow]}>
+  const row = (
+    <View style={styles.medRow}>
       <TouchableOpacity
         style={styles.medBody}
         activeOpacity={interaction.activeOpacity}
@@ -720,6 +723,19 @@ function MedicationRow({
         </PressableScale>
       )}
     </View>
+  );
+
+  return (
+    <>
+      {!first && <View style={styles.todaySeparator} />}
+      {/* Always mounted, so a row doesn't remount when its swipe turns off. */}
+      <SwipeableRow
+        enabled={!!onStop}
+        stopAction={onStop ? { onStop, accessibilityLabel: `Stopped taking ${stat.name}` } : undefined}
+      >
+        {row}
+      </SwipeableRow>
+    </>
   );
 }
 
@@ -781,9 +797,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgSecondary,
   },
+  cardInset: { paddingHorizontal: spacing.md },
   medBody: { flex: 1, paddingVertical: spacing.md },
   medHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   medName: {

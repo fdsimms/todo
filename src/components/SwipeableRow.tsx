@@ -46,6 +46,12 @@ export interface UndoAction {
   accessibilityLabel: string;
 }
 
+export interface StopAction {
+  /** Takes the row's thing off the list (a medication you no longer take). */
+  onStop: () => void;
+  accessibilityLabel: string;
+}
+
 interface Props {
   /**
    * Swipe left. Always "enter bulk editing with this row selected" — omit it
@@ -68,6 +74,16 @@ interface Props {
    * only on a list with no bulk mode (the medication log's Today card).
    */
   undoAction?: UndoAction;
+  /**
+   * Swipe left, in place of `selectAction`: a labelled "Stopped" panel for a
+   * row that is something the person does, and then no longer does (a
+   * medication). Like `undoAction` it is an exception to "nothing destructive
+   * on a swipe", and only for a row whose result is one tap to reverse: the
+   * medication moves to Archived, and recording another dose brings it back.
+   * It takes the select slot, so use it only on a list with no bulk mode.
+   * `undoAction` wins if a caller passes both.
+   */
+  stopAction?: StopAction;
   /** Turns the gesture off without unmounting it — see the note below. */
   enabled?: boolean;
   /** Applied to the clipping view wrapping the row. */
@@ -115,7 +131,7 @@ interface Props {
  *   the default was never doing work — it was only ever able to round a seam
  *   that isn't a corner.
  */
-export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = true, style, children }: Props) {
+export function SwipeableRow({ selectAction, whenAction, undoAction, stopAction, enabled = true, style, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const ref = useRef<Swipeable>(null);
@@ -160,7 +176,7 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
   const pending = useRef(false);
   const listener = useRef<{ id: string; value: Animated.Value } | null>(null);
   const hasLeft = !!whenAction;
-  const hasRight = !!(undoAction || selectAction);
+  const hasRight = !!(undoAction || stopAction || selectAction);
   const sides = useRef({ left: hasLeft, right: hasRight });
   sides.current = { left: hasLeft, right: hasRight };
 
@@ -215,6 +231,19 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
         >
           <Ionicons name="arrow-undo" size={iconSize.md} color={colors.onAccent} />
           <Text style={styles.undoLabel}>Undo</Text>
+        </HoverTouchable>
+      )
+    : stopAction
+    ? () => (
+        <HoverTouchable
+          activeOpacity={interaction.activeOpacity}
+          style={styles.stopAction}
+          onPress={() => fire(stopAction.onStop)}
+          accessibilityRole="button"
+          accessibilityLabel={stopAction.accessibilityLabel}
+        >
+          <Ionicons name="stop-circle-outline" size={iconSize.md} color={colors.onFill} />
+          <Text style={styles.stopLabel}>Stopped</Text>
         </HoverTouchable>
       )
     : selectAction
@@ -304,6 +333,9 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
             if (undoAction) {
               if (!wasArmed) haptics.impactLight();
               commit(undoAction.onUndo);
+            } else if (stopAction) {
+              if (!wasArmed) haptics.impactLight();
+              commit(stopAction.onStop);
             } else if (selectAction) commit(selectAction.onSelect);
             return;
           }
@@ -341,6 +373,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xxs,
+  },
+  stopAction: {
+    width: ACTION_WIDTH,
+    backgroundColor: colors.orangeFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xxs,
+  },
+  stopLabel: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.onFill,
   },
   undoLabel: {
     fontSize: font.xs,
