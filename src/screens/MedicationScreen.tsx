@@ -159,6 +159,10 @@ export function MedicationScreen() {
 
   const allStats = useMemo(() => medicationStats(logs, registered, settings), [logs, registered, settings]);
   const stats = useMemo(() => allStats.filter(s => !archived.includes(s.key)), [allStats, archived]);
+  // As-needed medications are their own list: they are reached for, not
+  // taken on a schedule, so mixing them in hides which ones are routine.
+  const regularStats = useMemo(() => stats.filter(s => !s.asNeeded), [stats]);
+  const asNeededStats = useMemo(() => stats.filter(s => s.asNeeded), [stats]);
   const archivedStats = useMemo(() => allStats.filter(s => archived.includes(s.key)), [allStats, archived]);
   const recent = useMemo(() => logs.slice(0, recentLimit), [logs, recentLimit]);
   const today = dayKeyOf(getCurrentDayStart());
@@ -475,7 +479,7 @@ export function MedicationScreen() {
           </>
         )}
 
-        {allStats.length > 0 && (
+        {allStats.length > 0 && (regularStats.length > 0 || stats.length === 0) && (
           <>
             <Text style={styles.sectionTitle}>WHAT YOU TAKE</Text>
             <View style={styles.card}>
@@ -484,7 +488,7 @@ export function MedicationScreen() {
                   Everything is archived. Record a dose to bring a medication back.
                 </Text>
               )}
-              {stats.map((stat, index) => (
+              {regularStats.map((stat, index) => (
                 <MedicationRow
                   key={stat.key}
                   stat={stat}
@@ -497,7 +501,30 @@ export function MedicationScreen() {
                   styles={styles}
                   colors={colors}
                   onPress={() => openDetail(stat)}
-                  onRecord={stat.asNeeded ? () => { void quickRecord(stat); } : undefined}
+                />
+              ))}
+            </View>
+          </>
+        )}
+
+        {asNeededStats.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>AS NEEDED</Text>
+            <View style={styles.card}>
+              {asNeededStats.map((stat, index) => (
+                <MedicationRow
+                  key={stat.key}
+                  stat={stat}
+                  today={today}
+                  now={now}
+                  logs={logs}
+                  settings={settings}
+                  supplyTask={taskSupplyFor(supplyTasks, stat.name)}
+                  first={index === 0}
+                  styles={styles}
+                  colors={colors}
+                  onPress={() => openDetail(stat)}
+                  onRecord={() => { void quickRecord(stat); }}
                 />
               ))}
             </View>
@@ -681,7 +708,6 @@ function MedicationRow({
       >
         <View style={styles.medHeader}>
           <Text style={styles.medName} numberOfLines={1}>{stat.name}</Text>
-          {stat.asNeeded && !archivedRow && <Text style={styles.medBadge}>AS NEEDED</Text>}
         </View>
         {/* One fact per line, each short enough not to wrap, so the lines
             stack as a list instead of one sentence breaking at random. */}
@@ -791,12 +817,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
     color: colors.text,
-  },
-  medBadge: {
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-    color: colors.textSecondary,
-    letterSpacing: 0.6,
   },
   medLine: {
     fontSize: font.sm,
