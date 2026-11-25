@@ -542,7 +542,7 @@ the doses stay in Recent, in `medicationStats` and in the export, which is the
 whole record. **Recording another dose restores it** (`addLog`, and `updateLog`
 when a rename lands on it), so no date comparison is needed and a scheduled
 task that keeps completing can't leave a medicine archived while it is still
-being logged. Don't add a separate restore step to any other write path: it
+being logged. A row in What you take archives with a swipe left (`stopAction` on `SwipeableRow`, an orange "Stopped" panel, no confirm since another dose undoes it); the medication's page still has the confirmed Archive. Don't add a separate restore step to any other write path: it
 goes through `addLog`.
 
 ### Renaming a medication, and folding two into one
