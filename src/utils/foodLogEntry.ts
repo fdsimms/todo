@@ -1,6 +1,7 @@
 import type { FoodLogEntry } from '../types';
 import type { FoodLogDraft } from '../store/useFoodLogStore';
 import { getLogicalDayKey } from './dateUtils';
+import { heldUntilFor } from './foodHold';
 
 /**
  * A food log row from a draft, or null for one the log refuses.
@@ -61,6 +62,9 @@ export function buildFoodLogEntry(
     // Empty at insert. Only the store's Health write fills it, on the device
     // the meal was logged on.
     healthSampleIds: [],
+    // Only present on an entry logged before it was eaten, so an ordinary
+    // entry's shape is unchanged. See FoodLogEntry.healthHeldUntil.
+    ...(draft.holdFromHealth ? { healthHeldUntil: heldUntilFor(now) } : {}),
     sortOrder,
     createdAt: now.toISOString(),
   };

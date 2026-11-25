@@ -241,6 +241,7 @@ export function FoodLogScreen() {
   const recentEntries = useFoodLogStore(s => s.recentEntries);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
   const updateEntry = useFoodLogStore(s => s.updateEntry);
+  const confirmHeldEntry = useFoodLogStore(s => s.confirmHeldEntry);
   const reviseEntry = useFoodLogStore(s => s.reviseEntry);
   // Only the water card writes through this one; every other entry on this
   // screen is created by a sheet that holds its own binding.
@@ -842,6 +843,9 @@ export function FoodLogScreen() {
       // against; `foodLogEntryEdit` is where that rule lives rather than here.
       // An entry without one still gets its words back, since renaming is the
       // one correction that claims nothing about how much was eaten.
+      ...(entry.healthHeldUntil
+        ? [{ key: 'confirm', label: 'Confirm eaten', icon: 'checkmark-circle-outline', onPress: () => confirmHeldEntry(entry.id) } as const]
+        : []),
       foodLogEntryEdit(entry)
         ? { key: 'edit', label: 'Edit', icon: 'create-outline', onPress: () => setEditingEntry(entry) }
         : { key: 'rename', label: 'Rename', icon: 'pencil-outline', onPress: () => handleRename(entry) },
@@ -892,7 +896,7 @@ export function FoodLogScreen() {
       { key: 'duplicate', label: 'Duplicate to…', icon: 'copy-outline', onPress: () => setDuplicating([entry]) },
       { key: 'forget', label: 'Forget', icon: 'trash-outline', destructive: true, onPress: () => handleDelete(entry.id, entry.label) },
     ];
-  }, [menuEntry, moveEntries, updateEntry, handleDelete, handleRename]);
+  }, [menuEntry, moveEntries, updateEntry, handleDelete, handleRename, confirmHeldEntry]);
 
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
@@ -1739,6 +1743,7 @@ export function FoodLogScreen() {
                   onOpenMenu={handleOpenMenu}
                   onOpenTrayMenu={handleOpenTrayMenu}
                   onEdit={handleEditEntry}
+                  onConfirmHeld={confirmHeldEntry}
                 />
                 </FabDropZone>
               );
@@ -2273,6 +2278,8 @@ function makeStyles(colors: Colors) {
     entryText: { gap: spacing.xxs },
     entryTitle: { color: colors.text, fontSize: font.md },
     entryMeta: { color: colors.textSecondary, fontSize: font.sm },
+    entryHeldRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xsm },
+    entryHeldText: { color: colors.warningText, fontSize: font.sm },
     entryTime: { color: colors.textSecondary, fontSize: font.sm },
     entryMenuButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
     entrySelectDot: { paddingHorizontal: spacing.md },
@@ -2341,7 +2348,7 @@ function LogFoodFabWithDropLabel({
 }
 
 const FoodLogRow = React.memo(function FoodLogRow({
-  entry, tray, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu, onOpenTrayMenu, onEdit,
+  entry, tray, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu, onOpenTrayMenu, onEdit, onConfirmHeld,
 }: {
   entry: FoodLogEntry;
   /** Set when the entry sits in a saved meal's tray. See `savedMealRuns`. */
@@ -2364,6 +2371,8 @@ const FoodLogRow = React.memo(function FoodLogRow({
   onOpenMenu: (entry: FoodLogEntry, anchor?: CardAnchor) => void;
   onOpenTrayMenu: (run: SavedMealRun, anchor?: CardAnchor) => void;
   onEdit: (entry: FoodLogEntry) => void;
+  /** Takes the hold off an entry logged before it was eaten. See `healthHeldUntil`. */
+  onConfirmHeld: (entryId: string) => void;
 }) {
   const paintRef = usePaintSelectionRow(entry.id);
   const [expanded, setExpanded] = useState(false);
@@ -2410,6 +2419,17 @@ const FoodLogRow = React.memo(function FoodLogRow({
           <View style={styles.entryText}>
             <Text style={styles.entryTitle}>{entry.label}</Text>
             <Text style={styles.entryMeta}>{meta}</Text>
+            {!!entry.healthHeldUntil && (
+              <View style={styles.entryHeldRow}>
+                <Text style={styles.entryHeldText}>Not in Apple Health yet</Text>
+                <InlineAction
+                  label="Confirm"
+                  variant="accent"
+                  onPress={() => onConfirmHeld(entry.id)}
+                  accessibilityLabel={`Confirm ${entry.label} as eaten and send it to Apple Health`}
+                />
+              </View>
+            )}
           </View>
         </TouchableOpacity>
         {timeText !== null && <Text style={styles.entryTime}>{timeText}</Text>}
