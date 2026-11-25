@@ -1,8 +1,4 @@
-import { cleanLinkUrl } from '../utils/linkClean';
-import { addSavedLink, linkToStore } from '../utils/savedLinks';
-import { parseLinkInput } from '../utils/parseTaskInput';
-
-jest.mock('../db/database', () => ({ dbGetSetting: jest.fn(), dbSetSetting: jest.fn(), dbLinkSchemesInUse: jest.fn(() => []) }));
+import { cleanLinkUrl, trackingParamNames } from '../utils/linkClean';
 
 describe('cleanLinkUrl', () => {
   it('strips tracking parameters that are tracking everywhere', () => {
@@ -49,22 +45,15 @@ describe('cleanLinkUrl', () => {
   });
 });
 
-describe('where the cleaned link is used', () => {
-  it('linkToStore cleans a typed link but keeps a saved chip verbatim', () => {
-    const chip = { id: 'a', name: 'Deal', url: 'https://shop.example/deal?utm_source=mail' };
-    expect(linkToStore([chip], ' https://shop.example/x?utm_source=mail ')).toBe('https://shop.example/x');
-    expect(linkToStore([chip], chip.url)).toBe(chip.url);
-    expect(linkToStore([], '   ')).toBe('');
+describe('trackingParamNames', () => {
+  it('names what cleanLinkUrl would remove, once each, and nothing for a clean link', () => {
+    expect(trackingParamNames('https://example.com/a?utm_source=x&id=7&fbclid=abc&utm_source=y')).toEqual(['utm_source', 'fbclid']);
+    expect(trackingParamNames('https://youtu.be/abc?si=zzz&t=30')).toEqual(['si']);
+    expect(trackingParamNames('https://example.com/a?id=7')).toEqual([]);
+    expect(trackingParamNames('spotify://track/1?utm_source=x')).toEqual([]);
   });
 
-  it('addSavedLink saves the cleaned address', () => {
-    const [saved] = addSavedLink([], { name: 'Trip', url: 'https://example.com/t?fbclid=1' });
-    expect(saved.url).toBe('https://example.com/t');
-  });
-
-  it('a link pasted into quick add is cleaned, and the title still loses the whole pasted text', () => {
-    const parsed = parseLinkInput('read https://example.com/a?utm_source=x now');
-    expect(parsed?.url).toBe('https://example.com/a');
-    expect(parsed?.cleanTitle).toBe('read now');
+  it('names the Amazon /ref= path segment', () => {
+    expect(trackingParamNames('https://www.amazon.com/dp/B00X/ref=sr_1_1')).toEqual(['ref']);
   });
 });

@@ -103,3 +103,18 @@ export function cleanLinkUrl(url: string): string {
   if (path === rawPath && keptQuery === query) return trimmed;
   return scheme + authority + path + keptQuery + fragment;
 }
+
+/**
+ * The names of the tracking parameters `cleanLinkUrl` would remove from this
+ * link, in order and without repeats (`['utm_source', 'fbclid']`). Empty when
+ * the link has none, which is what a prompt asks before offering to strip.
+ */
+export function trackingParamNames(url: string): string[] {
+  const trimmed = url.trim();
+  if (cleanLinkUrl(trimmed) === trimmed) return [];
+  const query = /^https?:\/\/[^?#]*\?([^#]*)/i.exec(trimmed)?.[1] ?? '';
+  const host = (/^https?:\/\/([^/?#\s]*)/i.exec(trimmed)?.[1] ?? '').replace(/^[^@]*@/, '').replace(/:\d+$/, '').toLowerCase();
+  const names = query.split('&').filter(p => p !== '' && isTrackingParam(host, p)).map(p => p.split('=')[0]);
+  // A link that changed with no parameter named is an Amazon /ref= path segment.
+  return names.length ? [...new Set(names)] : ['ref'];
+}

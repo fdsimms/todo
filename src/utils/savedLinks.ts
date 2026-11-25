@@ -1,7 +1,6 @@
 import { dbGetSetting, dbSetSetting, dbLinkSchemesInUse } from '../db/database';
 import { RETIRED_LINK_APPS, knownLinkAppFor, linkAppsFor, type LinkApp } from '../constants/linkApps';
 import { generateId } from './id';
-import { cleanLinkUrl } from './linkClean';
 
 /**
  * Links the person saved as chips in the Link picker ("ADP", "Costco"), beside
@@ -67,16 +66,6 @@ export function isChipUrl(links: readonly SavedLink[], url: string | null | unde
   return knownLinkAppFor(url) !== null || links.some(l => savedLinkKey(l.url) === savedLinkKey(url));
 }
 
-/**
- * What to store for a link the person typed or pasted: trimmed, with tracking
- * parameters stripped (`cleanLinkUrl`). A link that is already a chip is kept
- * verbatim, since the picker marks a chip selected by comparing URLs exactly.
- */
-export function linkToStore(links: readonly SavedLink[], typed: string): string {
-  const url = typed.trim();
-  return url && !isChipUrl(links, url) ? cleanLinkUrl(url) : url;
-}
-
 /** Whether "Save link" is worth offering for what is typed in the field. */
 export function canSaveLink(links: readonly SavedLink[], typed: string | null | undefined): boolean {
   const url = (typed ?? '').trim();
@@ -110,7 +99,7 @@ export function suggestLinkName(url: string): string {
  */
 export function addSavedLink(links: readonly SavedLink[], input: { name: string; url: string }): SavedLink[] {
   const name = input.name.trim();
-  const url = cleanLinkUrl(input.url);
+  const url = input.url.trim();
   if (!name || !url || isChipUrl(links, url) || links.length >= SAVED_LINKS_LIMIT) return [...links];
   return [...links, { id: generateId(), name, url }];
 }

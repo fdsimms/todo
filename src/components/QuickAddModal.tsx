@@ -121,7 +121,7 @@ import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { linkToStore } from '../utils/savedLinks';
+import { askAboutLink, deferForLinkAnswer, linkNeedsAnswer, settledLink } from '../utils/linkCleanPrompt';
 import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
@@ -1896,9 +1896,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   };
 
   const commitCustomLink = () => {
-    const t = linkToStore(savedLinks.saved, customLinkText);
-    setLinkUrl(t || null);
-    setActivePanel(null);
+    const typed = customLinkText.trim();
+    const finish = (t: string) => { setLinkUrl(t || null); setActivePanel(null); };
+    if (linkNeedsAnswer(savedLinks.saved, typed, linkUrl)) void askAboutLink(typed).then(finish);
+    else finish(settledLink(typed));
   };
 
   const commitPhone = () => {
@@ -1919,7 +1920,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // Read the live text box instead of trusting state that may not have
   // caught up yet.
   const resolveLinkUrl = () => {
-    const t = linkToStore(savedLinks.saved, customLinkText);
+    const t = settledLink(customLinkText);
     return activePanel === 'link' && t ? t : linkUrl;
   };
   const resolvePhoneNumber = () => {
@@ -2231,6 +2232,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   }, [addAfterApply]);
 
   const handleAdd = () => {
+    if (activePanel === 'link' && deferForLinkAnswer(savedLinks.saved, customLinkText, linkUrl, handleAdd)) return;
     if (eventText !== null) { void addAsEvent(eventText); return; }
     if (doseParse !== null) { void addAsDose(doseParse); return; }
     const applySignature = confirmVisible ? `${rawMatchSignature}|${soleMentionCandidate?.id ?? ''}` : null;
@@ -2276,6 +2278,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   };
 
   const handleOpenFull = () => {
+    if (activePanel === 'link' && deferForLinkAnswer(savedLinks.saved, customLinkText, linkUrl, handleOpenFull)) return;
     const baked = bakedFields(type, typeValues);
     onOpenFull({
       title: (categoryTagsKept?.cleanTitle ?? title).trim(),

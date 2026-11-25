@@ -18,7 +18,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Project, ProjectLink, TaskFieldDefaults } from '../types';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { parseLabelledLink, linkHost } from '../utils/textLinks';
-import { cleanLinkUrl } from '../utils/linkClean';
+import { deferForLinkAnswer, settledLink } from '../utils/linkCleanPrompt';
 import { generateId } from '../utils/id';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
@@ -245,8 +245,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     if (!linkDraft.trim()) return;
     const parsed = parseLabelledLink(linkDraft);
     if (!parsed) { setLinkError("That doesn’t look like a link. Paste one that starts with https://."); return; }
+    if (deferForLinkAnswer([], parsed.url, null, addLinkDraft)) return;
     haptics.tap();
-    setLinks(ls => [...ls, { id: generateId(), ...parsed, url: cleanLinkUrl(parsed.url) }]);
+    setLinks(ls => [...ls, { id: generateId(), ...parsed, url: settledLink(parsed.url) }]);
     setLinkDraft('');
     setLinkError(null);
   };
@@ -465,7 +466,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       // does on Done anywhere else.
       links: (() => {
         const pending = linkDraft.trim() ? parseLabelledLink(linkDraft) : null;
-        return pending ? [...links, { id: generateId(), ...pending, url: cleanLinkUrl(pending.url) }] : links;
+        return pending ? [...links, { id: generateId(), ...pending, url: settledLink(pending.url) }] : links;
       })(),
       inOrder,
       hideNextStep,
@@ -491,6 +492,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
 
   // ==== save and close ====
   const saveAndClose = (skipLinkCheck = false) => {
+    const pendingLink = linkDraft.trim() ? parseLabelledLink(linkDraft)?.url : undefined;
+    if (pendingLink && deferForLinkAnswer([], pendingLink, null, () => saveAndClose(skipLinkCheck))) return;
     // A new project can't be saved without a name. It used to close anyway,
     // and the host then deleted the unnamed row along with the deadline,
     // notes and settings entered for it, without a word.

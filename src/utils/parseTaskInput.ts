@@ -15,7 +15,6 @@ import type { Difficulty, Priority, QuotaPeriod, RecurrenceType, TimeOfDay, Weat
 import { clockBesideDayPart, dayPartBesideClock, extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
 import { logicalDayStart, onLogicalDay, taskDayStart } from './clockTime';
 import { looksLikePhoneNumber } from './phone';
-import { cleanLinkUrl } from './linkClean';
 
 /**
  * The Nth (1-4) or last (-1) weekday-of-month occurrence within the month
@@ -977,7 +976,7 @@ export function parseLinkInput(input: string): ParsedLink | null {
   const rawEnd = matchStart + match[0].length;
   const cleanTitle = (input.slice(0, matchStart) + input.slice(rawEnd)).replace(/\s+/g, ' ').trim();
 
-  return { url: cleanLinkUrl(url), cleanTitle, matchStart, matchEnd };
+  return { url, cleanTitle, matchStart, matchEnd };
 }
 
 export interface ParsedPhone {
