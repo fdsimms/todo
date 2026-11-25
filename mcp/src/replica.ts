@@ -111,6 +111,7 @@ import type {
   GeneratedTaskExtras,
 } from '../../src/types';
 import type { ExerciseInput, ExercisePatch, FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
+import { cleanLinkUrl } from '../../src/utils/linkClean';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { listItemFinder, sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
@@ -3364,7 +3365,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.phoneNumber !== undefined) out.phoneNumber = f.phoneNumber?.trim() || null;
     if (f.faxNumber !== undefined) out.faxNumber = f.faxNumber?.trim() || null;
     if (f.email !== undefined) out.email = f.email?.trim() || null;
-    if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
+    if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl ? cleanLinkUrl(f.linkUrl) || null : null;
     if (f.location !== undefined) out.location = f.location?.trim() || null;
     if (f.address !== undefined) out.address = f.address?.trim() || null;
     if (f.groupId !== undefined) {

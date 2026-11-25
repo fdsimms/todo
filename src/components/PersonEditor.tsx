@@ -47,6 +47,7 @@ import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } fro
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { cleanLinkUrl } from '../utils/linkClean';
 import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
@@ -194,7 +195,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       faxNumber: faxNumber.trim() || null,
       address: address.trim() || null,
       email: email.trim() || null,
-      linkUrl: linkUrl.trim() || null,
+      linkUrl: cleanLinkUrl(linkUrl) || null,
       cadenceDays: kind === 'individual' ? cadenceDays : 0,
       // The opt-in is the cadence: there is no separate switch to forget to
       // flip, and clearing the cadence is how somebody stops being nudged.
