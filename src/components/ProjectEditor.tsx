@@ -18,6 +18,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Project, ProjectLink, TaskFieldDefaults } from '../types';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { parseLabelledLink, linkHost } from '../utils/textLinks';
+import { cleanLinkUrl } from '../utils/linkClean';
 import { generateId } from '../utils/id';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
@@ -245,7 +246,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     const parsed = parseLabelledLink(linkDraft);
     if (!parsed) { setLinkError("That doesn’t look like a link. Paste one that starts with https://."); return; }
     haptics.tap();
-    setLinks(ls => [...ls, { id: generateId(), ...parsed }]);
+    setLinks(ls => [...ls, { id: generateId(), ...parsed, url: cleanLinkUrl(parsed.url) }]);
     setLinkDraft('');
     setLinkError(null);
   };
@@ -464,7 +465,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       // does on Done anywhere else.
       links: (() => {
         const pending = linkDraft.trim() ? parseLabelledLink(linkDraft) : null;
-        return pending ? [...links, { id: generateId(), ...pending }] : links;
+        return pending ? [...links, { id: generateId(), ...pending, url: cleanLinkUrl(pending.url) }] : links;
       })(),
       inOrder,
       hideNextStep,

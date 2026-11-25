@@ -121,6 +121,7 @@ import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { useSavedLinks } from '../hooks/useSavedLinks';
+import { linkToStore } from '../utils/savedLinks';
 import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
@@ -1895,7 +1896,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   };
 
   const commitCustomLink = () => {
-    const t = customLinkText.trim();
+    const t = linkToStore(savedLinks.saved, customLinkText);
     setLinkUrl(t || null);
     setActivePanel(null);
   };
@@ -1918,7 +1919,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // Read the live text box instead of trusting state that may not have
   // caught up yet.
   const resolveLinkUrl = () => {
-    const t = customLinkText.trim();
+    const t = linkToStore(savedLinks.saved, customLinkText);
     return activePanel === 'link' && t ? t : linkUrl;
   };
   const resolvePhoneNumber = () => {

@@ -78,6 +78,7 @@ import { PillGroup } from './PillGroup';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
+import { cleanLinkUrl } from '../utils/linkClean';
 import { EditorSheet } from './EditorSheet';
 import { EditorJumpBar, EDITOR_CARD_SECTIONS } from './EditorJumpBar';
 import { TaskSummaryCard } from './TaskSummaryCard';
@@ -716,7 +717,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       windowEnd,
       windowStartSun,
       windowEndSun,
-      linkUrl: parseLabelledLink(linkText)?.url ?? null,
+      linkUrl: (() => { const url = parseLabelledLink(linkText)?.url; return url ? cleanLinkUrl(url) : null; })(),
       location: locationText.trim() || null,
       reminderOffsetMinutes: dueOffsetDays !== null ? reminderOffsetMinutes : null,
       timeSegments,

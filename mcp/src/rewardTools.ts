@@ -9,6 +9,7 @@
  * only when the person did the thing or said so. Nothing here earns or spends
  * unasked, and `get_rewards` says what a claim would leave before it is made.
  */
+import { cleanLinkUrl } from '../../src/utils/linkClean';
 import type { CoinEntry, Reward, RewardUnlock, Task } from '../../src/types';
 import type { Replica, UnlockInput } from './replica';
 import { serializeTasks, type SerializedTask } from './serialize';
@@ -301,7 +302,7 @@ export function createReward(replica: Replica, input: RewardInput): SerializedRe
   if (input.taxable && priceMinor === null) throw new Error('taxable goes with a dollar price. Give price, or leave taxable out.');
   const taxable = !!input.taxable;
   const cost = priceMinor !== null ? costForPrice(replica, priceMinor, taxable) : input.cost!;
-  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, taxable, guardsTaskId: input.guardsHabitId, claimEveryDays: input.claimEveryDays, glyph: input.glyph });
+  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link ? cleanLinkUrl(input.link) : input.link, oneTime: input.oneTime, priceMinor, taxable, guardsTaskId: input.guardsHabitId, claimEveryDays: input.claimEveryDays, glyph: input.glyph });
   return rewardById(replica, reward.id);
 }
 
@@ -332,7 +333,7 @@ export function updateReward(
     ...(priceMinor !== undefined ? { priceMinor } : patch.cost !== undefined || patch.price === null ? { priceMinor: null } : {}),
     ...(patch.taxable !== undefined || priceMinor !== undefined || pricedAt === null ? { taxable } : {}),
     ...(patch.note !== undefined ? { note: patch.note } : {}),
-    ...(patch.link !== undefined ? { linkUrl: patch.link } : {}),
+    ...(patch.link !== undefined ? { linkUrl: patch.link ? cleanLinkUrl(patch.link) : patch.link } : {}),
     ...(patch.oneTime !== undefined ? { oneTime: patch.oneTime } : {}),
     ...(patch.guardsHabitId !== undefined ? { guardsTaskId: patch.guardsHabitId } : {}),
     ...(patch.claimEveryDays !== undefined ? { claimEveryDays: patch.claimEveryDays } : {}),
