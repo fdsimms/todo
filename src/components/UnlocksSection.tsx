@@ -35,7 +35,6 @@ import {
   playState,
   statusOfUnlock,
   unlockLooseningsOf,
-  type UnlockStatus,
 } from '../utils/rewardUnlocks';
 import { BUTTON_LABEL } from '../copy/shared';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
@@ -45,12 +44,12 @@ import { EmptyNote } from './EmptyNote';
 import { FormField } from './FormField';
 import { HabitPickerSheet } from './HabitPickerSheet';
 import { InlineAction } from './InlineAction';
-import { ProgressBar } from './ProgressBar';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { UnlockLeaveOutSheet } from './UnlockLeaveOutSheet';
+import { LockedProgress, UnlockHead, unlockSubtitle } from './UnlockProgress';
 import { HoverTouchable } from './HoverTouchable';
 
 /**
@@ -463,32 +462,19 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
     const store = useUnlockStore.getState();
     return (
       <View key={unlock.id} style={styles.card}>
-        <View style={styles.head}>
-          <View style={styles.glyph}>
-            {unlock.glyph
-              ? <Text style={styles.glyphText} accessible={false}>{unlock.glyph}</Text>
-              : <Ionicons name="lock-open-outline" size={iconSize.md} color={colors.accent} />}
-          </View>
-          <View style={styles.headText}>
-            <Text style={styles.title} numberOfLines={2}>{unlock.title}</Text>
-            <Text style={styles.subtitle}>{subtitleFor(unlock, status, play.running, timeToken)}</Text>
-          </View>
-          <InlineAction icon="create-outline" variant="neutral" onPress={() => openDraft({ mode: 'edit', id: unlock.id }, unlock)} accessibilityLabel={`Edit ${unlock.title}`} />
-        </View>
+        <UnlockHead
+          unlock={unlock}
+          subtitle={unlockSubtitle(unlock, status, play.running, timeToken)}
+          trailing={<InlineAction icon="create-outline" variant="neutral" onPress={() => openDraft({ mode: 'edit', id: unlock.id }, unlock)} accessibilityLabel={`Edit ${unlock.title}`} />}
+        />
 
         {status.kind === 'locked' && (
-          <View style={styles.block}>
-            <Text style={styles.status}>
-              {[
-                `${Math.floor(status.share * 100)}% of today’s work done`,
-                status.coinsShort > 0 ? `about ${status.coinsShort} more ${status.coinsShort === 1 ? 'coin' : 'coins'}` : null,
-              ].filter(Boolean).join(' · ')}
-            </Text>
-            <ProgressBar progress={Math.min(1, status.share * 100 / unlock.sharePct)} height={6} color={colors.green} decorative />
-            {status.pending.length > 0 && (
-              <Text style={styles.meta}>{`Still needs ${status.pending.map(t => displayTitleFor(t)).join(', ')}`}</Text>
-            )}
-          </View>
+          <LockedProgress
+            sharePct={unlock.sharePct}
+            share={status.share}
+            coinsShort={status.coinsShort}
+            pendingTitles={status.pending.map(t => displayTitleFor(t))}
+          />
         )}
         {status.kind === 'open' && !play.running && (
           <Text style={[styles.status, styles.statusOk]}>
@@ -600,7 +586,6 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
   );
 }
 
-/** The line under an unlock's name. */
 /** Copies a saved code and shows "Copied" for a moment. */
 function CopyCodeButton({ code, label }: { code: string; label: string }) {
   const { copy, copied } = useCopyToClipboard();
@@ -612,14 +597,6 @@ function CopyCodeButton({ code, label }: { code: string; label: string }) {
       accessibilityLabel={label}
     />
   );
-}
-
-function subtitleFor(unlock: RewardUnlock, status: UnlockStatus, running: boolean, timeToken: string): string {
-  if (status.kind === 'free') return status.reason === 'weekend' ? 'Unlocked all day: it’s the weekend' : 'Unlocked all day: you’re on vacation';
-  if (running && unlock.playStartedAt) return `Playing since ${format(new Date(unlock.playStartedAt), timeToken)}`;
-  const cap = unlock.playMinutes !== null ? ` · ${describePlayMinutes(unlock.playMinutes)}` : '';
-  if (status.kind === 'open') return `Unlocked for today${cap}`;
-  return `Unlocks at ${unlock.sharePct}% of today’s work${cap}`;
 }
 
 function makeStyles(colors: Colors) {
@@ -643,21 +620,6 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       gap: spacing.sm,
     },
-    head: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
-    glyph: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.md,
-      backgroundColor: colors.accentSubtle,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    // An emoji sized as an icon, which is what a literal size is for.
-    glyphText: { fontSize: 24 },
-    headText: { flex: 1 },
-    title: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-    subtitle: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
-    block: { gap: spacing.sm },
     status: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
     statusOk: { color: colors.greenText },
     meta: { color: colors.textSecondary, fontSize: font.xs },

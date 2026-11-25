@@ -309,7 +309,10 @@ goal now sets a share of every coin earned aside for it (`GoalPlanSheet`, rules 
 
 A treat opened by doing a share of the day's work rather than bought ("Switch, once 60% of today's
 work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
-(`useUnlockStore`), drawn by `UnlocksSection` on the Rewards screen.
+(`useUnlockStore`), drawn by `UnlocksSection` on the Rewards screen. A locked unlock that blocks apps
+is also drawn, read only, on the Screen Time page (`LockedUnlockCards`, from `lockedUnlockProgressNow`,
+which takes its list from the shield's own `lockedUnlockBlocks`). Both screens share `UnlockProgress.tsx`
+for the name, subtitle and progress, so a new line about a locked unlock goes there.
 
 - **It never moves coins.** No ledger entry, no price, so it can't touch savings. Don't add a cost.
 - **Today's work is counted in coins**: earned today over earned plus what today's open tasks would

@@ -343,6 +343,14 @@ export function unlockStatus(unlock: Pick<RewardUnlock, 'sharePct' | 'freeOnWeek
   return { kind: 'locked', share, coinsShort, pending: [...inputs.pending] };
 }
 
+/** "42% of today's work done · about 5 more coins", the line over a locked unlock's progress bar. */
+export function lockedProgressLine(share: number, coinsShort: number): string {
+  return [
+    `${Math.floor(share * 100)}% of today’s work done`,
+    coinsShort > 0 ? `about ${coinsShort} more ${coinsShort === 1 ? 'coin' : 'coins'}` : null,
+  ].filter(Boolean).join(' · ');
+}
+
 export function isUnlockOpen(status: UnlockStatus): boolean {
   return status.kind !== 'locked';
 }

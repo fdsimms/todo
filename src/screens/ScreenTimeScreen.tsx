@@ -31,6 +31,7 @@ import {
 import { ScreenTimeSettings } from './settings/ScreenTimeSettings';
 import { SettingsFocusProvider, useSettingsFocusScroll } from './settings/SettingsFocus';
 import { HoverTouchable } from '../components/HoverTouchable';
+import { LockedUnlockCards } from '../components/LockedUnlockCards';
 
 type ScreenTimeParams = {
   ScreenTime: {
@@ -332,6 +333,8 @@ export function ScreenTimeScreen() {
             )}
           </View>
         </View>
+
+        <LockedUnlockCards />
 
         <View ref={contentRef} collapsable={false} key={focusStamp ?? 'list'}>
           <SettingsFocusProvider focusedEntryId={entryId ?? null} reportRow={reportRow}>
