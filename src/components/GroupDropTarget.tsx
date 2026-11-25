@@ -44,7 +44,10 @@ export function GroupDropTarget({ active, children }: Props) {
     <Animated.View
       style={[
         styles.wrapper,
-        { transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] }) }] },
+        // Horizontal only. A uniform scale grows a tall section by 2% of its
+        // height at top and bottom, which is more than the few points of
+        // margin between trays, so its edge drew over the next card.
+        { transform: [{ scaleX: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] }) }] },
       ]}
     >
       {children}
