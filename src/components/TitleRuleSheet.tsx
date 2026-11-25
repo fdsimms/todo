@@ -15,7 +15,7 @@ import {
 } from '../utils/titleRules';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { linkToStore } from '../utils/savedLinks';
+import { askAboutLink, deferForLinkAnswer, linkNeedsAnswer, settledLink } from '../utils/linkCleanPrompt';
 import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -131,11 +131,12 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
   // typing a custom URL and tapping Done never goes through the field's own
   // onBlur, so what's on screen is `customLinkText`, not yet `draft.linkUrl`.
   const commitCustomLink = () => {
-    const t = linkToStore(savedLinks.saved, customLinkText);
-    patch({ linkUrl: t || null });
-    closeField('link');
+    const typed = customLinkText.trim();
+    const finish = (t: string) => { patch({ linkUrl: t || null }); closeField('link'); };
+    if (linkNeedsAnswer(savedLinks.saved, typed, draft.linkUrl)) void askAboutLink(typed).then(finish);
+    else finish(settledLink(typed));
   };
-  const typedLinkUrl = linkToStore(savedLinks.saved, customLinkText);
+  const typedLinkUrl = settledLink(customLinkText);
   const effectiveLinkUrl = fieldOpen('link') && typedLinkUrl ? typedLinkUrl : draft.linkUrl;
 
   // Includes whatever is still sitting in the input. Pressing Done blurs the
@@ -162,6 +163,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
 
   const save = () => {
     if (blocked) return;
+    if (fieldOpen('link') && deferForLinkAnswer(savedLinks.saved, customLinkText, draft.linkUrl, save)) return;
     // A tag typed but not submitted counts, for the same reason a keyword does
     // (see `keywords` above) — Done blurs the field, and the commit that blur
     // triggers hasn't landed in `draft` yet.

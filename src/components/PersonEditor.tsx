@@ -47,7 +47,7 @@ import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } fro
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
-import { cleanLinkUrl } from '../utils/linkClean';
+import { deferForLinkAnswer, settledLink } from '../utils/linkCleanPrompt';
 import { HoverTouchable } from './HoverTouchable';
 
 interface Props {
@@ -172,6 +172,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   const archived = liveArchived ?? person.archived;
 
   const saveAndClose = () => {
+    if (deferForLinkAnswer([], linkUrl, person?.linkUrl, saveAndClose)) return;
     const trimmedName = name.trim();
     // A business gets no check-ins at all (see docs/arch/people.md,
     // "Businesses don't get check-ins") — forced off here rather than only
@@ -195,7 +196,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       faxNumber: faxNumber.trim() || null,
       address: address.trim() || null,
       email: email.trim() || null,
-      linkUrl: cleanLinkUrl(linkUrl) || null,
+      linkUrl: settledLink(linkUrl) || null,
       cadenceDays: kind === 'individual' ? cadenceDays : 0,
       // The opt-in is the cadence: there is no separate switch to forget to
       // flip, and clearing the cadence is how somebody stops being nudged.

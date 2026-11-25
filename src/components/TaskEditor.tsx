@@ -202,7 +202,7 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { linkToStore } from '../utils/savedLinks';
+import { askAboutLink, deferForLinkAnswer, linkNeedsAnswer, settledLink } from '../utils/linkCleanPrompt';
 import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
@@ -2136,6 +2136,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
 
   // ==== save ====
   const save = () => {
+    // A link typed but not yet answered about (tracking codes) is asked about first.
+    if (showLinkPicker && deferForLinkAnswer(savedLinks.saved, customLinkText, linkUrl, save)) return;
     // A "#word" token still sitting at the very end of the title is applied
     // here too, same as proceedWithSave — see applyCategoryTagsBanner's doc
     // comment. Checked ahead of proceedWithSave so an archived-task match is
@@ -3102,9 +3104,10 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   };
 
   const commitCustomLink = () => {
-    const t = linkToStore(savedLinks.saved, customLinkText);
-    setLinkUrl(t || null);
-    setShowLinkPicker(false);
+    const typed = customLinkText.trim();
+    const finish = (t: string) => { setLinkUrl(t || null); setShowLinkPicker(false); };
+    if (linkNeedsAnswer(savedLinks.saved, typed, linkUrl)) void askAboutLink(typed).then(finish);
+    else finish(settledLink(typed));
   };
 
   const commitPhone = () => {
@@ -3131,7 +3134,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // button blurs the input and saves in the same gesture, so this render's
   // `linkUrl` closure is still stale). Fall back to the live text box value.
   const resolveLinkUrl = () => {
-    const t = linkToStore(savedLinks.saved, customLinkText);
+    const t = settledLink(customLinkText);
     return showLinkPicker && t ? t : linkUrl;
   };
 

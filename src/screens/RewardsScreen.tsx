@@ -49,7 +49,7 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { COIN_ICON } from '../constants/coinIcon';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { linkToStore } from '../utils/savedLinks';
+import { acceptExistingLink, deferForLinkAnswer, settledLink } from '../utils/linkCleanPrompt';
 import { SaveLinkAction, SavedLinksHint } from '../components/SavedLinkParts';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
@@ -452,6 +452,7 @@ export function RewardsScreen() {
     setDraftPrice(reward?.priceMinor != null ? priceToInput(reward.priceMinor) : '');
     setDraftTaxable(reward?.taxable ?? false);
     setDraftNote(reward?.note ?? '');
+    acceptExistingLink(reward?.linkUrl);
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
     setDraftGlyph(reward?.glyph ?? '');
@@ -480,11 +481,12 @@ export function RewardsScreen() {
 
   const saveDraft = useCallback(() => {
     if (!canSave || draft === null) return;
+    if (deferForLinkAnswer(savedLinks.saved, draftLink, null, saveDraft)) return;
     haptics.tap();
     const store = useRewardStore.getState();
     const priceMinor = priceDriven ? parsedPrice : null;
     const taxable = priceMinor !== null && draftTaxable;
-    const details = { glyph: cleanRewardGlyph(draftGlyph), note: draftNote, linkUrl: linkToStore(savedLinks.saved, draftLink), oneTime: draftOneTime, priceMinor, taxable, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
+    const details = { glyph: cleanRewardGlyph(draftGlyph), note: draftNote, linkUrl: settledLink(draftLink), oneTime: draftOneTime, priceMinor, taxable, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
     if (draft.mode === 'new') {
       store.addReward(draftTitle, parsedCost!, details);
     } else if (draft.mode === 'item') {

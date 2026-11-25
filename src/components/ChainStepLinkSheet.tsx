@@ -13,7 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { linkToStore } from '../utils/savedLinks';
+import { askAboutLink, deferForLinkAnswer, linkNeedsAnswer, settledLink } from '../utils/linkCleanPrompt';
 import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
@@ -89,13 +89,15 @@ export function ChainStepLinkSheet({
   };
 
   const commitCustomText = () => {
-    const trimmed = linkToStore(savedLinks.saved, customText);
-    setLinkUrl(trimmed || null);
+    const typed = customText.trim();
+    if (linkNeedsAnswer(savedLinks.saved, typed, linkUrl)) void askAboutLink(typed).then(t => setLinkUrl(t || null));
+    else setLinkUrl(settledLink(typed) || null);
   };
 
   const save = () => {
+    if (deferForLinkAnswer(savedLinks.saved, customText, linkUrl, save)) return;
     haptics.success();
-    const trimmed = linkToStore(savedLinks.saved, customText);
+    const trimmed = settledLink(customText);
     const resolved = trimmed || linkUrl;
     dismiss(() => { onSave({ linkUrl: resolved || null }); onClose(); });
   };
