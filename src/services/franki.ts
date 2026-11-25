@@ -81,11 +81,22 @@ function readTodayFrom(body: unknown): FrankiReadToday[] | null {
   return today;
 }
 
+/** A day's reading seconds by language code, or null when the server didn't send the split. */
+function secondsByLanguage(body: unknown): Record<string, number> | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const out: Record<string, number> = {};
+  for (const [language, seconds] of Object.entries(body)) out[language] = count(seconds);
+  return out;
+}
+
 function studyDaysFrom(body: unknown): FrankiStudyDay[] {
   if (!Array.isArray(body)) return [];
   const days: FrankiStudyDay[] = [];
   for (const item of body) {
-    const d = item as { starts_at?: unknown; cards?: unknown; answer_seconds?: unknown; reading_seconds?: unknown } | null;
+    const d = item as {
+      starts_at?: unknown; cards?: unknown; answer_seconds?: unknown; reading_seconds?: unknown;
+      reading_seconds_by_language?: unknown;
+    } | null;
     const startsAt = instant(d?.starts_at);
     if (!startsAt) continue;
     days.push({
@@ -93,6 +104,7 @@ function studyDaysFrom(body: unknown): FrankiStudyDay[] {
       cards: count(d?.cards),
       answerSeconds: count(d?.answer_seconds),
       readingSeconds: count(d?.reading_seconds),
+      readingSecondsByLanguage: secondsByLanguage(d?.reading_seconds_by_language),
     });
   }
   return days.sort((a, c) => Date.parse(a.startsAt) - Date.parse(c.startsAt));

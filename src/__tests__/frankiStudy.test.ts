@@ -15,6 +15,8 @@ const day = (date: number, answerMinutes: number, readingMinutes = 0, cards = 10
   cards,
   answerSeconds: answerMinutes * 60,
   readingSeconds: readingMinutes * 60,
+  // Every minute of reading in these fixtures is Thai.
+  readingSecondsByLanguage: readingMinutes ? { th: readingMinutes * 60 } : {},
 });
 const WEEK = [day(16, 22), day(17, 30, 5), day(18, 0, 0, 0), day(19, 28), day(20, 41), day(21, 19), day(22, 12, 6)];
 
@@ -28,13 +30,25 @@ describe('today', () => {
   it('counts reading time only when it counts, and reading on its own', () => {
     expect(minutesStudiedToday(WEEK, NOW, true)).toBe(18);
     expect(minutesStudiedToday(WEEK, NOW, false)).toBe(12);
-    expect(minutesReadToday(WEEK, NOW)).toBe(6);
+    expect(minutesReadToday(WEEK, NOW, 'th')).toBe(6);
+  });
+
+  it('counts the reading in one language, not the others’', () => {
+    expect(minutesReadToday(WEEK, NOW, 'fr')).toBe(0);
+    const mixed = [{ ...WEEK[6], readingSecondsByLanguage: { th: 360, fr: 120 } }];
+    expect(minutesReadToday(mixed, NOW, 'fr')).toBe(2);
+    expect(minutesReadToday(mixed, NOW, 'th')).toBe(6);
+  });
+
+  it('has no answer from a server that doesn’t split reading by language', () => {
+    const unsplit = [{ ...WEEK[6], readingSecondsByLanguage: null }];
+    expect(minutesReadToday(unsplit, NOW, 'th')).toBeNull();
   });
 
   it('knows nothing about a day the read doesn’t cover', () => {
     expect(minutesStudiedToday(WEEK, new Date(2026, 9, 23, 10, 0), true)).toBeNull();
     expect(minutesStudiedToday([], NOW, true)).toBeNull();
-    expect(minutesReadToday([], NOW)).toBeNull();
+    expect(minutesReadToday([], NOW, 'th')).toBeNull();
   });
 });
 

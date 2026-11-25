@@ -23793,7 +23793,7 @@ describe('checkFrankiTasks', () => {
   });
 
   it('writes the study-time goal task while today’s minutes are under it', () => {
-    const studyDays = [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 180 }];
+    const studyDays = [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 180, readingSecondsByLanguage: null }];
     setSettings({ frankiGoalMinutes: 20 });
     setSnapshot({ studyDays });
     check();
@@ -23814,7 +23814,7 @@ describe('checkFrankiTasks', () => {
 
   it('writes no goal task once it is met, or without a read of today', () => {
     setSettings({ frankiGoalMinutes: 5 });
-    setSnapshot({ studyDays: [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 0 }] });
+    setSnapshot({ studyDays: [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 0, readingSecondsByLanguage: null }] });
     check();
     expect(live('goal:')).toHaveLength(0);
     setSnapshot({ studyDays: [] });
