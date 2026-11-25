@@ -524,6 +524,7 @@ export const GroceryRow = React.memo(function GroceryRow({
         onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
         delayLongPress={interaction.delayLongPress}
         hitSlop={CHECKBOX_HIT_SLOP}
+        style={selectionMode ? styles.checkboxSelecting : undefined}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: selectionMode ? selected : item.checked }}
         accessibilityLabel={label}
@@ -1030,6 +1031,11 @@ function makeStyles(colors: Colors) {
       borderColor: colors.controlBorder,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    // While selecting, a tap here picks the row instead of putting it in the
+    // cart, so the box recedes the way TaskItem's circle does.
+    checkboxSelecting: {
+      opacity: 0.35,
     },
     checkboxChecked: {
       backgroundColor: colors.done,
