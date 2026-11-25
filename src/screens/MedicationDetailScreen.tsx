@@ -74,6 +74,9 @@ const BAR_HEIGHT = 60;
 /** Width of the count column at the default text size; scaled with the text. */
 const GUIDE_LABEL_WIDTH = 22;
 
+/** Doses the History card shows before "Show more". */
+const HISTORY_PAGE = 10;
+
 /**
  * One medication: its last fortnight, when in the day you take it, the limit
  * and supply you set for it, and every dose recorded.
@@ -126,6 +129,10 @@ export function MedicationDetailScreen() {
 
   const stat = useMemo(() => medicationStats(logs, registered, settings).find(s => s.key === key) ?? null, [logs, registered, settings, key]);
   const entries = useMemo(() => logs.filter(l => medicationKey(l.name) === key), [logs, key]);
+  // The history can run to hundreds of doses, so it opens on the latest and grows a page at a time.
+  const [historyShown, setHistoryShown] = useState(HISTORY_PAGE);
+  const shownEntries = entries.slice(0, historyShown);
+  const hiddenEntries = entries.length - shownEntries.length;
   const checkIns = useCheckInStore(st => st.checkIns);
   const checkInByDose = useMemo(
     () => new Map(checkIns.filter(c => c.sourceKind === 'medication').map(c => [c.sourceId, c] as const)),
@@ -780,7 +787,7 @@ export function MedicationDetailScreen() {
 
         <Text style={styles.sectionTitle}>HISTORY</Text>
         <View style={[styles.card, styles.listCard]}>
-          {entries.map((log, index) => (
+          {shownEntries.map((log, index) => (
             <TouchableOpacity
               key={log.id}
               style={[styles.doseRow, index === 0 && styles.firstRow]}
@@ -806,6 +813,18 @@ export function MedicationDetailScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {hiddenEntries > 0 && (
+          <View style={styles.actionsRow}>
+            <InlineAction
+              label={`Show ${Math.min(HISTORY_PAGE, hiddenEntries)} more`}
+              icon="chevron-down"
+              variant="neutral"
+              surface="page"
+              onPress={() => { haptics.tap(); setHistoryShown(n => n + HISTORY_PAGE); }}
+            />
+          </View>
+        )}
 
         <View style={styles.actionsRow}>
           <InlineAction
