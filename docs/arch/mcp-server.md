@@ -472,6 +472,12 @@ a nutrient the person's `healthWriteNutrients` excludes is still left out. Two p
 a flagged entry before either's write has synced back can each write it; the same window exists
 for any two-device edit.
 
+`log_food` takes `hold: true` for food not eaten yet: the row is logged with `healthHeldUntil`
+(`HELD_RELEASE_HOURS` ahead) and is not flagged `healthWritePending`, so the phone writes it only
+when the person confirms it there or the hold runs out (`docs/arch/health-data.md`, "Holding an
+entry"). `list_food_log` shows `heldFromAppleHealth` and `heldUntil` on it. A held row has no
+samples, so `update_food_entry`, `delete_food_entry` and the rest still work on it.
+
 Health rows written here reach the phone whatever its "Include health logs" switch says: the switch
 governs what the phone sends (`HEALTH_SYNC_TABLES` withholds pushes only), not what it accepts.
 The Activity entry for a mood check-in or a dose names the kind of record and not its content,

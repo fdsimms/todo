@@ -136,6 +136,15 @@ describe('logFood', () => {
     expect(logged.note).toMatch(/Apple Health/);
   });
 
+  it('holds an entry back from Health when asked, and does not flag it for the phone to write', () => {
+    const logged = logFood(replica, { label: 'Burger', amounts: { calorieKcal: 680 }, hold: true, apply: true });
+    const entry = replica.foodLogEntries('2000-01-01', '2100-01-01').find(e => e.id === logged.id);
+    expect(entry?.healthHeldUntil).toEqual(expect.any(String));
+    expect(entry?.healthWritePending).toBeFalsy();
+    expect(logged.note).toMatch(/held/);
+    expect(logged.note).toMatch(/Do not say it is in Health/);
+  });
+
   it('keeps a breakdown on the entry, previews it, and says when a part was dropped', () => {
     const parts: { label: string; amounts: Record<string, number> }[] = [
       { label: 'Birch beer', amounts: { calorieKcal: 250, vibes: 1 } },

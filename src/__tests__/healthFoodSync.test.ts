@@ -156,6 +156,12 @@ describe('logFoodEntryToHealth', () => {
     expect((await logFoodEntryToHealth(entry({ calorieKcal: 640 }))).outcome).toBe('unavailable');
   });
 
+  it('writes nothing for a held entry, whatever else is set', async () => {
+    const held = { ...entry({ calorieKcal: 640 }), healthHeldUntil: '2099-01-01T00:00:00.000Z' };
+    expect(await logFoodEntryToHealth(held)).toEqual({ outcome: 'held', sampleIds: [] });
+    expect(mockWriteFoodSamples).not.toHaveBeenCalled();
+  });
+
   it('writes nothing when the switch is off', async () => {
     mockSettings = { healthWriteEnabled: false, healthWriteNutrients: ALL_NUTRIENT_KEYS };
     expect(await logFoodEntryToHealth(entry({ calorieKcal: 640 })))

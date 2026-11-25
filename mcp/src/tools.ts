@@ -883,6 +883,15 @@ export interface SerializedFoodEntry {
    */
   inAppleHealth?: true;
   /**
+   * True while the entry is held back from Apple Health (logged before it was
+   * eaten). It counts in the day's totals; the person confirms it on the phone,
+   * or the phone writes it when `heldUntil` passes. A held entry has no
+   * `inAppleHealth`, and can still be corrected or deleted from here.
+   */
+  heldFromAppleHealth?: true;
+  /** When a held entry is written to Health if it is not confirmed. */
+  heldUntil?: string;
+  /**
    * What an estimated meal's total was made of, one line per thing it named.
    * Absent for an entry that was measured or that the model did not split.
    * The lines are the same estimate split apart and add up to the entry's own
@@ -1019,6 +1028,8 @@ export function listFoodLog(replica: Replica, input: FoodLogInput = {}): FoodLog
       savedMeal: e.savedMealName ?? undefined,
       amounts: e.nutrition?.amounts && Object.keys(e.nutrition.amounts).length > 0 ? (e.nutrition.amounts as Record<string, number>) : undefined,
       inAppleHealth: e.healthSampleIds?.length > 0 ? true : undefined,
+      heldFromAppleHealth: e.healthHeldUntil ? true : undefined,
+      heldUntil: e.healthHeldUntil ?? undefined,
       breakdown: e.nutrition?.breakdown?.length ? e.nutrition.breakdown : undefined,
       nova: (e.nutrition ? entryNovaGroup(e) : null) ?? undefined,
     })),

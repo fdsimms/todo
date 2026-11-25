@@ -102,7 +102,9 @@ export interface FoodWriteResult {
      *  states is among the nutrients `healthWriteNutrients` selects. */
     | 'nothingToWrite'
     /** HealthKit refused the save, which in practice means sharing is not allowed. */
-    | 'refused';
+    | 'refused'
+    /** The entry is held (`FoodLogEntry.healthHeldUntil`), so nothing was attempted. */
+    | 'held';
   /** What was saved, for `FoodLogEntry.healthSampleIds`. Empty unless `written`. */
   sampleIds: string[];
 }
@@ -169,6 +171,11 @@ export async function logFoodEntryToHealth(entry: FoodLogEntry): Promise<FoodWri
   // a write leak puts a real sample in a real Health record, sourced from a
   // session that was fiction, and it outlives the demo until somebody notices.
   if (isDemoModeActive()) return { outcome: 'unavailable', sampleIds: [] };
+
+  // Checked here, not at each caller, so no route (add, correction, undo of a
+  // delete, the pending pass) can write an entry the person is still holding.
+  // Confirming or releasing clears the hold first and then calls this.
+  if (entry.healthHeldUntil) return { outcome: 'held', sampleIds: [] };
 
   const { healthWriteEnabled, healthWriteNutrients } = useSettingsStore.getState();
   if (!healthWriteEnabled) return { outcome: 'off', sampleIds: [] };

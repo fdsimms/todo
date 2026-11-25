@@ -2919,6 +2919,39 @@ function seedFoodLog(today: Date): void {
   }
 
   /**
+   * One lunch logged before it was eaten, so it is **held** from Apple Health
+   * (`healthHeldUntil`): its row says "Not in Apple Health yet" and offers
+   * Confirm. Held entries are invisible until something is held, so a seed
+   * without one reads as a feature the app doesn't have. The wait counts from
+   * when the demo is loaded, so it stays held for the length of a demo. A lunch
+   * rather than a dinner, since yesterday's planned dinner is the seed's meal
+   * with nothing logged against it.
+   */
+  {
+    const at = subDays(today, 1);
+    at.setHours(12, 30, 0, 0);
+    const words = '1 veggie burger with cheddar and ketchup';
+    addEntry({
+      label: 'Veggie burger with cheddar and ketchup',
+      quantity: words,
+      grams: null,
+      nutrition: {
+        basis: 'perServing',
+        servingGrams: null,
+        servingText: words,
+        amounts: { calorieKcal: 681, proteinG: 31, carbsG: 55, fatG: 36 },
+        source: 'estimated',
+        sourceId: null,
+        portions: [],
+        recordedAt: at.toISOString(),
+      },
+      slot: 'lunch',
+      holdFromHealth: true,
+      at,
+    });
+  }
+
+  /**
    * A food a database answered that nobody filed, logged by weight.
    *
    * **The one entry whose row menu offers Edit with no catalog row behind

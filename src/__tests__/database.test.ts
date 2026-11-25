@@ -153,6 +153,7 @@ import {
   isSyncableDatabase,
   dbApplySyncChanges,
   dbInsertFoodLogEntry,
+  dbGetHeldFoodEntries,
   dbGetPendingHealthFoodEntries,
   dbGetFoodLogEntry,
   dbGetFoodLogEntriesForTask,
@@ -6294,6 +6295,19 @@ describe('a food log entry\'s kept panel', () => {
 
     dbUpdateFoodLogEntry(makeEntry({ id: 'flagged', healthWritePending: false }));
     expect(dbGetPendingHealthFoodEntries()).toEqual([]);
+  });
+
+  it('keeps a hold, lists held entries, and keeps them out of the pending-write list', () => {
+    dbInsertFoodLogEntry(makeEntry({ id: 'plain' }));
+    dbInsertFoodLogEntry(makeEntry({ id: 'held', healthHeldUntil: '2026-10-04T23:00:00.000Z', healthWritePending: true }));
+    expect(dbGetFoodLogEntry('plain')?.healthHeldUntil).toBeNull();
+    expect(dbGetFoodLogEntry('held')?.healthHeldUntil).toBe('2026-10-04T23:00:00.000Z');
+    expect(dbGetHeldFoodEntries().map(e => e.id)).toEqual(['held']);
+    expect(dbGetPendingHealthFoodEntries()).toEqual([]);
+
+    dbUpdateFoodLogEntry(makeEntry({ id: 'held', healthHeldUntil: null, healthWritePending: true }));
+    expect(dbGetHeldFoodEntries()).toEqual([]);
+    expect(dbGetPendingHealthFoodEntries().map(e => e.id)).toEqual(['held']);
   });
 
   it('travels in a sync payload, since it describes the entry rather than the device', () => {

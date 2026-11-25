@@ -2351,6 +2351,10 @@ function runInitDatabase(): void {
     // every existing row, so nothing already in the log is ever written. See
     // FoodLogEntry.healthWritePending.
     'ALTER TABLE food_logs ADD COLUMN health_write_pending INTEGER NOT NULL DEFAULT 0',
+    // When a held entry is let go to Health without a confirm, null on an entry
+    // that is not held, which is every existing row. See
+    // FoodLogEntry.healthHeldUntil.
+    'ALTER TABLE food_logs ADD COLUMN health_held_until TEXT',
     // Off on every existing box: each one was named as a brand, and "Freeze
     // some" is what makes the first unnamed one. See ItemProduct.isPortion.
     'ALTER TABLE grocery_item_products ADD COLUMN is_portion INTEGER NOT NULL DEFAULT 0',
@@ -9437,6 +9441,7 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     sourcePanel: parseFoodNutrition(row.source_panel as string | null),
     healthSampleIds,
     healthWritePending: row.health_write_pending === 1,
+    healthHeldUntil: (row.health_held_until as string) || null,
     sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
     createdAt: row.created_at as string,
   };
@@ -9487,7 +9492,15 @@ export function dbGetFoodLogEntry(id: string): FoodLogEntry | null {
  */
 export function dbGetPendingHealthFoodEntries(): FoodLogEntry[] {
   const rows = db.getAllSync<Record<string, unknown>>(
-    `SELECT * FROM food_logs WHERE health_write_pending = 1 AND health_sample_ids = '[]' ORDER BY created_at ASC`
+    `SELECT * FROM food_logs WHERE health_write_pending = 1 AND health_held_until IS NULL AND health_sample_ids = '[]' ORDER BY created_at ASC`
+  );
+  return rows.map(rowToFoodLogEntry).filter((e): e is FoodLogEntry => e !== null);
+}
+
+/** Every entry held back from Health, on any day, oldest first. */
+export function dbGetHeldFoodEntries(): FoodLogEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM food_logs WHERE health_held_until IS NOT NULL ORDER BY created_at ASC`
   );
   return rows.map(rowToFoodLogEntry).filter((e): e is FoodLogEntry => e !== null);
 }
@@ -9496,8 +9509,9 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
        meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids,
-       health_write_pending, sort_order, created_at, task_id, saved_meal_id, saved_meal_name, item_picks)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       health_write_pending, sort_order, created_at, task_id, saved_meal_id, saved_meal_name, item_picks,
+       health_held_until)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
@@ -9506,7 +9520,7 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
       JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
       entry.sortOrder, entry.createdAt, entry.taskId ?? null,
       entry.savedMealId ?? null, entry.savedMealName ?? null,
-      JSON.stringify(entry.itemPicks ?? []),
+      JSON.stringify(entry.itemPicks ?? []), entry.healthHeldUntil ?? null,
     ]
   );
 }
@@ -9515,7 +9529,7 @@ export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `UPDATE food_logs SET day_key=?, at_iso=?, slot=?, label=?, recipe_id=?, item_id=?,
        product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, source_panel=?,
-       health_sample_ids=?, health_write_pending=?, sort_order=?, item_picks=?
+       health_sample_ids=?, health_write_pending=?, sort_order=?, item_picks=?, health_held_until=?
      WHERE id=?`,
     [
       entry.dayKey, entry.atISO, entry.slot, entry.label,
@@ -9523,7 +9537,7 @@ export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
       serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
-      entry.sortOrder, JSON.stringify(entry.itemPicks ?? []), entry.id,
+      entry.sortOrder, JSON.stringify(entry.itemPicks ?? []), entry.healthHeldUntil ?? null, entry.id,
     ]
   );
 }

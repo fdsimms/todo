@@ -609,6 +609,16 @@ export interface FoodLogEntry {
    */
   healthWritePending?: boolean;
   /**
+   * Set on an entry logged before it was eaten: it counts in the day's totals
+   * but is not written to Health until the person confirms it, or until this
+   * time, after which the phone releases it (`releaseDueHeldEntries` in
+   * `useFoodLogStore`, which hands it to the `healthWritePending` pass). An
+   * entry with a value here never reaches Health by any other route: not the
+   * add, not a correction, not the pending pass. Null or absent means not held.
+   * An ISO time, `HELD_RELEASE_HOURS` after the entry was logged.
+   */
+  healthHeldUntil?: string | null;
+  /**
    * The saved meal this entry was logged as part of, and its name as it was
    * called at the time. Provenance only, the way `taskId` is: free to dangle
    * (deleting or renaming the meal leaves what was eaten untouched, which is
