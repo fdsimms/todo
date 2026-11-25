@@ -22,7 +22,7 @@ import { InlineAction } from './InlineAction';
 import { HoldToConfirmButton } from './HoldToConfirmButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { haptics } from '../utils/haptics';
-import { MISSION_GIVE_UP_HOLD_MS } from '../utils/missions';
+import { MISSION_DONE_HOLD_MS, MISSION_GIVE_UP_HOLD_MS } from '../utils/missions';
 import {
   DEPTH_SILENCE_MS,
   depthSensorStatus,
@@ -47,11 +47,18 @@ export interface PushupCounterProps {
   /** What the done state says while the sheet slides away ("Get up is checked off."). */
   doneNote: string;
   /**
-   * The count was reached. The caller closes the sheet and finishes what the
-   * mission was for (`completeTask` with `missionDone`, or the alarm's
-   * `completeMission`). Called once per opening.
+   * The count was reached and the finished count has been shown for
+   * `MISSION_DONE_HOLD_MS` (or Done was tapped, or the app left the front). The
+   * caller closes the sheet and finishes what the mission was for
+   * (`completeTask` with `missionDone`, or the alarm's `completeMission`).
+   * Called once per opening.
    */
   onCounted: () => void;
+  /**
+   * A rep was counted: the person is at it. An alarm's host uses it to keep
+   * the ring silenced while reps keep coming (`missionEngaged`).
+   */
+  onProgress?: () => void;
   /** Cancel: closes the sheet with nothing done. */
   onClose: () => void;
   /**
@@ -128,7 +135,7 @@ const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
  * never be checked off there at all.
  */
 export function PushupCounterSheet({
-  visible, title, count, subjectKey, doneNote, onCounted, onClose, onGiveUp,
+  visible, title, count, subjectKey, doneNote, onCounted, onProgress, onClose, onGiveUp,
 }: PushupCounterProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -147,6 +154,14 @@ export function PushupCounterSheet({
   const reps = mode === 'depth' ? depth.count : counter.count;
   const counted = reps >= target;
   const countedRef = useRef(false);
+  // `onCounted` has been called for this opening.
+  const reportedRef = useRef(false);
+  // The count the last rep effect saw.
+  const lastCount = useRef(0);
+  const onCountedRef = useRef(onCounted);
+  onCountedRef.current = onCounted;
+  const onProgressRef = useRef(onProgress);
+  onProgressRef.current = onProgress;
   const depthCountRef = useRef(0);
   depthCountRef.current = depth.count;
 
@@ -160,6 +175,8 @@ export function PushupCounterSheet({
     setMode(null);
     setCameraLost(false);
     countedRef.current = false;
+    reportedRef.current = false;
+    lastCount.current = 0;
     let live = true;
     countModes().then(found => {
       if (!live) return;
@@ -247,23 +264,45 @@ export function PushupCounterSheet({
     });
   }, [visible, mode, counted]);
 
+  // Hands the completion back, once per opening.
+  const reportCounted = useCallback(() => {
+    if (reportedRef.current) return;
+    reportedRef.current = true;
+    onCountedRef.current();
+  }, []);
+
   // A rep is felt as well as seen: with the proximity sensor the screen is
   // dark for the part of the rep where it happens.
-  const lastCount = useRef(0);
   useEffect(() => {
     if (reps === lastCount.current) return;
     lastCount.current = reps;
     if (reps === 0) return;
+    onProgressRef.current?.();
     if (reps >= target) {
       if (!countedRef.current) {
         countedRef.current = true;
         haptics.success();
-        onCounted();
       }
     } else {
       haptics.impactLight();
     }
   }, [reps, target]);
+
+  // The finished count stays up for a moment before the caller closes the
+  // sheet: it used to hand back in the same commit, and the success state
+  // was gone before it could be read. Done skips the wait, and so does
+  // leaving the app, which would suspend the timer with the mission still owed.
+  useEffect(() => {
+    if (!visible || !counted) return;
+    const timer = setTimeout(reportCounted, MISSION_DONE_HOLD_MS);
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active') reportCounted();
+    });
+    return () => {
+      clearTimeout(timer);
+      sub.remove();
+    };
+  }, [visible, counted, reportCounted]);
 
   const progress = Math.min(1, reps / target);
   const status = mode === 'depth' ? depthSensorStatus(depth) : pushupSensorStatus(counter);
@@ -309,7 +348,7 @@ export function PushupCounterSheet({
   );
 
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={counted ? reportCounted : onClose}>
       {visible && <ScreenAwake />}
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <SheetHeader
@@ -318,7 +357,7 @@ export function PushupCounterSheet({
             ? <View style={styles.headerSpacer} />
             : <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} minWidth={64} />}
           right={counted
-            ? <SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={64} />
+            ? <SheetHeaderButton label={BUTTON_LABEL.done} onPress={reportCounted} minWidth={64} />
             : <View style={styles.headerSpacer} />}
         />
         <View style={styles.body}>

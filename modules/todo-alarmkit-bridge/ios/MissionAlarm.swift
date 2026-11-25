@@ -199,7 +199,9 @@ enum MissionLoop {
   /// cancels it, and an app that came back to the front mid-ring (a timer
   /// catching up, the counter reopening as the ring came due) cut every ring
   /// after the first off within a second or so. Stop and the mission button
-  /// replace it, since pressing one is what ends that ring.
+  /// replace it, since pressing one is what ends that ring. The counter's own
+  /// pushes while the person is doing the mission (opening, a rep) are not
+  /// sparing: a sounding ring is replaced, which stops it.
   ///
   /// The ring is scheduled first and the store is changed after, under the
   /// lock `complete` takes, so the two can't interleave. A mission ended

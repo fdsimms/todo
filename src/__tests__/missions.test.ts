@@ -1,5 +1,7 @@
 import {
   describeMission,
+  MISSION_IDLE_LIMIT_MS,
+  missionEngaged,
   hasMission,
   missionKeyForAlarm,
   nativeAlarmHold,
@@ -159,5 +161,16 @@ describe('nativeAlarmHold', () => {
   it('holds nothing for an alarm with neither', () => {
     expect(nativeAlarmHold({ id: 'a1', mission: null, savedFocusId: null }, 'Wake up')).toBeNull();
     expect(nativeAlarmHold({ id: 'a1', mission: null }, 'Wake up')).toBeNull();
+  });
+});
+
+describe('missionEngaged', () => {
+  it('holds the ring off while a rep or the opening is recent', () => {
+    expect(missionEngaged(1_000, 1_000)).toBe(true);
+    expect(missionEngaged(1_000, 1_000 + MISSION_IDLE_LIMIT_MS - 1)).toBe(true);
+  });
+
+  it('lapses once nothing has come for the idle limit, so the ring returns', () => {
+    expect(missionEngaged(1_000, 1_000 + MISSION_IDLE_LIMIT_MS)).toBe(false);
   });
 });

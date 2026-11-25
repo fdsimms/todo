@@ -17,6 +17,8 @@ interface Props {
   onDone: () => void;
   /** Cancel: closes the sheet with nothing done. */
   onClose: () => void;
+  /** A rep was counted (see `PushupCounterProps.onProgress`). */
+  onProgress?: () => void;
   /** Only while an alarm is ringing for it: the held Give up (see missions.ts). */
   onGiveUp?: () => void;
 }

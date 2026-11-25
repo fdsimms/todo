@@ -18,9 +18,16 @@ import { normalizePushupCount, PUSHUP_DEFAULT_COUNT } from './pushupCounter';
  * mission is done (`completeMission`). While the counter is open the next ring
  * is pushed back `MISSION_COUNTING_GRACE_SECONDS` at a time, renewed every
  * `MISSION_HEARTBEAT_MS`, so it never rings mid-set but still comes back if
- * the app dies with the counter up. That push never cuts off a ring that is
- * already sounding (`sparingRing` in MissionAlarm.swift): the ring stops when
- * the person presses Stop on it, or when the mission is done.
+ * the app dies with the counter up.
+ *
+ * The counter silences the ring while the person is doing the mission, and
+ * only then. Opening it, and every rep, pushes the next ring back and stops one
+ * that is already sounding (`silenceRing`); the heartbeat renews that only
+ * while the person is engaged (`missionEngaged`: a rep within
+ * `MISSION_IDLE_LIMIT_MS`, counting from the opening). Past that the push
+ * lapses and the ring comes back on its own, counter still up. The app's other
+ * pushes (Cancel) still leave a sounding ring alone (`sparingRing` in
+ * MissionAlarm.swift), since nobody is doing the mission then.
  *
  * The one way out other than the mission is Give up, held for
  * `MISSION_GIVE_UP_HOLD_MS` and shown on the alarm's row, so a sensor that
@@ -36,8 +43,24 @@ export const MISSION_COUNTING_GRACE_SECONDS = 60;
 /** How often that push is renewed while the counter stays open. */
 export const MISSION_HEARTBEAT_MS = 20_000;
 
+/**
+ * How long the counter keeps the ring away without a rep: from the moment it
+ * opens (time to get on the floor), then from each rep. Past it the heartbeat
+ * stops renewing the push, and the ring comes back within
+ * `MISSION_COUNTING_GRACE_SECONDS`.
+ */
+export const MISSION_IDLE_LIMIT_MS = 90_000;
+
+/** How long the counter shows the finished count before it hands the completion back. */
+export const MISSION_DONE_HOLD_MS = 3_000;
+
 /** How long Give up has to be held. */
 export const MISSION_GIVE_UP_HOLD_MS = 10_000;
+
+/** Whether the person is still at the mission: a rep, or the counter opening, within `MISSION_IDLE_LIMIT_MS`. */
+export function missionEngaged(lastProgressAt: number, now: number): boolean {
+  return now - lastProgressAt < MISSION_IDLE_LIMIT_MS;
+}
 
 export const MISSION_KINDS = ['pushups'] as const;
 
