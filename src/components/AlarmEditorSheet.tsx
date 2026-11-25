@@ -228,7 +228,7 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
                 <InlineAction label="Edit" variant="neutral" onPress={() => setEditingSaved(draft.savedFocusId)} />
               )}
             </View>
-            <HelpText style={styles.hint}>
+            <HelpText style={[styles.hint, styles.focusHint]}>
               Turning this alarm off opens a sheet to start the focus session you pick. With a mission, it opens once the mission is done.
             </HelpText>
           </View>
@@ -309,6 +309,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dayTextOn: { color: colors.onAccent },
   focusActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
   hint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.smd },
+  // Under the buttons rather than above a picker: space above it, none below, so the card's bottom padding matches its top.
+  focusHint: { marginTop: spacing.smd, marginBottom: 0 },
   rowsCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   delete: { marginTop: spacing.lg, alignItems: 'center' },
   deleteText: { color: colors.redText, fontSize: font.md },
