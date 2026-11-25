@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
+import Reanimated, { FadeInLeft } from 'react-native-reanimated';
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SearchField } from './SearchField';
@@ -754,29 +755,17 @@ function ItemAppear({ animate, index, children }: { animate: boolean; index: num
 
 function AnimatedItemAppear({ index, children }: { index: number; children: React.ReactNode }) {
   const reduceMotion = useReduceMotion();
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    // Reduce Motion: skip the staggered slide-in.
-    if (reduceMotion) {
-      anim.setValue(1);
-      return;
-    }
-    Animated.timing(anim, {
-      toValue: 1,
-      duration: animation.duration.normal,
-      delay: 60 + index * 35,
-      useNativeDriver: true,
-    }).start();
-  }, [anim, index, reduceMotion]);
+  // An `entering` animation runs on the UI thread from the moment the view is
+  // mounted. The fade used to be an `Animated.timing` that an effect had to
+  // start, and until it did the row sat at opacity 0: with the JS thread busy
+  // right after the drawer opened, the menu showed its title and search field
+  // over an empty list until the thread freed up.
   return (
-    <Animated.View
-      style={{
-        opacity: anim,
-        transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }],
-      }}
+    <Reanimated.View
+      entering={reduceMotion ? undefined : FadeInLeft.delay(60 + index * 35).duration(animation.duration.normal)}
     >
       {children}
-    </Animated.View>
+    </Reanimated.View>
   );
 }
 
