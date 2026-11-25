@@ -4587,10 +4587,13 @@ const TaskItemRow = React.memo(function TaskItem({
             : completionMenuOffered ? 'Double tap and hold for other ways to finish' : undefined
         }
       >
-        {/* Bulk selection deliberately changes nothing about this circle: it's
-            the completion checkbox in both modes, and a row that's been picked
-            for a bulk edit shouldn't read as a row that's been ticked off. The
-            selection state lives on SelectionDot at the row's other end. */}
+        {/* While selecting, the circle is dimmed (circleSelecting) and a tap on
+            it picks the row rather than completing it. It stays an empty ring
+            and never fills for a picked row, so a row that's been picked for a
+            bulk edit doesn't read as ticked off; the selection state lives on
+            SelectionDot at the row's other end. The dim is what says "not a
+            checkbox right now": it used to look live, and taps meant to
+            complete a task silently selected it instead. */}
         <Animated.View style={[
           styles.circle,
           completing && !quotaCompleting && !quotaPartial && !sendOffKind && styles.circleCompleting,
@@ -4599,6 +4602,7 @@ const TaskItemRow = React.memo(function TaskItem({
           // Waiting on another task: a faded, dashed ring, so the row reads as
           // not ready before its chips are read. Display only; the tap is unchanged.
           !!blockerTitle && !task.completed && !completing && styles.circleWaiting,
+          selectionMode && styles.circleSelecting,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           // The meal-plan nudge's full day borrows the same treatment on purpose:
           // green already means done-or-ready on this row, and a second colour
@@ -6614,6 +6618,11 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   circleWaiting: {
     borderStyle: 'dashed',
     opacity: 0.55,
+  },
+  // Bulk selection: completing is unavailable, so the circle recedes. The
+  // SelectionDot at the trailing edge is the live control.
+  circleSelecting: {
+    opacity: 0.35,
   },
   // A timed task whose countdown has run out. Tinted to pull the eye to the tap
   // that completes it, without filling the circle — it isn't done yet.
