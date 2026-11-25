@@ -1806,7 +1806,7 @@ const taskFieldsShape = {
     .describe('Repeating tasks only: every Nth completion also adds a separate task ("Replace running shoes" every 4th run), or with atEnd once when the repeat ends. null removes it.'),
   personIds: z.array(z.string()).optional()
     .describe('People it is about or with, by id from list_people; it shows on their page. [] clears.'),
-  linkUrl: z.string().nullable().optional().describe('A web address or app link the task row opens. null clears it.'),
+  linkUrl: z.string().nullable().optional().describe('A web address or app link the task row opens. Tracking parameters (utm_*, fbclid and the like) are removed from a web address. null clears it.'),
   phoneNumber: z.string().nullable().optional().describe('A number the task row can call, as written. null clears it.'),
   emailAddress: z.string().nullable().optional().describe('An address the task row can email. null clears it.'),
   location: z.string().nullable().optional().describe('The place it happens, as free text. null clears it.'),
