@@ -202,6 +202,7 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
+import { linkToStore } from '../utils/savedLinks';
 import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
@@ -3101,7 +3102,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   };
 
   const commitCustomLink = () => {
-    const t = customLinkText.trim();
+    const t = linkToStore(savedLinks.saved, customLinkText);
     setLinkUrl(t || null);
     setShowLinkPicker(false);
   };
@@ -3130,7 +3131,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // button blurs the input and saves in the same gesture, so this render's
   // `linkUrl` closure is still stale). Fall back to the live text box value.
   const resolveLinkUrl = () => {
-    const t = customLinkText.trim();
+    const t = linkToStore(savedLinks.saved, customLinkText);
     return showLinkPicker && t ? t : linkUrl;
   };
 

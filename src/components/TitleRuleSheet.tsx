@@ -15,6 +15,7 @@ import {
 } from '../utils/titleRules';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
+import { linkToStore } from '../utils/savedLinks';
 import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -130,11 +131,12 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
   // typing a custom URL and tapping Done never goes through the field's own
   // onBlur, so what's on screen is `customLinkText`, not yet `draft.linkUrl`.
   const commitCustomLink = () => {
-    const t = customLinkText.trim();
+    const t = linkToStore(savedLinks.saved, customLinkText);
     patch({ linkUrl: t || null });
     closeField('link');
   };
-  const effectiveLinkUrl = fieldOpen('link') && customLinkText.trim() ? customLinkText.trim() : draft.linkUrl;
+  const typedLinkUrl = linkToStore(savedLinks.saved, customLinkText);
+  const effectiveLinkUrl = fieldOpen('link') && typedLinkUrl ? typedLinkUrl : draft.linkUrl;
 
   // Includes whatever is still sitting in the input. Pressing Done blurs the
   // field, and the commit that blur triggers is a state update this render

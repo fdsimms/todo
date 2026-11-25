@@ -49,6 +49,7 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { COIN_ICON } from '../constants/coinIcon';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
+import { linkToStore } from '../utils/savedLinks';
 import { SaveLinkAction, SavedLinksHint } from '../components/SavedLinkParts';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
@@ -483,7 +484,7 @@ export function RewardsScreen() {
     const store = useRewardStore.getState();
     const priceMinor = priceDriven ? parsedPrice : null;
     const taxable = priceMinor !== null && draftTaxable;
-    const details = { glyph: cleanRewardGlyph(draftGlyph), note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, taxable, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
+    const details = { glyph: cleanRewardGlyph(draftGlyph), note: draftNote, linkUrl: linkToStore(savedLinks.saved, draftLink), oneTime: draftOneTime, priceMinor, taxable, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
     if (draft.mode === 'new') {
       store.addReward(draftTitle, parsedCost!, details);
     } else if (draft.mode === 'item') {
@@ -496,7 +497,7 @@ export function RewardsScreen() {
         : { title: draftTitle, cost: parsedCost!, ...details });
     }
     closeDraft();
-  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGlyph, draftGuard, limitCount, limitUnit, parsedCost, parsedPrice, priceDriven, draftTaxable, closeDraft]);
+  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGlyph, draftGuard, limitCount, limitUnit, parsedCost, parsedPrice, priceDriven, draftTaxable, closeDraft, savedLinks.saved]);
 
   // ==== actions on a reward ====
   const addIdea = useCallback((idea: PricedRewardIdea) => {

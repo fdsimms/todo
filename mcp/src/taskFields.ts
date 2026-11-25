@@ -37,6 +37,7 @@ import type {
 } from '../../src/types';
 import { LOG_MEAL_SLOTS } from '../../src/types';
 import { minutesToEffort } from '../../src/utils/effort';
+import { cleanLinkUrl } from '../../src/utils/linkClean';
 import { MAX_MEDICATION_EXTRAS, parseMedicationExtras } from '../../src/utils/medicationLog';
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
 import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
@@ -135,7 +136,7 @@ export interface ChainStepInput {
  */
 export function stepTextFields(s: ChainStepInput, kept?: ChainItem): Pick<ChainItem, 'notes' | 'linkUrl' | 'medicationName' | 'medicationAmount' | 'medicationUnit'> {
   const notes = s.notes !== undefined ? (s.notes?.trim() || null) : (kept?.notes ?? null);
-  const linkUrl = s.link !== undefined ? (s.link?.trim() || null) : (kept?.linkUrl ?? null);
+  const linkUrl = s.link !== undefined ? (s.link ? cleanLinkUrl(s.link) || null : null) : (kept?.linkUrl ?? null);
   // The medication is one set, resolved as medicationFor does: the name, amount
   // and unit come from the call or from the stored step, never mixed.
   const med = s.medication !== undefined
@@ -955,7 +956,7 @@ export function taskFieldsPatch(
   for (const key of ['linkUrl', 'phoneNumber', 'emailAddress', 'location'] as const) {
     const v = input[key];
     if (v === undefined) continue;
-    patch[key] = v === null || !v.trim() ? null : v.trim();
+    patch[key] = v === null || !v.trim() ? null : key === 'linkUrl' ? cleanLinkUrl(v) : v.trim();
   }
   if (input.personIds !== undefined) patch.personIds = [...new Set(input.personIds.filter(id => typeof id === 'string' && id))];
   if (input.vacationPause !== undefined) {

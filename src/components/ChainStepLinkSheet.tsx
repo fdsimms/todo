@@ -13,6 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useSavedLinks } from '../hooks/useSavedLinks';
+import { linkToStore } from '../utils/savedLinks';
 import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
@@ -88,13 +89,13 @@ export function ChainStepLinkSheet({
   };
 
   const commitCustomText = () => {
-    const trimmed = customText.trim();
+    const trimmed = linkToStore(savedLinks.saved, customText);
     setLinkUrl(trimmed || null);
   };
 
   const save = () => {
     haptics.success();
-    const trimmed = customText.trim();
+    const trimmed = linkToStore(savedLinks.saved, customText);
     const resolved = trimmed || linkUrl;
     dismiss(() => { onSave({ linkUrl: resolved || null }); onClose(); });
   };
