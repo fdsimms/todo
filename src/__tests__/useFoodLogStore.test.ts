@@ -8,6 +8,7 @@ import {
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
   dbGetFoodLogEntry,
+  dbGetHeldFoodEntries,
   dbGetPendingHealthFoodEntries,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
@@ -45,6 +46,7 @@ jest.mock('../db/database', () => ({
   dbGetFoodLogEntriesForTask: jest.fn((taskId: string) => mockRows.filter(r => (r as { taskId?: string }).taskId === taskId)),
   dbCountFoodLogEntries: jest.fn(() => 0),
   dbGetPendingHealthFoodEntries: jest.fn(() => []),
+  dbGetHeldFoodEntries: jest.fn(() => []),
   dbInsertFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => { mockRows.push(entry); }),
   dbUpdateFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => {
     const i = mockRows.findIndex(r => r.id === entry.id);
@@ -1329,5 +1331,77 @@ describe('a slot change leaves the saved meal', () => {
 
     state().undoLastAction();
     expect(link(b.id)).toEqual(['m1', 'Usual lunch']);
+  });
+});
+
+/**
+ * An entry logged before it was eaten (`FoodLogEntry.healthHeldUntil`): the
+ * hold itself is `logFoodEntryToHealth`'s (tested in `healthFoodSync.test.ts`);
+ * this is the store's confirm and release.
+ */
+describe('held entries', () => {
+  const held = (id: string, until: string): FoodLogEntry => {
+    const entry = {
+      id, dayKey: '2026-04-02', atISO: '2026-04-02T09:00:00.000Z', slot: 'dinner', label: 'Burger',
+      recipeId: null, itemId: null, productId: null, mealPlanEntryId: null, quantity: '1', grams: null,
+      nutrition: panel(), healthSampleIds: [], healthHeldUntil: until, sortOrder: 0,
+      createdAt: '2026-04-02T09:00:00.000Z',
+    } as FoodLogEntry;
+    mockRows.push(entry);
+    return entry;
+  };
+  const row = (id: string) => mockGetRow(id) as unknown as FoodLogEntry;
+
+  beforeEach(() => {
+    (pendingWriteAction as jest.Mock).mockReturnValue('write');
+    (dbGetPendingHealthFoodEntries as jest.Mock).mockReturnValue([]);
+    (dbGetHeldFoodEntries as jest.Mock).mockReturnValue([]);
+  });
+
+  it('confirming takes the hold off and writes the entry to Health', async () => {
+    held('h1', '2099-01-01T00:00:00.000Z');
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['s1'] });
+
+    state().confirmHeldEntry('h1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(logFoodEntryToHealth).toHaveBeenCalledTimes(1);
+    expect((logFoodEntryToHealth as jest.Mock).mock.calls[0][0].healthHeldUntil).toBeNull();
+    expect(row('h1').healthHeldUntil).toBeNull();
+    expect(row('h1').healthSampleIds).toEqual(['s1']);
+  });
+
+  it('confirming an entry that is not held writes nothing', () => {
+    const e = held('h2', '2099-01-01T00:00:00.000Z');
+    mockRows[mockRows.findIndex(r => r.id === 'h2')] = { ...e, healthHeldUntil: null } as FoodLogEntry;
+
+    state().confirmHeldEntry('h2');
+
+    expect(logFoodEntryToHealth).not.toHaveBeenCalled();
+  });
+
+  it('releases a hold whose wait is over and writes it in the same pass', async () => {
+    const e = held('due', '2000-01-01T00:00:00.000Z');
+    (dbGetHeldFoodEntries as jest.Mock).mockReturnValue([e]);
+    (dbGetPendingHealthFoodEntries as jest.Mock).mockImplementation(() =>
+      mockRows.filter(r => (r as FoodLogEntry).healthWritePending));
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['s2'] });
+
+    await state().writePendingHealthEntries();
+
+    expect(logFoodEntryToHealth).toHaveBeenCalledTimes(1);
+    expect(row('due').healthHeldUntil).toBeNull();
+    expect(row('due').healthSampleIds).toEqual(['s2']);
+  });
+
+  it('leaves a hold whose wait is not over alone', async () => {
+    const e = held('wait', '2099-01-01T00:00:00.000Z');
+    (dbGetHeldFoodEntries as jest.Mock).mockReturnValue([e]);
+
+    await state().writePendingHealthEntries();
+
+    expect(logFoodEntryToHealth).not.toHaveBeenCalled();
+    expect(row('wait').healthHeldUntil).toBe('2099-01-01T00:00:00.000Z');
   });
 });

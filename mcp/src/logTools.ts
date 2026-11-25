@@ -22,6 +22,7 @@ import { getRecipe, type RecipeDetail } from './kitchenTools';
 // Pure over its arguments (types, the target ranges and the unit maths), so
 // safe to import for its value here; the replica loads the same module for the
 // write.
+import { HELD_RELEASE_HOURS } from '../../src/utils/foodHold';
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
 import { INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
 import type { PanelIngredient } from '../../src/utils/medicationSettings';
@@ -93,6 +94,8 @@ export interface LogFoodInput {
   breakdown?: { label: string; amounts: Record<string, number> }[];
   slot?: MealSlot | null;
   at?: string;
+  /** Hold it back from Apple Health until the person confirms it on the phone. */
+  hold?: boolean;
   apply?: boolean;
 }
 
@@ -152,16 +155,20 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
     return {
       applied: false,
       ...base,
-      note: 'A preview. Show the person these estimated figures; log it with apply: true once they agree. It will be marked as estimated, and the phone will write it to Apple Health the next time the app is opened (if Health writing is on there).',
+      note: input.hold
+        ? `A preview. Show the person these estimated figures; log it with apply: true once they agree. It will be marked as estimated and held: it counts in their day, but the phone writes it to Apple Health only after they confirm it there, or after ${HELD_RELEASE_HOURS} hours if they do not.`
+        : 'A preview. Show the person these estimated figures; log it with apply: true once they agree. It will be marked as estimated, and the phone will write it to Apple Health the next time the app is opened (if Health writing is on there).',
     };
   }
-  const entry = replica.logFood({ label: input.label, quantity: input.quantity, amounts: input.amounts, breakdown: input.breakdown, slot: input.slot ?? null, at });
+  const entry = replica.logFood({ label: input.label, quantity: input.quantity, amounts: input.amounts, breakdown: input.breakdown, slot: input.slot ?? null, at, hold: input.hold });
   return {
     applied: true,
     ...base,
     id: entry.id,
     day: entry.dayKey,
-    note: 'Logged, marked as estimated. It is in the app\'s food log now. It is not in Apple Health yet: the server has no Health access, so the phone writes it the next time the app is opened, if Health writing is on there. Do not say it is in Health.',
+    note: input.hold
+      ? `Logged and held, marked as estimated. It counts in the app\'s food log now. It is not in Apple Health: the person confirms it on the phone (Confirm on the entry), or the phone writes it after ${HELD_RELEASE_HOURS} hours. Do not say it is in Health.`
+      : 'Logged, marked as estimated. It is in the app\'s food log now. It is not in Apple Health yet: the server has no Health access, so the phone writes it the next time the app is opened, if Health writing is on there. Do not say it is in Health.',
   };
 }
 

@@ -150,6 +150,7 @@ import { TextField } from './TextField';
 import { OTHER_UNIT_KEY, UnitMenuChip } from './UnitMenuChip';
 import { ChoiceMenuChip } from './ChoiceMenuChip';
 import { HelpText } from './HelpText';
+import { HELD_RELEASE_HOURS } from '../utils/foodHold';
 import { CheckInFields } from './CheckInFields';
 import { allowCheckInNotification, startCheckIn } from '../utils/checkInRecording';
 import { defaultWaitMinutes } from '../utils/checkIns';
@@ -635,8 +636,13 @@ export function FoodLogEntrySheet({
   const [checkIn, setCheckIn] = useState(false);
   const [checkInMinutes, setCheckInMinutes] = useState<number | null>(null);
   const [checkInAbout, setCheckInAbout] = useState('');
+  // "Hold from Apple Health": logged before it is eaten, so it is written to
+  // Health only once confirmed. Off for every new log. See `healthHeldUntil`.
+  const [holdFromHealth, setHoldFromHealth] = useState(false);
+  const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
   useEffect(() => {
     if (!visible) return;
+    setHoldFromHealth(false);
     setCheckIn(false);
     setCheckInMinutes(null);
     setCheckInAbout('');
@@ -1693,12 +1699,19 @@ export function FoodLogEntrySheet({
       });
       return match?.id ?? null;
     })();
-    const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: resolvedMealPlanEntryId, at };
+    const draft: FoodLogDraft = {
+      ...measurement,
+      mealPlanEntryId: resolvedMealPlanEntryId,
+      at,
+      ...(holdFromHealth && healthWriteEnabled ? { holdFromHealth: true } : {}),
+    };
     const added = addEntry(draft);
     if (!added) {
       haptics.error();
       return false;
     }
+    // Each food in a burst is its own decision, so the next starts unheld.
+    setHoldFromHealth(false);
     if (checkIn) {
       // Refused permission still logs the food; the alert says why no check-in will arrive.
       allowCheckInNotification().then(granted => {
@@ -3010,6 +3023,25 @@ export function FoodLogEntrySheet({
               </>
             )}
 
+            {!editing && !onPickFood && healthWriteEnabled && (
+              <TouchableOpacity
+                style={styles.holdRow}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); setHoldFromHealth(h => !h); }}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: holdFromHealth }}
+                accessibilityLabel="Hold from Apple Health. Not eaten yet"
+              >
+                <View style={styles.holdText}>
+                  <Text style={styles.holdLabel}>Hold from Apple Health</Text>
+                  <HelpText style={styles.hint}>
+                    {`Confirm it once you’ve eaten, or it’s sent after ${HELD_RELEASE_HOURS} hours.`}
+                  </HelpText>
+                </View>
+                <Toggle value={holdFromHealth} />
+              </TouchableOpacity>
+            )}
+
             {!editing && !onPickFood && (
               <CheckInFields
                 flat
@@ -3573,6 +3605,19 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
     },
     burstLabel: { flex: 1, color: colors.text, fontSize: font.md },
+    holdRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.smd,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+    },
+    holdText: { flex: 1, gap: spacing.xxs },
+    holdLabel: { color: colors.text, fontSize: font.md },
     scanButton: {
       width: 34,
       height: 34,

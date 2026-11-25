@@ -2905,6 +2905,16 @@ describe('demo seed — people', () => {
     expect(entries.every(e => e.dayKey === yesterdayKey)).toBe(true);
   });
 
+  it('seeds one lunch held from Apple Health, with no samples written', () => {
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    const held = useFoodLogStore.getState().entries.filter(e => e.healthHeldUntil);
+    expect(held).toHaveLength(1);
+    expect(held[0].slot).toBe('lunch');
+    expect(held[0].healthSampleIds).toEqual([]);
+    expect(new Date(held[0].healthHeldUntil as string).getTime()).toBeGreaterThan(Date.now());
+  });
+
   it('seeds a beverage logged by volume against a panel with no density of its own', () => {
     // Sparkling water's panel states its figures per 100g with no portions and
     // no serving weight — an ordinary barcode label for a drink — and is

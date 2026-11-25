@@ -12,6 +12,7 @@ import {
   dbGetFoodLogEntry,
   dbGetFoodLogEntriesForTask,
   dbGetPendingHealthFoodEntries,
+  dbGetHeldFoodEntries,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
 } from '../db/database';
@@ -27,6 +28,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useHealthStore } from './useHealthStore';
 import { useTaskStore } from './useTaskStore';
 import { buildFoodLogEntry } from '../utils/foodLogEntry';
+import { heldEntryDue } from '../utils/foodHold';
 import { cancelCheckInFor } from '../utils/checkInRecording';
 import {
   type UndoableAction,
@@ -110,6 +112,12 @@ export interface FoodLogDraft {
    * holds. See `FoodLogEntry.sourcePanel`; null or absent for anything linked.
    */
   sourcePanel?: FoodNutrition | null;
+  /**
+   * Log it as held: counted in the day's totals, but not written to Health
+   * until it is confirmed or `HELD_RELEASE_HOURS` pass. See
+   * `FoodLogEntry.healthHeldUntil`.
+   */
+  holdFromHealth?: boolean;
   /**
    * The moment being recorded, defaulting to now.
    *
@@ -357,6 +365,11 @@ interface FoodLogStore extends UndoHistoryActions {
    * Callers gate on the app being in front (`runPendingHealthFoodWrites`).
    */
   writePendingHealthEntries: () => Promise<void>;
+  /**
+   * Confirms a held entry as eaten: the hold comes off and the entry is
+   * written to Health. Does nothing for one that is not held.
+   */
+  confirmHeldEntry: (id: string) => void;
   /**
    * Forget an entry.
    *
@@ -677,6 +690,25 @@ function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: Fo
 
 let pendingWriteRunning = false;
 
+/**
+ * Lets go every held entry whose wait is over: the hold comes off and the row
+ * is flagged `healthWritePending`, which is the path an agent's entries already
+ * take to Health. Read from SQLite, not from what is loaded.
+ */
+function releaseDueHeldEntries(now: Date, set: FoodLogSet): void {
+  for (const entry of dbGetHeldFoodEntries()) {
+    if (!heldEntryDue(entry, now)) continue;
+    const released: FoodLogEntry = { ...entry, healthHeldUntil: null, healthWritePending: true };
+    dbUpdateFoodLogEntry(released);
+    const swap = (e: FoodLogEntry) => (e.id === entry.id ? released : e);
+    set(s => ({
+      entries: s.entries.map(swap),
+      windowEntries: s.windowEntries.map(swap),
+      insightEntries: s.insightEntries.map(swap),
+    }));
+  }
+}
+
 /** Drops the pending flag from a row as it stands now, on disk and in memory. */
 function clearHealthWritePending(id: string, set: FoodLogSet): void {
   const fresh = dbGetFoodLogEntry(id);
@@ -923,10 +955,31 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     })();
   },
 
+  confirmHeldEntry(id) {
+    // Read from SQLite, like every other write here: the row on screen can be
+    // stale, and a hold that was already released or deleted must not write.
+    const current = dbGetFoodLogEntry(id);
+    if (!current || !current.healthHeldUntil) return;
+    const released: FoodLogEntry = { ...current, healthHeldUntil: null };
+    dbUpdateFoodLogEntry(released);
+    const swap = (e: FoodLogEntry) => (e.id === id ? released : e);
+    set(s => ({
+      entries: s.entries.map(swap),
+      windowEntries: s.windowEntries.map(swap),
+      insightEntries: s.insightEntries.map(swap),
+    }));
+    // The one write here that a person asked for by tapping Confirm, so it is
+    // the add's own write, made later.
+    void logFoodEntryToHealth(released).then(result => recordHealthWrite(released, result, set));
+  },
+
   async writePendingHealthEntries() {
     if (pendingWriteRunning) return;
     pendingWriteRunning = true;
     try {
+      // First hand every held entry whose wait is over to the pass below, so
+      // the foreground that finds one writes it in the same run.
+      releaseDueHeldEntries(new Date(), set);
       for (const entry of dbGetPendingHealthFoodEntries()) {
         if (pendingWriteAction(entry) === 'drop') {
           clearHealthWritePending(entry.id, set);
@@ -1181,6 +1234,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       itemId: current.itemId,
       productId: current.productId,
       mealPlanEntryId: current.mealPlanEntryId,
+      // A held entry stays held when it is re-dated; the wait starts over.
+      holdFromHealth: !!current.healthHeldUntil,
       at,
     }, { undoable: false });
     // One step for the pair. Undoing puts the original row back under its own
