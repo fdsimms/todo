@@ -129,6 +129,7 @@ import { SETTINGS_SPEC } from './settingsSpec';
 import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence, unlogTargetUnit } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
+import { HELD_RELEASE_HOURS } from '../../src/utils/foodHold';
 import { generateId } from '../../src/utils/id';
 
 const COOKWARE_TYPE = z.enum(['Pots', 'Pans', 'Baking', 'Bowls', 'Mixing bowls', 'Plates', 'Glasses', 'Other']);
@@ -2161,7 +2162,7 @@ function registerWriteTools(
 
   server.tool(
     'log_food',
-    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${ESTIMATE_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Vitamins and minerals are not estimated: a supplement's come from its label (set_supplement_nutrients). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. When the description names more than one thing (a drink, a pretzel and a dessert), also give a breakdown: one line per thing, each with its own amounts, adding up to the total for every nutrient (a breakdown that does not add up is refused). It is kept on the entry so the person can see what each part contributed; skip it for a single item. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
+    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${ESTIMATE_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Vitamins and minerals are not estimated: a supplement's come from its label (set_supplement_nutrients). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. When the description names more than one thing (a drink, a pretzel and a dessert), also give a breakdown: one line per thing, each with its own amounts, adding up to the total for every nutrient (a breakdown that does not add up is refused). It is kept on the entry so the person can see what each part contributed; skip it for a single item. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health. Pass hold: true when the person has not eaten it yet or may not finish it: it counts in their day but is not written to Health until they confirm it on the phone, or ${HELD_RELEASE_HOURS} hours pass. Leave it off for food already eaten.`,
     {
       label: z.string().min(1),
       quantity: z.string().optional().describe('How much, in words: "1 bowl", "2 slices".'),
@@ -2169,6 +2170,7 @@ function registerWriteTools(
       breakdown: breakdownSchema.optional(),
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
       at: z.string().optional().describe('When it was eaten: an ISO date-time, or YYYY-MM-DD. Default now.'),
+      hold: z.boolean().optional().describe('Hold it back from Apple Health until the person confirms it on the phone. For food not eaten yet.'),
       apply: z.boolean().optional(),
     },
     async input => {

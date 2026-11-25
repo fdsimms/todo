@@ -42,7 +42,7 @@ file is reference to read narrowly: `grep -n '^## ' docs/arch/health-data.md` is
 - **Read permission is never reported as granted or refused.** The bridge answers `'requested'`, and the access row says only "Not asked yet" or "Already asked". (§ Read authorization is not observable)
 - **Only a person's tap in Settings raises the permission sheet, and every request asks for read and write together**, while `healthReadEnabled` and `healthWriteEnabled` stay two separate switches. (§ Nothing asks, except a person; § Writing what a task names)
 - **Demo mode never reaches Health**: `healthBridge()` (`src/utils/healthBridge.ts`) refuses, and every writer checks `isDemoModeActive()` again. (§ The rules it inherits unchanged)
-- **A write happens only because a person acted on one item**, never from a sweep, reconciler, sync or backfill. The one delayed path is an agent's row flagged `healthWritePending`, written in the foreground or dropped after `PENDING_WRITE_MAX_AGE_DAYS` (`writePendingHealthEntries`). (§ The rules it inherits unchanged)
+- **A write happens only because a person acted on one item**, never from a sweep, reconciler, sync or backfill. There are two delayed paths. An agent's row flagged `healthWritePending` is written in the foreground or dropped after `PENDING_WRITE_MAX_AGE_DAYS` (`writePendingHealthEntries`). An entry the person logged as held (`healthHeldUntil`) is written when they tap Confirm, or when the phone releases it `HELD_RELEASE_HOURS` after it was logged, which is the one write that no tap prompts: the person chose the hold, and the release hands the row to the `healthWritePending` path above. (§ The rules it inherits unchanged; § Holding an entry)
 - **A nutrient the entry doesn't state is never written; a stated zero is** (alcohol excepted). `writableFoodAmounts` (`src/utils/healthFoodSync.ts`). (§ Absent stays absent)
 - **Taking back what the app wrote is never gated on `healthWriteEnabled`**, and the delete reads its row from the database, not from what is loaded on screen. (§ Two asymmetries worth not smoothing out)
 - **A correction to an entry's `nutrition` or `label` goes through `reviseEntry`** (retract, then rewrite), never `updateEntry`, and `atISO` and `dayKey` are never patched. `src/store/useFoodLogStore.ts`. (§ Correcting an entry)
@@ -819,6 +819,23 @@ documentation JSON first, then the headers.
   write, and the flag is cleared on a write (`recordHealthWrite`). With the
   switch off the entry stays flagged until the age limit, so turning writing on
   the same week sends it and turning it on next month does not.
+
+  **Holding an entry** (`FoodLogEntry.healthHeldUntil`). Logging before eating
+  means logging an amount that may not be the amount eaten, and a sample in
+  Health is costly to be wrong about. A person (the sheet's "Hold from Apple
+  Health" switch) or an agent (`log_food`'s `hold`) can log an entry as held: it
+  counts in the day's totals and has no samples. `logFoodEntryToHealth` returns
+  `held` for it, so no route (add, correction, undo of a delete, the pending
+  pass) can write it. Confirm (`confirmHeldEntry`) takes the hold off and writes
+  it, the add's own write made later. Left alone, `writePendingHealthEntries`
+  releases it once `healthHeldUntil` passes (`releaseDueHeldEntries`: the hold
+  comes off, the row is flagged `healthWritePending`, and the pass writes it in
+  the same run). That release is a timed write nobody tapped, which is why the
+  rule at the top names it: it exists so that an entry nobody confirmed is not
+  silently missing from Health. It runs only in the foreground, like the other
+  pending writes, so a phone left closed holds the entry until it is next opened.
+  An edit to a held entry (`reviseEntry`) stays held, and moving one keeps the
+  hold with a fresh wait.
 
   That exception is what `reviseEntry` does today, and it is worth stating
   rather than leaving to be rediscovered. When a correction changes the label

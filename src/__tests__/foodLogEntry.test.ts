@@ -3,6 +3,7 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 
 import { buildFoodLogEntry } from '../utils/foodLogEntry';
+import { HELD_RELEASE_HOURS, heldEntryDue, heldUntilFor } from '../utils/foodHold';
 import type { FoodLogEntry, FoodNutrition } from '../types';
 
 const panel: FoodNutrition = {
@@ -29,5 +30,29 @@ describe('buildFoodLogEntry', () => {
   it('refuses an entry with no name or no figures', () => {
     expect(buildFoodLogEntry({ label: ' ', quantity: '', grams: null, nutrition: panel }, () => [], () => 'x')).toBeNull();
     expect(buildFoodLogEntry({ label: 'Tea', quantity: '', grams: null, nutrition: { ...panel, amounts: {} } }, () => [], () => 'x')).toBeNull();
+  });
+});
+
+describe('held entries', () => {
+  const now = new Date(2026, 9, 5, 19, 0);
+
+  it('holds an entry only when the draft asks, until HELD_RELEASE_HOURS after it was logged', () => {
+    const held = buildFoodLogEntry({ label: 'Burger', quantity: '1', grams: null, nutrition: panel, holdFromHealth: true }, () => [], () => 'h', now);
+    expect(held?.healthHeldUntil).toBe(heldUntilFor(now));
+    expect(new Date(held?.healthHeldUntil as string).getTime() - now.getTime()).toBe(HELD_RELEASE_HOURS * 3_600_000);
+    const plain = buildFoodLogEntry({ label: 'Burger', quantity: '1', grams: null, nutrition: panel }, () => [], () => 'p', now);
+    expect(plain).not.toHaveProperty('healthHeldUntil');
+  });
+
+  it('is due once its wait is over, never for an entry that is not held', () => {
+    const entry = { healthHeldUntil: heldUntilFor(now) } as FoodLogEntry;
+    expect(heldEntryDue(entry, new Date(now.getTime() + 3_600_000))).toBe(false);
+    expect(heldEntryDue(entry, new Date(now.getTime() + HELD_RELEASE_HOURS * 3_600_000))).toBe(true);
+    expect(heldEntryDue({} as FoodLogEntry, now)).toBe(false);
+    expect(heldEntryDue({ healthHeldUntil: null } as FoodLogEntry, now)).toBe(false);
+  });
+
+  it('releases a hold whose time will not parse rather than holding it forever', () => {
+    expect(heldEntryDue({ healthHeldUntil: 'garbage' } as FoodLogEntry, now)).toBe(true);
   });
 });

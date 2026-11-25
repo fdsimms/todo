@@ -637,6 +637,8 @@ export interface FoodInput {
   breakdown?: FoodBreakdownInput[];
   slot?: MealSlot | null;
   at?: Date;
+  /** Hold it back from Apple Health until the person confirms it on the phone. See `FoodLogEntry.healthHeldUntil`. */
+  hold?: boolean;
 }
 
 /** One component of an estimated meal, as an agent states it. Read by `readNutritionEstimate`. */
@@ -5698,14 +5700,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const panel = estimate.estimateToPanel(read);
       if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
       const entry = builder.buildFoodLogEntry(
-        { label: read.label, quantity: input.quantity ?? '', grams: null, nutrition: panel, slot: input.slot ?? null, at: input.at },
+        { label: read.label, quantity: input.quantity ?? '', grams: null, nutrition: panel, slot: input.slot ?? null, at: input.at, ...(input.hold ? { holdFromHealth: true } : {}) },
         dayKey => db.dbGetFoodLogEntries(dayKey, dayKey),
         generateId,
       );
       if (!entry) throw new Error('That entry could not be logged.');
       // The server has no HealthKit. Flagged so the phone writes it on its next
       // foreground (FoodLogEntry.healthWritePending).
-      const flagged = { ...entry, healthWritePending: true };
+      // A held entry is not flagged: the phone writes it once the person
+      // confirms it, or the hold runs out (FoodLogEntry.healthHeldUntil).
+      const flagged = entry.healthHeldUntil ? entry : { ...entry, healthWritePending: true };
       db.dbInsertFoodLogEntry(flagged);
       return flagged;
     },
