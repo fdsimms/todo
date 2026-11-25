@@ -405,7 +405,8 @@ export function frankiRowMinutes(
     return minutes ? `${minutes} min studied today` : null;
   }
   if (kind === 'read') {
-    const minutes = minutesReadToday(snapshot.studyDays, now);
+    const language = frankiReadTaskLanguage(task);
+    const minutes = language ? minutesReadToday(snapshot.studyDays, now, language) : null;
     return minutes ? `${minutes} min read today` : null;
   }
   return null;

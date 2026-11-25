@@ -17,6 +17,11 @@ export interface FrankiStudyDay {
   cards: number;
   answerSeconds: number;
   readingSeconds: number;
+  /**
+   * `readingSeconds` split by language code ("th", "fr"). Null from a server
+   * that doesn't send the split, which is not the same as no reading.
+   */
+  readingSecondsByLanguage: Record<string, number> | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,10 +55,15 @@ export function minutesStudiedToday(
   return day ? Math.floor(studySeconds(day, countReading) / 60) : null;
 }
 
-/** Whole minutes read in Read & Listen today, or null when the read doesn't cover today. */
-export function minutesReadToday(days: readonly FrankiStudyDay[], now: Date): number | null {
+/**
+ * Whole minutes read in Read & Listen today in one language, or null when the
+ * read doesn't cover today or the server doesn't split reading by language
+ * (the total would count the other languages' time).
+ */
+export function minutesReadToday(days: readonly FrankiStudyDay[], now: Date, language: string): number | null {
   const day = studyDayAt(days, now);
-  return day ? Math.floor(day.readingSeconds / 60) : null;
+  if (!day?.readingSecondsByLanguage) return null;
+  return Math.floor((day.readingSecondsByLanguage[language] ?? 0) / 60);
 }
 
 /** "40 min", "2 h", "2 h 43 min". */

@@ -219,6 +219,7 @@ describe('the once-a-day cards task', () => {
 describe('the study-time goal', () => {
   const today = (answerMinutes: number, readingMinutes = 0) => [{
     startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 30, answerSeconds: answerMinutes * 60, readingSeconds: readingMinutes * 60,
+    readingSecondsByLanguage: null,
   }];
 
   it('is wanted once a day while a goal is set and today’s minutes are under it', () => {
@@ -253,12 +254,21 @@ describe('the study-time goal', () => {
 });
 
 describe('the minutes line on a row', () => {
-  const snap = snapshot({ studyDays: [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 30, answerSeconds: 720, readingSeconds: 360 }] });
+  const snap = snapshot({ studyDays: [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 30, answerSeconds: 720, readingSeconds: 360, readingSecondsByLanguage: { pl: 240, th: 120 } }] });
 
   it('says the time studied on the cards tasks and the time read on Read & Listen', () => {
     expect(frankiRowMinutes(row('day:2026-10-18'), snap, NOW, true)).toBe('18 min studied today');
     expect(frankiRowMinutes(row('reviews:2026-10-18T09'), snap, NOW, false)).toBe('12 min studied today');
-    expect(frankiRowMinutes(row('read:2026-10-18:pl'), snap, NOW, true)).toBe('6 min read today');
+    expect(frankiRowMinutes(row('read:2026-10-18:pl'), snap, NOW, true)).toBe('4 min read today');
+  });
+
+  it('counts a Read & Listen task’s own language only', () => {
+    expect(frankiRowMinutes(row('read:2026-10-18:th'), snap, NOW, true)).toBe('2 min read today');
+    expect(frankiRowMinutes(row('read:2026-10-18:fr'), snap, NOW, true)).toBeNull();
+    // An old task with no language, or a server with no split, has no honest number to show.
+    expect(frankiRowMinutes(row('read:2026-10-18'), snap, NOW, true)).toBeNull();
+    const unsplit = snapshot({ studyDays: [{ ...snap.studyDays[0], readingSecondsByLanguage: null }] });
+    expect(frankiRowMinutes(row('read:2026-10-18:pl'), unsplit, NOW, true)).toBeNull();
   });
 
   it('says nothing on the goal task, before anything is studied, or without a read of today', () => {

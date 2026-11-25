@@ -32,7 +32,7 @@ const statusBody = {
     { name: 'No code', waiting: 1 },
   ],
   study_days: [
-    { starts_at: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answer_seconds: 600, reading_seconds: 120 },
+    { starts_at: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answer_seconds: 600, reading_seconds: 120, reading_seconds_by_language: { th: 60, pl: 60 } },
     { starts_at: new Date(2026, 9, 17, 4).toISOString(), cards: 12, answer_seconds: 300, reading_seconds: 0 },
   ],
   franki: { due: 30, new: 8, reported_at: later(9) },
@@ -53,8 +53,8 @@ describe('frankiSnapshotFrom', () => {
       ],
       frankiNew: 8,
       studyDays: [
-        { startsAt: new Date(2026, 9, 17, 4).toISOString(), cards: 12, answerSeconds: 300, readingSeconds: 0 },
-        { startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 120 },
+        { startsAt: new Date(2026, 9, 17, 4).toISOString(), cards: 12, answerSeconds: 300, readingSeconds: 0, readingSecondsByLanguage: null },
+        { startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 120, readingSecondsByLanguage: { th: 60, pl: 60 } },
       ],
       crams: null,
     });
