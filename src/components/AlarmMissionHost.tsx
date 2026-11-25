@@ -4,6 +4,7 @@ import {
   completeNativeMission,
   deferNativeMission,
   pendingNativeMissions,
+  type NativeMission,
   type PendingNativeMission,
 } from 'todo-alarmkit-bridge';
 import { useTaskStore } from '../store/useTaskStore';
@@ -23,6 +24,7 @@ import {
   MISSION_COUNTING_GRACE_SECONDS,
   MISSION_HEARTBEAT_MS,
   MISSION_REARM_SECONDS,
+  missionEngaged,
   nativeHoldForOwed,
   owedMissions,
   type OwedMission,
@@ -44,10 +46,16 @@ const POLL_MS = 5_000;
  *   (another device, the bulk bar, a miss) is completed natively, so it stops
  *   ringing.
  * - **Opens the first owed mission** over whatever is up, and keeps its next
- *   ring a minute out while it is open (renewed on a heartbeat, so the ring
- *   still comes back if the app dies mid-set). Cancel puts the next ring
+ *   ring a minute out while the person is at it, silencing one already
+ *   sounding (opening, every rep, and a heartbeat that lapses once no rep has
+ *   come for `MISSION_IDLE_LIMIT_MS`, so the ring still comes back if they
+ *   walk away or the app dies mid-set). Cancel puts the next ring
  *   `MISSION_REARM_SECONDS` out and opens it again then; only done or the held
  *   Give up ends it.
+ * - **Sends every native call through one queue**, so a heartbeat or rep push
+ *   can't land after the `completeNativeMission` for the same mission and
+ *   write it back as pending, which reopened the counter and rang the alarm
+ *   again after it was done.
  *
  * Nothing runs in demo mode: the pending list is the real device's, and the
  * demo's tasks and alarms are not the ones it names.
@@ -67,6 +75,12 @@ export function AlarmMissionHost() {
   // Missions just done or given up, until the native pending list has been
   // read back without them (see `ending` in owedMissions).
   const ending = useRef(new Set<string>());
+  // Native calls run one at a time, in the order made (see the doc comment).
+  const nativeQueue = useRef<Promise<unknown>>(Promise.resolve());
+  // The latest pending read; one that finishes after a newer one started is dropped.
+  const refreshSeq = useRef(0);
+  // When the person last did something toward the open mission (see `missionEngaged`).
+  const progressAt = useRef(0);
   const [promptTaskId, setPromptTaskId] = useState<string | null>(null);
   // The saved focus session to offer, once the alarm that holds it is done with.
   const [offerSessionId, setOfferSessionId] = useState<string | null>(null);
@@ -74,12 +88,29 @@ export function AlarmMissionHost() {
 
   const ready = tasksReady && alarmsReady && !demo;
 
+  const native = useCallback(<T,>(job: () => Promise<T>): Promise<T> => {
+    const next = nativeQueue.current.then(job, job);
+    nativeQueue.current = next.catch(() => undefined);
+    return next;
+  }, []);
+
+  // Pushes a mission's next ring back. Nothing is sent for one that has just
+  // been done or given up.
+  const defer = useCallback((hold: NativeMission, seconds: number, silenceRing: boolean) => (
+    native(() => (ending.current.has(hold.key) ? Promise.resolve(false) : deferNativeMission(hold, seconds, silenceRing)))
+  ), [native]);
+
   const refresh = useCallback(async () => {
     if (!ready) return;
     // A one-night alarm time whose day is over goes back to the alarm's own
     // (morningAlarm.ts), so the weekly schedule is whole again.
     useAlarmStore.getState().clearSpentOverrides();
-    setPending(await pendingNativeMissions());
+    const seq = ++refreshSeq.current;
+    const read = await pendingNativeMissions();
+    // A read started before a mission was completed can finish after the
+    // read that no longer names it, and would owe it again.
+    if (seq !== refreshSeq.current) return;
+    setPending(read);
     setTick(t => t + 1);
   }, [ready]);
 
@@ -116,7 +147,7 @@ export function AlarmMissionHost() {
   const staleKey = stale.join('|');
   useEffect(() => {
     if (stale.length === 0) return;
-    void Promise.all(stale.map(key => completeNativeMission(key))).then(refresh);
+    void Promise.all(stale.map(key => native(() => completeNativeMission(key)))).then(refresh);
   }, [staleKey]);
 
   useEffect(() => {
@@ -150,16 +181,30 @@ export function AlarmMissionHost() {
   }, [activeKey, current, ready]);
   const shown = useSheetSubject(current);
 
-  // While the sheet is up, the next ring stays a minute away.
+  // While the person is at the mission, the next ring stays a minute away, and
+  // one already sounding is stopped. The renewal lapses once no rep has come
+  // for `MISSION_IDLE_LIMIT_MS`, and the ring comes back with the sheet up.
   const currentKey = current?.key ?? null;
   useEffect(() => {
     if (!current) return;
-    const native = nativeHoldForOwed(current);
-    if (!native) return;
-    void deferNativeMission(native, MISSION_COUNTING_GRACE_SECONDS);
-    const timer = setInterval(() => void deferNativeMission(native, MISSION_COUNTING_GRACE_SECONDS), MISSION_HEARTBEAT_MS);
+    const hold = nativeHoldForOwed(current);
+    if (!hold) return;
+    progressAt.current = Date.now();
+    const renew = () => {
+      if (missionEngaged(progressAt.current, Date.now())) void defer(hold, MISSION_COUNTING_GRACE_SECONDS, true);
+    };
+    renew();
+    const timer = setInterval(renew, MISSION_HEARTBEAT_MS);
     return () => clearInterval(timer);
   }, [currentKey]);
+
+  // A rep: the person is at it, so the ring stays silenced even if it came
+  // back while they were getting into position.
+  const progress = (o: OwedMission) => {
+    progressAt.current = Date.now();
+    const hold = nativeHoldForOwed(o);
+    if (hold) void defer(hold, MISSION_COUNTING_GRACE_SECONDS, true);
+  };
 
   const finish = (o: OwedMission, gaveUp: boolean) => {
     useMissionStore.getState().hide();
@@ -169,7 +214,7 @@ export function AlarmMissionHost() {
     // counter, whose heartbeat re-arms the alarm.
     ending.current.add(o.key);
     setTick(t => t + 1);
-    void completeNativeMission(o.key)
+    void native(() => completeNativeMission(o.key))
       .then(refresh)
       .finally(() => {
         ending.current.delete(o.key);
@@ -201,8 +246,8 @@ export function AlarmMissionHost() {
     if (useMissionStore.getState().activeKey !== o.key) return;
     useMissionStore.getState().hide();
     quietUntil.current.set(o.key, Date.now() + MISSION_REARM_SECONDS * 1000);
-    const native = nativeHoldForOwed(o);
-    if (native) void deferNativeMission(native, MISSION_REARM_SECONDS);
+    const hold = nativeHoldForOwed(o);
+    if (hold) void defer(hold, MISSION_REARM_SECONDS, false);
   };
 
   const offered = offerSessionId ? savedSessions.find(s => s.id === offerSessionId) ?? null : null;
@@ -221,6 +266,7 @@ export function AlarmMissionHost() {
           subjectKey={shown.key}
           doneNote={shown.source === 'task' ? `${shown.title} is checked off.` : 'The alarm is off.'}
           onDone={() => finish(shown, false)}
+          onProgress={() => progress(shown)}
           onClose={() => cancel(shown)}
           onGiveUp={() => finish(shown, true)}
         />

@@ -52,6 +52,10 @@
  * held up toward the face it can be moved smoothly enough to stay under the
  * rotation and acceleration limits, but not while lying face up on the floor.
  *
+ * Motion before the descent begins taints nothing, since no rep is under way:
+ * it only starts the next rep's top over (setting the phone down must not cost
+ * the first rep).
+ *
  * With no motion sensor there are no samples, so nothing is ever flagged and
  * the count works as it did: the check removes a cheat, and shouldn't be able
  * to take the whole mission away on a device that can't run it.
@@ -379,7 +383,20 @@ export function feedMotion(state: DepthCounterState, sample: MotionSample): Dept
     || (sample.flatness !== undefined && sample.flatness < MOTION_MIN_FLATNESS);
   if (!moving) return state.motionSince === null ? state : { ...state, motionSince: null };
   const motionSince = state.motionSince ?? sample.at;
-  if (sample.at - motionSince >= MOTION_MIN_MS) return { ...state, motionSince, movedAt: sample.at };
+  if (sample.at - motionSince >= MOTION_MIN_MS) {
+    // Moved before the descent began (carrying the phone to the floor, setting
+    // it down): no rep is under way to spoil, but the top the next one is
+    // measured from was taken while the phone moved, so it starts over from
+    // here. Left alone, the first rep after setting the phone down was judged
+    // moved, because the remembered top predated the settling.
+    if (state.phase === 'up') {
+      return {
+        ...state, motionSince, movedAt: null,
+        top: state.last ?? state.top, low: state.last ?? state.low, repStartAt: sample.at,
+      };
+    }
+    return { ...state, motionSince, movedAt: sample.at };
+  }
   return motionSince === state.motionSince ? state : { ...state, motionSince };
 }
 

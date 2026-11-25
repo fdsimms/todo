@@ -11,7 +11,7 @@ interface TodoAlarmKitNativeModule {
     id: string, hour: number, minute: number, weekdays: number[], title: string, missionJson: string | null, soundName: string | null,
   ): Promise<boolean>;
   pendingMissions?(): Promise<string>;
-  deferMission?(missionJson: string, seconds: number): Promise<boolean>;
+  deferMission?(missionJson: string, seconds: number, silenceRing: boolean): Promise<boolean>;
   completeMission?(key: string): Promise<boolean>;
   installSound?(sourceUri: string, fileName: string, maxSeconds: number): Promise<boolean>;
   hasSound?(fileName: string): boolean;
@@ -131,12 +131,17 @@ export async function pendingNativeMissions(): Promise<PendingNativeMission[]> {
   }
 }
 
-/** Marks the mission pending and puts its next ring `seconds` from now, replacing any waiting one. */
-export async function deferNativeMission(mission: NativeMission, seconds: number): Promise<boolean> {
+/**
+ * Marks the mission pending and puts its next ring `seconds` from now,
+ * replacing any waiting one. A waiting ring that is already sounding is left
+ * to sound, unless `silenceRing`, which is for a person who is doing the
+ * mission right now (the counter opening, a rep).
+ */
+export async function deferNativeMission(mission: NativeMission, seconds: number, silenceRing = false): Promise<boolean> {
   const defer = nativeModule?.deferMission;
   if (!nativeModule || typeof defer !== 'function') return false;
   try {
-    return (await defer.call(nativeModule, JSON.stringify(mission), seconds)) === true;
+    return (await defer.call(nativeModule, JSON.stringify(mission), seconds, silenceRing)) === true;
   } catch {
     return false;
   }

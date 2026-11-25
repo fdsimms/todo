@@ -352,6 +352,24 @@ describe('the phone moving', () => {
     expect(s.count).toBe(1);
   });
 
+  it('counts the first rep after the phone was carried and set down', () => {
+    // The phone is held up at arm's length (far, so a high top), carried down
+    // and set on the floor under a face resting nearer, then the rep begins.
+    const carry = across(0, 400, shaking);
+    const readings = [0.9, 0.9, 0.7, 0.55, 0.55, 0.55, 0.55, 0.55, 0.4, 0.25, 0.4, 0.55];
+    const s = runWithMotion(readings, carry);
+    expect(s.count).toBe(1);
+    expect(s.lastMiss).toBeNull();
+  });
+
+  it('still refuses a rep made by moving the phone toward a resting face', () => {
+    const s = runWithMotion(
+      [0.55, 0.55, 0.55, 0.4, 0.25, 0.4, 0.55],
+      across(250, 800, shaking),
+    );
+    expect(s.count).toBe(0);
+  });
+
   it('ignores motion just after a counted rep, which is the rep’s own haptic', () => {
     const counted = runWithMotion(rep(0.55, 0.25), []);
     const at = 400;

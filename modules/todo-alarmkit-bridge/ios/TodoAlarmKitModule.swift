@@ -84,6 +84,7 @@ public class TodoAlarmKitModule: Module {
       guard #available(iOS 26, *) else { return false }
       guard let uuid = UUID(uuidString: id) else { return false }
       let configuration = AlarmBuilder.configuration(
+        id: uuid,
         schedule: .fixed(Date(timeIntervalSince1970: epochSeconds)),
         title: title,
         mission: MissionPayload.decode(missionJson)?.withSound(soundName),
@@ -101,6 +102,7 @@ public class TodoAlarmKitModule: Module {
       let days = weekdays.compactMap(localeWeekday)
       guard !days.isEmpty else { return false }
       let configuration = AlarmBuilder.configuration(
+        id: uuid,
         schedule: .relative(.init(time: .init(hour: hour, minute: minute), repeats: .weekly(days))),
         title: title,
         mission: MissionPayload.decode(missionJson)?.withSound(soundName),
@@ -117,11 +119,12 @@ public class TodoAlarmKitModule: Module {
 
     // Marks a mission pending and puts its next ring `seconds` out: 15 when
     // the counter closes unfinished, a minute (renewed) while it is open. A
-    // ring already sounding is left alone (`sparingRing`).
-    AsyncFunction("deferMission") { (missionJson: String, seconds: Double) -> Bool in
+    // ring already sounding is left alone (`sparingRing`), unless the person
+    // is doing the mission right now (`silenceRing`): then it is stopped.
+    AsyncFunction("deferMission") { (missionJson: String, seconds: Double, silenceRing: Bool) -> Bool in
       guard #available(iOS 26, *) else { return false }
       guard let mission = MissionPayload.decode(missionJson) else { return false }
-      await MissionLoop.rearm(mission, after: seconds, sparingRing: true)
+      await MissionLoop.rearm(mission, after: seconds, sparingRing: !silenceRing)
       return true
     }
 

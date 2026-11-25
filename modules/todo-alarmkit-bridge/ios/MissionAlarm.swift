@@ -123,7 +123,11 @@ enum AlarmBuilder {
 
   /// Every alarm the app schedules, with or without a mission. A mission adds
   /// the button that opens it and the intents that keep the alarm coming back.
+  /// `id` is the alarm's own id, which its intents stop: whether iOS ends the
+  /// ringing alarm itself when its mission button is pressed is untried, and
+  /// stopping an alarm that has already stopped does nothing.
   static func configuration(
+    id: UUID,
     schedule: Alarm.Schedule,
     title: String,
     mission: MissionPayload?,
@@ -151,10 +155,10 @@ enum AlarmBuilder {
     // Stop comes back after the short wait; the mission button gives a minute,
     // which the app keeps pushing back while the counter is open.
     let stopIntent: (any LiveActivityIntent)? = mission.map {
-      MissionAlarmIntent(mission: $0, rearmSeconds: MissionLoop.stopRearmSeconds) as any LiveActivityIntent
+      MissionAlarmIntent(mission: $0, rearmSeconds: MissionLoop.stopRearmSeconds, alarmID: id) as any LiveActivityIntent
     }
     let secondaryIntent: (any LiveActivityIntent)? = mission.map {
-      MissionAlarmIntent(mission: $0, rearmSeconds: MissionLoop.openRearmSeconds) as any LiveActivityIntent
+      MissionAlarmIntent(mission: $0, rearmSeconds: MissionLoop.openRearmSeconds, alarmID: id) as any LiveActivityIntent
     }
     // A name the system can't find or play rings with its default sound.
     let alertSound: AlertConfiguration.AlertSound = sound.map { .named($0) } ?? .default
@@ -199,7 +203,9 @@ enum MissionLoop {
   /// cancels it, and an app that came back to the front mid-ring (a timer
   /// catching up, the counter reopening as the ring came due) cut every ring
   /// after the first off within a second or so. Stop and the mission button
-  /// replace it, since pressing one is what ends that ring.
+  /// replace it, since pressing one is what ends that ring. The counter's own
+  /// pushes while the person is doing the mission (opening, a rep) are not
+  /// sparing: a sounding ring is replaced, which stops it.
   ///
   /// The ring is scheduled first and the store is changed after, under the
   /// lock `complete` takes, so the two can't interleave. A mission ended
@@ -219,6 +225,7 @@ enum MissionLoop {
     let mission = incoming.sound == nil ? incoming.withSound(knownSound) : incoming
     let id = UUID()
     let configuration = AlarmBuilder.configuration(
+      id: id,
       schedule: .fixed(Date().addingTimeInterval(seconds)),
       title: mission.title,
       mission: mission,
@@ -295,10 +302,14 @@ struct MissionAlarmIntent: LiveActivityIntent {
   @Parameter(title: "Button") var buttonLabel: String
   @Parameter(title: "Rearm Seconds") var rearmSeconds: Int
   @Parameter(title: "Sound") var soundName: String?
+  // The alarm that is ringing, so its own button can stop it. Optional: a
+  // weekly alarm scheduled by an older build carries intents without it.
+  @Parameter(title: "Alarm") var alarmID: String?
 
   init() {}
 
-  init(mission: MissionPayload, rearmSeconds: Int) {
+  init(mission: MissionPayload, rearmSeconds: Int, alarmID: UUID) {
+    self.alarmID = alarmID.uuidString
     self.key = mission.key
     self.kind = mission.kind
     self.count = mission.count
@@ -310,6 +321,10 @@ struct MissionAlarmIntent: LiveActivityIntent {
 
   func perform() async throws -> some IntentResult {
     let mission = MissionPayload(key: key, kind: kind, count: count, title: alarmTitle, buttonLabel: buttonLabel, sound: soundName)
+    // The ring that was just answered is ended here, not left to iOS: a
+    // mission button that didn't stop it left the music sounding under the
+    // counter. Nothing to stop once it already has.
+    if let raw = alarmID, let id = UUID(uuidString: raw) { try? AlarmManager.shared.stop(id: id) }
     await MissionLoop.rearm(mission, after: Double(rearmSeconds))
     return .result()
   }
