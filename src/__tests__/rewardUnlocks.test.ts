@@ -1,5 +1,6 @@
 import type { CoinEntry, RewardUnlock, Task } from '../types';
 import {
+  lockedProgressLine,
   addPlayTime,
   cleanPlayMinutes,
   cleanIgnoreAfter,
@@ -361,5 +362,16 @@ describe('deleting a required task', () => {
 
   it('allows a task no unlock needs', () => {
     expect(lockedUnlockNeeding(task('other'), [w1, w2], [unlock({ requiredTaskIds: ['w1'] })], lockedWorld)).toBeNull();
+  });
+});
+
+describe('lockedProgressLine', () => {
+  it('names the share done and the coins still to earn', () => {
+    expect(lockedProgressLine(0.42, 5)).toBe('42% of today’s work done · about 5 more coins');
+    expect(lockedProgressLine(0.59, 1)).toBe('59% of today’s work done · about 1 more coin');
+  });
+
+  it('leaves the coins out when only a required task is holding it shut', () => {
+    expect(lockedProgressLine(0.8, 0)).toBe('80% of today’s work done');
   });
 });

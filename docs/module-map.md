@@ -546,7 +546,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/reviewQueue.ts` — ReviewQueue, ReviewWaveState, REVIEW_WAVE_INITIAL_STATE, parseReviewWaveState, hourKeyOf, reviewQueueAt, reviewQueueDueAt, reviewHoldFields, reviewHeldUntil, ReviewWaveAction, +2 more
 - `src/utils/rewardGuard.ts` — GuardedSlip, canGuard, isGuardableHabit, guardingReward, planGuardedSlip, guardChargeSeed, claimedSince, guardedSlipPrompt, describeGuard
 - `src/utils/rewardSavings.ts` — GoalPlan, MIN_SAVINGS_SHARE, MAX_SAVINGS_SHARE, DEFAULT_SAVINGS_SHARE, GOAL_DATE_PRESETS, cleanSavingsShare, parseGoalPlan, serializeGoalPlan, activeGoalPlan, splitsEntry, +11 more
-- `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, cleanIgnoreAfter, cleanIgnoreList, +30 more
+- `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, cleanIgnoreAfter, cleanIgnoreList, +31 more
 - `src/utils/rewardWishList.ts` — WISH_UNFILED, wishItemMatches, WishGroup, groupWishItems, wishListView
 - `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +72 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
@@ -728,7 +728,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ML_PER_TBSP, ConvertedQuantity, MeasuredQuantity, measureQuantity, measureParsedQuantity, shelfUnit, unitBase, +7 more
 - `src/utils/unlockBlockText.ts` — UnlockBlock, unlockBlockSubtitle
 - `src/utils/unlockShield.ts` — lockedUnlockBlocks
-- `src/utils/unlockWorld.ts` — unlockWorldNow, lockedUnlockBlocksNow, openUnlockLinkedTo
+- `src/utils/unlockWorld.ts` — unlockWorldNow, lockedUnlockBlocksNow, LockedUnlockProgress, lockedUnlockProgressNow, openUnlockLinkedTo
 - `src/utils/useReduceMotion.ts` — reduceMotionEnabled, useReduceMotion
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — FOREGROUND_SYNC_INTERVAL_MS, LOCAL_CHANGE_PROBE_MS, useSyncOnForeground
@@ -921,6 +921,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useLimitImpact.ts` — useLimitImpact
 - `src/hooks/useLingering.ts` — useLingering
 - `src/hooks/useListScrollToTop.ts` — useListScrollToTop
+- `src/hooks/useLockedUnlockProgress.ts` — useLockedUnlockProgress
 - `src/hooks/useLogicalDayKey.ts` — useLogicalDayKey
 - `src/hooks/useMacWindow.ts` — useMacWindow
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
