@@ -84,6 +84,7 @@ public class TodoAlarmKitModule: Module {
       guard #available(iOS 26, *) else { return false }
       guard let uuid = UUID(uuidString: id) else { return false }
       let configuration = AlarmBuilder.configuration(
+        id: uuid,
         schedule: .fixed(Date(timeIntervalSince1970: epochSeconds)),
         title: title,
         mission: MissionPayload.decode(missionJson)?.withSound(soundName),
@@ -101,6 +102,7 @@ public class TodoAlarmKitModule: Module {
       let days = weekdays.compactMap(localeWeekday)
       guard !days.isEmpty else { return false }
       let configuration = AlarmBuilder.configuration(
+        id: uuid,
         schedule: .relative(.init(time: .init(hour: hour, minute: minute), repeats: .weekly(days))),
         title: title,
         mission: MissionPayload.decode(missionJson)?.withSound(soundName),
