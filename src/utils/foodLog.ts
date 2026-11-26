@@ -598,7 +598,9 @@ export function composeFoodAmount(numberText: string, unit: FoodUnitOption | und
  * correctly untouched, it just can't be shown pre-filled in the split fields.
  */
 export function parseFoodAmount(raw: string, options: FoodUnitOption[]): { number: string; unitKey: string } | null {
-  const match = /^(\d+(?:\.\d+)?)\s*(.*)$/.exec(raw.trim());
+  // ".5 serving" is as valid as "0.5 serving": `scalePanelToAmount` accepts it,
+  // so reopening a copy of it has to as well, not fall back to "Other".
+  const match = /^(\d+(?:\.\d+)?|\.\d+)\s*(.*)$/.exec(raw.trim());
   if (!match) return null;
   const [, numberText, unitText] = match;
   const word = unitText.trim().toLowerCase();
