@@ -107,13 +107,20 @@ interface Props {
    * titles at one height, so a screen using this has its own.
    */
   compact?: boolean;
+  /**
+   * The actions go in their own row under the title block instead of beside it,
+   * so the title gets the full width. For a title the user names (a shopping
+   * list), where five 34pt buttons beside it left about 140pt and "Thanksgiving"
+   * read "Thanksg…". Right-aligned, so the buttons stay where they were.
+   */
+  actionsBelow?: boolean;
 }
 
 /**
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, gridLayout = false, compact = false }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, gridLayout = false, compact = false, actionsBelow = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const brandFace = useBrandFace('heavy');
@@ -200,8 +207,8 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
   }
 
   return (
-    <View style={styles.header}>
-      <View style={styles.titleBlock}>
+    <View style={[styles.header, actionsBelow && styles.headerStacked]}>
+      <View style={[styles.titleBlock, actionsBelow && styles.titleBlockStacked]}>
         {overline != null ? (
           <Text style={styles.overline} numberOfLines={1}>{overline}</Text>
         ) : (
@@ -257,7 +264,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
           <Text style={styles.subtitle} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"> </Text>
         )}
       </View>
-      {actionButtons}
+      {actionsBelow ? <View style={styles.actionsBelow}>{actionButtons}</View> : actionButtons}
       {topRight != null && <View style={styles.topRight}>{topRight}</View>}
     </View>
   );
@@ -283,6 +290,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   gridMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.xsm },
   gridTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, flexShrink: 1, marginRight: spacing.md },
   titleBlock: { flexShrink: 1, marginRight: spacing.md },
+  headerStacked: { flexDirection: 'column', alignItems: 'stretch' },
+  titleBlockStacked: { marginRight: 0 },
+  actionsBelow: { alignSelf: 'flex-end', marginTop: spacing.sm },
   topRight: { position: 'absolute', top: spacing.xs, right: spacing.md },
   overline: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
