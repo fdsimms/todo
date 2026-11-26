@@ -1791,6 +1791,9 @@ export function GroceryScreen() {
         // place on screen that answers "which list am I adding to".
         title={activeListName}
         onTitlePress={() => { haptics.tap(); setListSheetOpen(true); }}
+        // List names are the user's own ("Thanksgiving"), and five buttons
+        // beside the title left it about 140pt.
+        actionsBelow
         titleAccessibilityLabel={`${activeListName}. Switch shopping list`}
         // The mode label goes in the overline rather than the subtitle, and
         // that placement is load-bearing rather than taste: the subtitle is one
