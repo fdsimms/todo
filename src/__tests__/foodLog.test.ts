@@ -1529,6 +1529,11 @@ describe('composeFoodAmount / parseFoodAmount', () => {
     expect(parseFoodAmount('250 ml', options)).toEqual({ number: '250', unitKey: 'ml' });
   });
 
+  it('reads a number typed without its leading zero, as a duplicated ".5 serving" is saved', () => {
+    expect(parseFoodAmount('.5 cup', options)).toEqual({ number: '.5', unitKey: 'cup' });
+    expect(parseFoodAmount('.5', options)).toBeNull();
+  });
+
   it('refuses an amount shaped nothing like what these sheets write', () => {
     expect(parseFoodAmount('a splash', options)).toBeNull();
     expect(parseFoodAmount('1 lemon', options)).toBeNull();
