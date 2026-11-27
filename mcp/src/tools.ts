@@ -518,6 +518,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           // setting and the count only its result: say which one the person set.
           ...(task.quotaIntervalMinutes != null ? { everyMinutes: task.quotaIntervalMinutes } : {}),
           ...(task.quotaReminders ? { remind: true as const } : {}),
+          ...(task.quotaReminders && task.quotaCountdownSeconds ? { countdownSeconds: task.quotaCountdownSeconds } : {}),
           ...(task.quotaReminders && (task.quotaPlaceIds?.length ?? 0) > 0 ? { onlyAtPlaces: replica.savedPlaceNames(task.quotaPlaceIds!) } : {}),
           ...(task.followWaterTarget ? { followsWaterTarget: true as const } : {}),
           ...(task.quotaRampStep

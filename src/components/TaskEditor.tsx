@@ -170,6 +170,7 @@ import { EditorGroup, EditorRowFilterContext } from './EditorGroup';
 import { listItemFinder, listItemRowShown } from '../utils/listMode';
 import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
+import { LOOK_AWAY_MAX_SECONDS, LOOK_AWAY_MIN_SECONDS } from '../utils/lookAway';
 import { MAX_ROTATION_PER_WEEK, editableRotationItems, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek, withWorkout } from '../utils/rotation';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
@@ -360,6 +361,7 @@ export interface TaskDraft {
   allowOvershoot?: boolean;
   coinsPerTap?: boolean;
   quotaIntervalMinutes?: number | null;
+  quotaCountdownSeconds?: number | null;
   quotaReminders?: boolean;
   quotaPlaceIds?: string[];
   quotaAlwaysVisible?: boolean;
@@ -787,6 +789,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [coinsPerTap, setCoinsPerTap] = useState(false);
   const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
   const [quotaReminders, setQuotaReminders] = useState(false);
+  const [quotaCountdownSeconds, setQuotaCountdownSeconds] = useState<number | null>(null);
   const [quotaPlaceIds, setQuotaPlaceIds] = useState<string[]>([]);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
   const [quotaRestAfterLog, setQuotaRestAfterLog] = useState(false);
@@ -1367,6 +1370,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setCoinsPerTap(task.coinsPerTap ?? false);
       setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
       setQuotaReminders(task.quotaReminders ?? false);
+      setQuotaCountdownSeconds(task.quotaCountdownSeconds ?? null);
       setQuotaPlaceIds(task.quotaPlaceIds ?? []);
       setQuotaAlwaysVisible(task.quotaAlwaysVisible ?? false);
       setQuotaRestAfterLog(task.quotaRestAfterLog ?? false);
@@ -1469,7 +1473,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setAttachments([]); setReminderPlaceId(null); setReminderPlaceOn('arrive'); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setAlarmSound(null); setRingtonesOpen(false); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaCountdownSeconds(initialDraft?.quotaCountdownSeconds ?? null); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setAlarmSound(null); setRingtonesOpen(false); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -2255,6 +2259,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // behind they'd come back to life the next time a target was added.
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
+      quotaCountdownSeconds: targetCount !== null && quotaReminders ? quotaCountdownSeconds : null,
       quotaPlaceIds: targetCount !== null && quotaReminders ? quotaPlaceIds : [],
       quotaAlwaysVisible: targetCount !== null || rotationEnabled ? quotaAlwaysVisible : false,
       // Only the plain weekly target can rest for the day (a rotation has no
@@ -3245,6 +3250,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       coinsPerTap: targetCount !== null ? coinsPerTap : false,
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
+      quotaCountdownSeconds: targetCount !== null && quotaReminders ? quotaCountdownSeconds : null,
       quotaPlaceIds: targetCount !== null && quotaReminders ? quotaPlaceIds : [],
       quotaAlwaysVisible: targetCount !== null || rotationEnabled ? quotaAlwaysVisible : false,
       // Only the plain weekly target can rest for the day (a rotation has no
@@ -5223,6 +5229,25 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                         </View>
                         <Toggle value={quotaReminders} onColor={colors.orange} />
                       </TouchableOpacity>
+                      {quotaReminders && (
+                        <View style={styles.placeLimit}>
+                          <Text style={styles.optionLabel}>Count down when tapped</Text>
+                          <Text style={styles.optionHint}>
+                            Tapping a notification opens a countdown card over whatever you are doing, e.g. 20 seconds to look at something far away
+                          </Text>
+                          <CountStepper
+                            value={quotaCountdownSeconds}
+                            onChange={setQuotaCountdownSeconds}
+                            min={LOOK_AWAY_MIN_SECONDS}
+                            max={LOOK_AWAY_MAX_SECONDS}
+                            allowNull
+                            emptyLabel="Off"
+                            format={n => `${n} sec`}
+                            label="Countdown length when tapped"
+                            describeValue={n => (n === null ? 'off' : `${n} seconds`)}
+                          />
+                        </View>
+                      )}
                       {quotaReminders && quotaReminderPlaces.length > 0 && (
                         <View style={styles.placeLimit}>
                           <Text style={styles.optionLabel}>Only notify me at</Text>

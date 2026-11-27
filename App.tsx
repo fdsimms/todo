@@ -18,6 +18,7 @@ import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { runAfterPaint } from './src/utils/afterPaint';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
+import { LookAwayHost } from './src/components/LookAwayHost';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { runningOnMac } from './src/utils/runningOnMac';
@@ -147,6 +148,8 @@ function AppContent() {
       {/* Ask Claude's chat. Here rather than on a screen because Today's
           header and the side menu both open it. */}
       <AskClaudeHost />
+      {/* The countdown a tapped target nudge opens (a 20/20/20 eye break's 20 seconds). */}
+      <LookAwayHost />
       {/* Inside ThemeProvider (it's a themed screen) and last, so its overlay
           sits above the navigator. */}
       <AppLockGate />

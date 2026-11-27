@@ -272,6 +272,7 @@ export function newTaskFromDraft(
     allowOvershoot: draft.allowOvershoot ?? false,
     quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
     quotaReminders: draft.quotaReminders ?? false,
+    quotaCountdownSeconds: draft.quotaReminders ? (draft.quotaCountdownSeconds ?? null) : null,
     quotaPlaceIds: draft.quotaPlaceIds ?? [],
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
     quotaRestAfterLog: draft.quotaRestAfterLog ?? false,

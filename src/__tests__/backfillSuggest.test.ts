@@ -85,6 +85,7 @@ const baseTask: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
+  quotaCountdownSeconds: null,
   quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
   rotationEnabled: false,

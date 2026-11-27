@@ -300,6 +300,7 @@ Where each component can appear.
 - `src/components/LogbookEntryMenu.tsx` — on LogbookScreen
 - `src/components/LogbookFilterSheet.tsx` — on LogbookScreen
 - `src/components/LookAheadSheet.tsx` — on ProjectDetailScreen, ProjectsScreen, TodayScreen
+- `src/components/LookAwayHost.tsx` — on app shell
 - `src/components/ManualBlockSheet.tsx` — on ScreenTimeScreen
 - `src/components/ManualRestSheet.tsx` — on WorkoutModeScreen
 - `src/components/MaxHeartRateSheet.tsx` — on SettingsGroupScreen

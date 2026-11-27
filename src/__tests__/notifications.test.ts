@@ -195,6 +195,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
+  quotaCountdownSeconds: null,
   quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
   rotationEnabled: false,
@@ -1905,6 +1906,11 @@ describe('isRedundantInForeground', () => {
     expect(isRedundantInForeground({ restTimerId: 'r1', workoutSessionId: 's1' }, false)).toBe(false);
   });
 
+  it('silences a look-away countdown\'s end chime while the app is open, not when it is away', () => {
+    expect(isRedundantInForeground({ lookAwayEnd: true }, true)).toBe(true);
+    expect(isRedundantInForeground({ lookAwayEnd: true }, false)).toBe(false);
+  });
+
   it('leaves every other notification alone', () => {
     expect(isRedundantInForeground({ taskId: 't1' }, true)).toBe(false);
     expect(isRedundantInForeground(null, true)).toBe(false);
@@ -2031,6 +2037,19 @@ describe('scheduleQuotaNudges', () => {
     return scheduleQuotaNudges(paced()).then(() => {
       expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(MAX_QUOTA_NUDGES_AHEAD);
     });
+  });
+
+  it('carries the look-away countdown on each nudge, and only when the task has one', async () => {
+    await scheduleQuotaNudges(paced({ quotaCountdownSeconds: 20 }));
+    const withCountdown = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(([arg]) => arg.content.data);
+    expect(withCountdown.length).toBeGreaterThan(0);
+    for (const data of withCountdown) expect(data).toEqual({ taskId: 'eyes', quotaNudge: true, countdownSeconds: 20 });
+
+    (Notifications.scheduleNotificationAsync as jest.Mock).mockClear();
+    await scheduleQuotaNudges(paced());
+    for (const [arg] of (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls) {
+      expect(arg.content.data).toEqual({ taskId: 'eyes', quotaNudge: true });
+    }
   });
 
   it('fires at the grid the pace ramp owes units at', async () => {

@@ -42,6 +42,7 @@ import { MAX_MEDICATION_EXTRAS, parseMedicationExtras } from '../../src/utils/me
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
 import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
+import { LOOK_AWAY_MAX_SECONDS, LOOK_AWAY_MIN_SECONDS } from '../../src/utils/lookAway';
 import { normalizeTagName } from '../../src/utils/tagRename';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { isSlotHold } from '../../src/utils/slotIn';
@@ -178,6 +179,8 @@ export interface TargetInput {
   remind?: boolean;
   /** With remind: limit the notifications to these saved places, by name. [] or null = anywhere. */
   onlyAtPlaces?: string[] | null;
+  /** With remind: tapping a notification opens a countdown of this many seconds (a 20/20/20 eye break's 20). null = none. */
+  countdownSeconds?: number | null;
   allowOvershoot?: boolean;
   /** Pay coins on every tap instead of when the target is reached. Same total either way. */
   coinsPerTap?: boolean;
@@ -566,6 +569,7 @@ export function taskFieldsPatch(
         coinsPerTap: false,
         quotaIntervalMinutes: null,
         quotaReminders: false,
+        quotaCountdownSeconds: null,
         quotaPlaceIds: [],
         quotaAlwaysVisible: false,
         quotaRestAfterLog: false,
@@ -605,7 +609,7 @@ export function taskFieldsPatch(
         // per-day machinery (an interval, nudges, going over) doesn't apply.
         if (input.repeat && recurrence !== 'weekly') errors.push('A target per week repeats weekly; leave repeat out or set every to "week".');
         if (t.allowOvershoot) errors.push('allowOvershoot only applies to a target per day.');
-        Object.assign(patch, { recurrenceType: 'weekly', quotaIntervalMinutes: null, quotaReminders: false, quotaPlaceIds: [], allowOvershoot: false } satisfies Partial<Task>);
+        Object.assign(patch, { recurrenceType: 'weekly', quotaIntervalMinutes: null, quotaReminders: false, quotaCountdownSeconds: null, quotaPlaceIds: [], allowOvershoot: false } satisfies Partial<Task>);
         if (recurrence !== 'weekly' && !input.repeat) Object.assign(patch, { ...NO_REPEAT, recurrenceType: 'weekly' });
         recurrence = 'weekly';
       } else {
@@ -624,7 +628,17 @@ export function taskFieldsPatch(
       // would disagree until the next time the window moved.
       else if (t.everyMinutes === null || (t.count !== undefined && current?.quotaIntervalMinutes != null)) patch.quotaIntervalMinutes = null;
       if (t.remind !== undefined) patch.quotaReminders = t.remind;
-      if (t.remind === false) patch.quotaPlaceIds = [];
+      if (t.remind === false) {
+        patch.quotaPlaceIds = [];
+        patch.quotaCountdownSeconds = null;
+      }
+      if (t.countdownSeconds !== undefined) {
+        if (t.countdownSeconds === null) patch.quotaCountdownSeconds = null;
+        else if (!inRange(t.countdownSeconds, [LOOK_AWAY_MIN_SECONDS, LOOK_AWAY_MAX_SECONDS])) errors.push(`target.countdownSeconds must be a whole number of seconds from ${LOOK_AWAY_MIN_SECONDS} to ${LOOK_AWAY_MAX_SECONDS}.`);
+        else if (t.per !== 'day') errors.push('target.countdownSeconds only applies to a target per day.');
+        else if (!(t.remind ?? current?.quotaReminders)) errors.push('target.countdownSeconds opens from the reminders, so it needs target.remind: true.');
+        else patch.quotaCountdownSeconds = t.countdownSeconds;
+      }
       if (t.onlyAtPlaces !== undefined) {
         const names = (t.onlyAtPlaces ?? []).map(n => n.trim()).filter(Boolean);
         if (names.length > 0 && t.per !== 'day') errors.push('target.onlyAtPlaces only applies to a target per day.');
