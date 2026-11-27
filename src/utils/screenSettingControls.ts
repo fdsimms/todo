@@ -24,6 +24,7 @@ export type ScreenSettingState = GeneratedEnabledFlags & {
   mealsOnToday: 'inline' | 'top' | 'off';
   mealLogPrompt: boolean;
   tripLiveActivity: boolean;
+  alarmLiveActivity: boolean;
   autoCompleteProjectsOnDone: boolean;
   postponeCheckEnabled: boolean;
   tipsEnabled: boolean;
@@ -44,7 +45,7 @@ export type ScreenSettingState = GeneratedEnabledFlags & {
 
 /** The plain on/off rows, by entry id. */
 export const SCREEN_SETTING_TOGGLE_IDS: readonly string[] = [
-  'mealLogPrompt', 'tripLiveActivity', 'autoCompleteProjects', 'postponeCheck', 'tipsEnabled',
+  'mealLogPrompt', 'tripLiveActivity', 'alarmLiveActivity', 'autoCompleteProjects', 'postponeCheck', 'tipsEnabled',
   'hideCategories', 'hideGroceryRecipeNames', 'backgroundRefreshEnabled',
 ];
 
@@ -86,6 +87,7 @@ export function screenSettingRead(id: string, s: ScreenSettingState): ScreenSett
   switch (id) {
     case 'mealLogPrompt': return { kind: 'toggle', on: s.mealLogPrompt };
     case 'tripLiveActivity': return { kind: 'toggle', on: s.tripLiveActivity };
+    case 'alarmLiveActivity': return { kind: 'toggle', on: s.alarmLiveActivity };
     case 'autoCompleteProjects': return { kind: 'toggle', on: s.autoCompleteProjectsOnDone };
     case 'postponeCheck': return { kind: 'toggle', on: s.postponeCheckEnabled };
     case 'tipsEnabled': return { kind: 'toggle', on: s.tipsEnabled };

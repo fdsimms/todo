@@ -21,7 +21,7 @@ export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   Today: ['newTaskDestination', 'mealsOnToday', 'calendarRead', 'hideCategories', 'dayReset', 'vacationMode'],
   Projects: ['autoCompleteProjects', 'defaultProjectNudgeCadence', 'gen:projectReview'],
   Calendar: ['calendarRead', 'deadlineCalendar', 'completionCalendar', 'claudeCalendar'],
-  Reminders: ['defaultReminderLead', 'quietHours', 'notifPermission'],
+  Reminders: ['defaultReminderLead', 'quietHours', 'notifPermission', 'alarmLiveActivity'],
   Stuck: ['postponeCheck', 'gen:waitingFollowUp'],
   Groceries: ['hideGroceryRecipeNames', 'groceryImport', 'tripLiveActivity', 'ai:groceryAisles'],
   Recipes: ['unitSystem', 'householdServings', 'ai:recipeExtraction'],
