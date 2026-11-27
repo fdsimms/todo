@@ -2072,7 +2072,27 @@ function joinList(itemId: string, listId: string | null, at: string): void {
  */
 let batchNotifications: <T>(fn: () => T) => T = fn => fn();
 
-export const useGroceryStore = create<GroceryStore>((set, get, api) => (batchNotifications = installNotificationBatch(api), {
+// The taps that write several rows and set more than once. Each is one commit
+// and one notification: finishing a trip was five to ten commits for every
+// item bought, and a tick told every selector on the screen twice.
+const ONE_COMMIT_ACTIONS = [
+  'finishShopping', 'clearList', 'deleteItems', 'toggleChecked', 'removeFromList', 'addByName',
+] as const;
+
+function inOneCommit(names: readonly (keyof GroceryStore)[], state: GroceryStore): GroceryStore {
+  const actions = state as unknown as Record<string, (...args: unknown[]) => unknown>;
+  for (const name of names) {
+    const action = actions[name];
+    actions[name] = (...args: unknown[]) => batchNotifications(() => {
+      let result: unknown;
+      dbTransaction(() => { result = action(...args); });
+      return result;
+    });
+  }
+  return state;
+}
+
+export const useGroceryStore = create<GroceryStore>((set, get, api) => (batchNotifications = installNotificationBatch(api), inOneCommit(ONE_COMMIT_ACTIONS, {
   items: [],
   aisleOrder: [],
   hiddenAisles: [],
@@ -5920,4 +5940,4 @@ export const useGroceryStore = create<GroceryStore>((set, get, api) => (batchNot
     const key = groceryNameKey(name);
     return (key && get().aisleOverrides[key]) || null;
   },
-}));
+})));

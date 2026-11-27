@@ -1170,6 +1170,19 @@ describe('a session from a routine', () => {
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 
+  it('reads an exercise\'s history once between writes, and again after one', () => {
+    const s = ok(state().startSession());
+    const added = ok(state().addSessionExercise(s.id, 'lib:back-squat'));
+    const first = state().exerciseHistory('lib:back-squat');
+    expect(state().exerciseHistory('lib:back-squat')).toBe(first);
+    expect(first.map(x => x.weightKg)).toEqual([null]);
+
+    ok(state().editSet(s.id, added[0].id, { weightKg: 60, reps: 5 }));
+    const after = state().exerciseHistory('lib:back-squat');
+    expect(after).not.toBe(first);
+    expect(after.map(x => x.weightKg)).toEqual([60]);
+  });
+
   it('adds an exercise mid-session laid out like last time, once', () => {
     const s = ok(state().startSession());
     const added = ok(state().addSessionExercise(s.id, 'lib:back-squat'));

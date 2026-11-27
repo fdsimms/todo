@@ -253,6 +253,14 @@ describe('addEntry, when Health refuses the write', () => {
     useFoodLogStore.setState({ pendingHealthWriteRefusal: false });
   });
 
+  it('tells subscribers once for an added entry, however many times it sets', () => {
+    let heard = 0;
+    const leave = useFoodLogStore.subscribe(() => { heard += 1; });
+    state().addEntry(draft());
+    leave();
+    expect(heard).toBe(1);
+  });
+
   it('raises the notice and records that it was said', async () => {
     outcome('refused');
     state().addEntry(draft());

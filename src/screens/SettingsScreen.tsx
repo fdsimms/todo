@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useDeferredValue } from 'react';
 import { deviceHasWideWindows } from '../utils/deviceKind';
 import {
   View, Text, TouchableOpacity, StyleSheet, Platform, ScrollView,
@@ -63,7 +63,10 @@ export function SettingsScreen() {
   const searchFilter = useFilterField();
   const query = searchFilter.query;
 
-  const settings = useSettingsStore();
+  // Every setting, a beat behind. This screen stays mounted under the group a
+  // switch is flipped on, and read live it rebuilt the whole search index and
+  // every row summary inside the commit that switch's knob was waiting on.
+  const settings = useDeferredValue(useSettingsStore());
   const sync = useSyncStore(useShallow(s => ({
     supported: s.supported,
     enabled: s.enabled,

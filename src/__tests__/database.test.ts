@@ -4787,6 +4787,17 @@ describe('sync change tracking', () => {
       expect(dbHasLocalChangesSince(since)).toBe(true);
     });
 
+    it('still sees an edit made after it has answered "nothing" for the same cursor', () => {
+      dbInsertTask(makeTask({ id: 'probe-quiet' }));
+      const since = cursor();
+      expect(dbHasLocalChangesSince(since)).toBe(false);
+      // The second ask is answered from the first; the edit after it is not.
+      expect(dbHasLocalChangesSince(since)).toBe(false);
+      wait();
+      dbUpdateTask(makeTask({ id: 'probe-quiet', title: 'Edited' }));
+      expect(dbHasLocalChangesSince(since)).toBe(true);
+    });
+
     it('sees a local deletion', () => {
       dbInsertTask(makeTask({ id: 'probe-3' }));
       const since = cursor();
