@@ -27,6 +27,7 @@ jest.mock('../db/database', () => ({
   dbInsertRecipe: jest.fn(),
   dbUpdateRecipe: jest.fn(),
   dbDeleteRecipe: jest.fn(),
+  dbTransaction: jest.fn((fn: () => void) => fn()),
   dbBatchUpdateRecipeUpNextOrders: jest.fn(),
 }));
 

@@ -3688,7 +3688,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     }, AUTO_COMPLETE_PICKUP_MS);
   },
   autoCompleteRecordTasks(kind) {
-    get().requestAutoComplete(liveGeneratedTasksOfKind(get().tasks, kind).map(t => t.id));
+    get().requestAutoComplete(liveGeneratedTasksOfKind(openTasksOf(get().tasks), kind).map(t => t.id));
   },
   claimAutoComplete(id) {
     const reason = get().autoComplete[id];
@@ -7317,7 +7317,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     // the user deleted. Inside the kitchen gate by construction: mealStripOn
     // reads kitchenEnabled.
     if (mealStripOn(settings)) {
-      liveGeneratedTasksOfKind(get().tasks, 'mealSlot').forEach(task =>
+      liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'mealSlot').forEach(task =>
         dropGeneratedTask('mealSlot', task.generatedSourceId)
       );
       if (settings.mealSlotTasksWrittenThroughDayKey !== null) settings.setMealSlotTasksWrittenThroughDayKey(null);
@@ -8288,7 +8288,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     const todayKey = getCurrentLogicalDayKey();
 
     let kept = false;
-    for (const task of liveGeneratedTasksOfKind(get().tasks, 'eventDetails')) {
+    for (const task of liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'eventDetails')) {
       if (entries.length === 0) {
         // A ready row waits for its tick; any other has nothing left to ask.
         if (!task.generatedReadyAt) deleteGeneratedTaskQuietly(task.id);
@@ -8842,7 +8842,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
 
     const handled = pruneHandledEventTasks(settings.travelTaskHandled, now);
 
-    liveGeneratedTasksOfKind(get().tasks, 'travel')
+    liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'travel')
       .filter(task => {
         const sourceId = travelSourceOf(task);
         return !sourceId || isTravelTaskStale(sourceId, calendar.events, now, settings.travelEventPrefs);
@@ -8982,7 +8982,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     // One task a morning: a row for any other occurrence (the event moved, was
     // cancelled, or an earlier one appeared) is cleared, quietly, and the one
     // that matches is written below.
-    liveGeneratedTasksOfKind(get().tasks, 'wakeUp')
+    liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'wakeUp')
       .filter(task => {
         const sourceId = wakeUpSourceOf(task);
         return !sourceId || isWakeUpTaskStale(sourceId, match, now);
@@ -9147,7 +9147,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     const runsByTask = new Map(runs.map(r => [r.taskId, r]));
     const releases = useShieldReleaseStore.getState().log;
 
-    for (const task of liveGeneratedTasksOfKind(get().tasks, 'blockOffer')) {
+    for (const task of liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'blockOffer')) {
       const run = runsByTask.get(task.id);
       if (run) {
         const outcome = blockOfferRunOutcome(run, releases, now);
@@ -9371,7 +9371,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
       // At most one check-in is ever live: an earlier segment's unanswered
       // task is a question about a part of the day that's passed, not a task
       // still owed, the same reasoning the day-to-day clear always used.
-      liveGeneratedTasksOfKind(get().tasks, 'moodLog')
+      liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'moodLog')
         .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
         .filter(task => !isReadyRecordTask(task))
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
@@ -9498,7 +9498,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
       const segment = segments.length > 0 ? currentTimeSegment(segments) : null;
       const noSlotYet = segments.length > 0 && segment === null;
       const sourceId = noSlotYet ? null : journalTaskSourceId(todayKey, segment);
-      liveGeneratedTasksOfKind(get().tasks, generatedKind)
+      liveGeneratedTasksOfKind(openTasksOf(get().tasks), generatedKind)
         .filter(task => journalTaskDayKey(task, kind) !== todayKey || task.generatedSourceId !== sourceId)
         .filter(task => !isReadyRecordTask(task))
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
@@ -9561,7 +9561,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     // every day, not just the first, so a task left undone overnight would
     // otherwise hide again until that hour tomorrow. Ahead of the switch and
     // the read: it only lets go of what this pass wrote.
-    liveGeneratedTasksOfKind(get().tasks, 'wanikani').forEach(task => {
+    liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'wanikani').forEach(task => {
       const heldUntil = wanikaniHeldUntil(task, reset);
       if (heldUntil && heldUntil.getTime() <= now.getTime()) {
         get().updateTask(task.id, { windowStart: null }, { skipPostponeCount: true });
@@ -9583,7 +9583,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     todayNoon.setHours(12, 0, 0, 0);
 
     // ==== reviews ====
-    const liveReviews = liveGeneratedTasksOfKind(get().tasks, 'wanikani')
+    const liveReviews = liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'wanikani')
       .filter(task => wanikaniTaskKind(task) === 'reviews')
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     // Only one wave is ever open. A second (two phones placing one wave on
@@ -9666,7 +9666,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
 
     // ==== lessons ====
     // A day's lessons are that day's: yesterday's unfinished task makes way.
-    liveGeneratedTasksOfKind(get().tasks, 'wanikani')
+    liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'wanikani')
       .filter(task => wanikaniTaskKind(task) === 'lessons' && wanikaniLessonsDayKey(task) !== todayKey)
       .forEach(task => deleteGeneratedTaskQuietly(task.id));
     const perDay = settings.wanikaniLessonsPerDay;
@@ -9730,7 +9730,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     const now = new Date();
     const reset = settings.dayResetTime;
     // A held task gives up its window once its moment has come, WaniKani's rule.
-    liveGeneratedTasksOfKind(get().tasks, 'franki').forEach(task => {
+    liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'franki').forEach(task => {
       const heldUntil = reviewHeldUntil(task, reset);
       if (heldUntil && heldUntil.getTime() <= now.getTime()) {
         get().updateTask(task.id, { windowStart: null }, { skipPostponeCount: true });
@@ -9753,10 +9753,10 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     todayNoon.setHours(12, 0, 0, 0);
 
     const liveOf = (kind: ReturnType<typeof frankiTaskKind>) =>
-      liveGeneratedTasksOfKind(get().tasks, 'franki').filter(task => frankiTaskKind(task) === kind);
+      liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'franki').filter(task => frankiTaskKind(task) === kind);
     // A day-keyed task (the cards, Read & Listen, the goal) is that day's:
     // yesterday's unfinished one makes way.
-    liveGeneratedTasksOfKind(get().tasks, 'franki')
+    liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'franki')
       .filter(task => {
         const day = frankiTaskDayKey(task);
         return day !== null && day !== todayKey;
@@ -9820,7 +9820,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
       // Switched to once a day: a wave left open goes, the way a setting turned off takes its task.
       liveOf('reviews').forEach(task => deleteGeneratedTaskQuietly(task.id));
     } else {
-      const liveReviews = liveGeneratedTasksOfKind(get().tasks, 'franki')
+      const liveReviews = liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'franki')
         .filter(task => frankiTaskKind(task) === 'reviews')
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       // Only one wave is ever open; the older keeps any edits made to it.
@@ -10161,7 +10161,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     // Dropped rather than deleted quietly: the quiet delete writes the opt-out,
     // which for this kind is the decline stamp below, and a request nobody
     // answered has not been declined.
-    liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+    liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'weighIn')
       .filter(task => !isCurrentAskRequest(task, weighInDayKey(task), todayKey))
       .filter(task => !isReadyRecordTask(task))
       .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
@@ -10172,7 +10172,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     // window, however it got there (the Health app, a smart scale). Only the
     // answer is kept, as a day key, for the row to read; the tick is still the
     // person's. A null read says nothing either way, so the marker is left alone.
-    const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+    const liveRequest = liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'weighIn')
       .find(task => isCurrentAskRequest(task, weighInDayKey(task), todayKey));
     if (liveRequest) {
       const recent = await useHealthStore.getState().readRecentWeights(everyDays);
@@ -10244,7 +10244,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
    */
   markWeighInAnswered(dayKey) {
     const todayKey = dayKeyOf(getCurrentDayStart());
-    const live = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+    const live = liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'weighIn')
       .find(t => isCurrentAskRequest(t, weighInDayKey(t), todayKey));
     if (!live) return;
     if (dayKey === todayKey) {
@@ -10275,7 +10275,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
     dueDate.setHours(12, 0, 0, 0);
 
     // An unanswered request from a day that has gone is dropped, not declined.
-    liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
+    liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'bloodPressureLog')
       .filter(task => !isCurrentAskRequest(task, bloodPressureDayKey(task), todayKey))
       .filter(task => !isReadyRecordTask(task))
       .forEach(task => dropGeneratedTask('bloodPressureLog', task.generatedSourceId));
@@ -10284,7 +10284,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
 
     // A live request reads ready once a reading lands in its window, however it
     // got there. A null read says nothing either way.
-    const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
+    const liveRequest = liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'bloodPressureLog')
       .find(task => isCurrentAskRequest(task, bloodPressureDayKey(task), todayKey));
     if (liveRequest) {
       const recent = await useHealthStore.getState().readRecentBloodPressure(everyDays);
@@ -10328,7 +10328,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
   /** `markWeighInAnswered` for a saved blood pressure reading. */
   markBloodPressureAnswered(dayKey) {
     const todayKey = dayKeyOf(getCurrentDayStart());
-    const live = liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
+    const live = liveGeneratedTasksOfKind(openTasksOf(get().tasks), 'bloodPressureLog')
       .find(t => isCurrentAskRequest(t, bloodPressureDayKey(t), todayKey));
     if (!live) return;
     if (dayKey === todayKey) {

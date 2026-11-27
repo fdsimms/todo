@@ -915,6 +915,15 @@ let pendingHealthWriteRunning = false;
 
 const sameSpan = (a: WorkoutSession, b: WorkoutSession) => a.startedAt === b.startedAt && a.endedAt === b.endedAt;
 
+// `exerciseHistory`'s reads, for the sets and sessions they were made under.
+// Every write to a set or a session replaces one of those two, which is what
+// ends a read's life.
+let historyReads: {
+  setsBySession: Record<string, WorkoutSet[]> | null;
+  sessions: readonly unknown[] | null;
+  byExercise: Map<string, WorkoutSet[]>;
+} = { setsBySession: null, sessions: null, byExercise: new Map() };
+
 export const useWorkoutStore = create<WorkoutStore>((set, get) => {
   /**
    * Whether a name is already somebody's: an exercise on offer goes by it, or
@@ -2458,7 +2467,19 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     },
 
     exerciseHistory(exerciseId) {
-      return dbGetWorkoutSetsForExercise(exerciseId);
+      // Kept until a set or a session next changes. Workout mode asks for each
+      // exercise's whole history two or three times on every render, and every
+      // set ever logged for it is what comes back.
+      const { setsBySession, sessions } = get();
+      if (historyReads.setsBySession !== setsBySession || historyReads.sessions !== sessions) {
+        historyReads = { setsBySession, sessions, byExercise: new Map() };
+      }
+      let history = historyReads.byExercise.get(exerciseId);
+      if (!history) {
+        history = dbGetWorkoutSetsForExercise(exerciseId);
+        historyReads.byExercise.set(exerciseId, history);
+      }
+      return history;
     },
 
     allSets() {
@@ -2552,7 +2573,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     },
 
     lastTimeFor(exerciseId, exceptSessionId) {
-      return previousSets(dbGetWorkoutSetsForExercise(exerciseId), get().sessions, exceptSessionId);
+      return previousSets(get().exerciseHistory(exerciseId), get().sessions, exceptSessionId);
     },
 
     addSessionExercise(sessionId, exerciseId, options = {}) {

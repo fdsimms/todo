@@ -11,6 +11,7 @@ import {
   dbInsertCookbook,
   dbUpdateCookbook,
   dbDeleteCookbook,
+  dbTransaction,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { MAX_STEP_TIMER_SECONDS, MIN_STEP_TIMER_SECONDS } from '../utils/stepTimers';
@@ -957,7 +958,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const idSet = new Set(ids);
     const toDelete = get().recipes.filter(r => idSet.has(r.id));
     if (toDelete.length === 0) return;
-    toDelete.forEach(r => dbDeleteRecipe(r.id));
+    dbTransaction(() => toDelete.forEach(r => dbDeleteRecipe(r.id)));
     set(s => ({ recipes: s.recipes.filter(r => !idSet.has(r.id)) }));
     // Their photo files too, the same cleanup deleteRecipe does: without it
     // every recipe deleted from the bulk bar left its image on disk for good.
@@ -972,7 +973,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.vote !== vote);
     if (toUpdate.length === 0) return;
     const updated = toUpdate.map(r => ({ ...r, vote }));
-    updated.forEach(dbUpdateRecipe);
+    dbTransaction(() => updated.forEach(row => dbUpdateRecipe(row)));
     const byId = new Map(updated.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
   },
@@ -982,7 +983,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.mealType !== mealType);
     if (toUpdate.length === 0) return;
     const updated = toUpdate.map(r => ({ ...r, mealType }));
-    updated.forEach(dbUpdateRecipe);
+    dbTransaction(() => updated.forEach(row => dbUpdateRecipe(row)));
     const byId = new Map(updated.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
   },
@@ -1697,14 +1698,14 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   remapIngredientKey(fromKey, toKey) {
     const changed = remapIngredientKeyIn(get().recipes, fromKey, toKey);
     if (changed.length === 0) return;
-    changed.forEach(dbUpdateRecipe);
+    dbTransaction(() => changed.forEach(row => dbUpdateRecipe(row)));
     const byId = new Map(changed.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
   },
 
   restoreRecipes(recipes) {
     if (recipes.length === 0) return;
-    recipes.forEach(dbUpdateRecipe);
+    dbTransaction(() => recipes.forEach(row => dbUpdateRecipe(row)));
     const byId = new Map(recipes.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
   },

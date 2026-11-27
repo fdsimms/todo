@@ -37,6 +37,7 @@ import {
 } from '../utils/undoHistory';
 import { keepUnchanged } from '../utils/structuralSharing';
 import type { StoreLoadOptions } from '../utils/syncReloadScope';
+import { withBatchedActions } from '../utils/storeBatch';
 
 /**
  * The food log — what was eaten, and when.
@@ -745,7 +746,12 @@ export function sameEntries(held: readonly FoodLogEntry[], read: readonly FoodLo
   return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
 }
 
-export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
+// Each of these sets three to five times (the count, each window on screen,
+// the undo entry) and then runs the task passes that follow the log. They tell
+// subscribers once.
+const ONE_NOTIFICATION_ACTIONS = ['addEntry', 'updateEntry', 'reviseEntry', 'removeEntry'] as const;
+
+export const useFoodLogStore = create<FoodLogStore>((set, get, api) => withBatchedActions(api, ONE_NOTIFICATION_ACTIONS, {
   entries: [],
   rangeStart: null,
   rangeEnd: null,

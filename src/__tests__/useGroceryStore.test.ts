@@ -1025,6 +1025,18 @@ describe('toggleChecked', () => {
     expect(useGroceryStore.getState().cartHoldIds).toEqual([milk.id]);
   });
 
+  it('tells subscribers once, for the check and its hold together', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+    const heard: boolean[] = [];
+    const leave = useGroceryStore.subscribe(state => heard.push(state.cartHoldIds.includes(milk.id)));
+
+    useGroceryStore.getState().toggleChecked(milk.id);
+    leave();
+
+    expect(heard).toEqual([true]);
+  });
+
   it('drops the hold when un-checked inside the window', () => {
     const milk = makeItem({ name: 'Milk', onList: true });
     seed([milk]);
