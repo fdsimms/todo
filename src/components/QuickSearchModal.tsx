@@ -478,7 +478,9 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     (taskId: string) => setHeldIds(prev => new Set(prev).add(taskId)),
     []
   );
-  useEffect(() => setHeldIds(new Set()), [debouncedQuery]);
+  // The same set back when it is already empty, as SearchScreen does: a fresh
+  // empty set is a new input to the search below and ran it a second time.
+  useEffect(() => setHeldIds(prev => (prev.size === 0 ? prev : new Set())), [debouncedQuery]);
 
   // Screens, settings, people, recipes and groceries: everything that isn't a
   // task. Searchable only where the side menu still offers it (see

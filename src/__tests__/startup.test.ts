@@ -1,4 +1,4 @@
-import { runStartupStep, runStartupSequence } from '../utils/startup';
+import { runStartupStep, runStartupSequence, runStartupSequenceSpaced } from '../utils/startup';
 
 describe('runStartupStep', () => {
   let errorSpy: jest.SpyInstance;
@@ -87,3 +87,60 @@ describe('runStartupSequence', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('runStartupSequenceSpaced', () => {
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 10, 27, 9));
+    errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    jest.useRealTimers();
+  });
+
+  // A step that takes `ms` of the clock, the way a slow pass does.
+  const slow = (log: string[], name: string, ms: number): [string, () => void] => [name, () => {
+    log.push(name);
+    jest.setSystemTime(Date.now() + ms);
+  }];
+
+  it('runs quick steps in one go, in order, and reports the ones that threw', () => {
+    const log: string[] = [];
+    const done = jest.fn();
+    runStartupSequenceSpaced([
+      slow(log, 'a', 1),
+      ['b', () => { throw new Error('boom'); }],
+      slow(log, 'c', 1),
+    ], done);
+    expect(log).toEqual(['a', 'c']);
+    expect(done).toHaveBeenCalledWith(['b']);
+  });
+
+  it('hands the thread back once a slice has used its time, then carries on in order', () => {
+    const log: string[] = [];
+    const done = jest.fn();
+    runStartupSequenceSpaced([slow(log, 'a', 20), slow(log, 'b', 20), slow(log, 'c', 1)], done);
+    expect(log).toEqual(['a']);
+    expect(done).not.toHaveBeenCalled();
+    jest.runOnlyPendingTimers();
+    expect(log).toEqual(['a', 'b']);
+    jest.runOnlyPendingTimers();
+    expect(log).toEqual(['a', 'b', 'c']);
+    expect(done).toHaveBeenCalledWith([]);
+  });
+
+  it('stops before the next slice when cancelled, and never calls done', () => {
+    const log: string[] = [];
+    const done = jest.fn();
+    const run = runStartupSequenceSpaced([slow(log, 'a', 20), slow(log, 'b', 1)], done);
+    run.cancel();
+    jest.advanceTimersByTime(10);
+    expect(log).toEqual(['a']);
+    expect(done).not.toHaveBeenCalled();
+  });
+});
+

@@ -62,6 +62,23 @@ describe('refresh', () => {
     expect(state.windowStart).not.toBeNull();
   });
 
+  it('keeps the same arrays when a read finds what the last one found, and new ones when it differs', async () => {
+    (fetchEvents as jest.Mock).mockImplementation(async () => readResult());
+    await useCalendarStore.getState().refresh();
+    const first = useCalendarStore.getState();
+    await useCalendarStore.getState().refresh();
+    const second = useCalendarStore.getState();
+    expect(second.events).toBe(first.events);
+    expect(second.calendarsById).toBe(first.calendarsById);
+    expect(second.perCalendar).toBe(first.perCalendar);
+
+    (fetchEvents as jest.Mock).mockImplementation(async () => readResult([event('e-1'), event('e-2')]));
+    await useCalendarStore.getState().refresh();
+    const third = useCalendarStore.getState();
+    expect(third.events).not.toBe(first.events);
+    expect(third.events.map(e => e.id)).toEqual(['e-1', 'e-2']);
+  });
+
   it('clears everything when calendar reading is off, without reading', async () => {
     useSettingsStore.setState({ calendarReadEnabled: false });
     useCalendarStore.setState({ events: [event('stale')], loaded: true });

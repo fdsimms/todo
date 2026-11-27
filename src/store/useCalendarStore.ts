@@ -257,6 +257,11 @@ const gridGuard = createRefreshGuard();
 const followUpGuard = createRefreshGuard();
 const recentGuard = createRefreshGuard();
 
+/** Whether two reads of the calendar hold the same values (they are plain data from the device). */
+function sameRead(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
   vacationReturnEvents: [],
@@ -361,12 +366,18 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     // these is keyed the same on every device (see eventOccurrenceKeys).
     const events = await withExternalEventIds(result.events);
     if (!windowGuard.isCurrent(token)) return;
+    // A read that found what the last one found keeps the last one's arrays.
+    // This runs on every return to the app and every calendar change on the
+    // phone, nearly always with nothing new, and fresh arrays re-rendered Today
+    // and re-ran every sync that follows the events (event tasks, travel,
+    // wake-up, the Leave activity, the widget) to reach the same answer.
+    const before = get();
     set({
-      events,
+      events: sameRead(before.events, events) ? before.events : events,
       vacationReturnEvents,
       vacationReturnLoaded: false,
-      perCalendar: result.perCalendar,
-      calendarsById: result.calendarsById,
+      perCalendar: sameRead(before.perCalendar, result.perCalendar) ? before.perCalendar : result.perCalendar,
+      calendarsById: sameRead(before.calendarsById, result.calendarsById) ? before.calendarsById : result.calendarsById,
       windowStart: start.toISOString(),
       windowEnd: end.toISOString(),
       loaded: true,

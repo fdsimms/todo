@@ -68,7 +68,7 @@ import { useHealthSync } from './src/store/useHealthStore';
 import { useAppShieldSync } from './src/hooks/useAppShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
-import { runStartupSequence, runStartupStep } from './src/utils/startup';
+import { runStartupSequence, runStartupSequenceSpaced, runStartupStep } from './src/utils/startup';
 import { STANDALONE_STORE_LOADS } from './src/utils/standaloneStores';
 import { setAutoCompleteAttended } from './src/utils/autoCompleteScope';
 import { markMilestone } from './src/utils/perfLog';
@@ -268,9 +268,12 @@ function AppRoot() {
     // generators, the purges, the calendar and Health drains and the permission
     // prompts each add a row or a side effect, and none of them needs to hold
     // the splash. They run in the same order, one step after another, so the
-    // ordering notes in maintenancePasses.ts still hold.
-    return afterFirstFrame(() => {
-      runStartupSequence([
+    // ordering notes in maintenancePasses.ts still hold. The JS thread is handed
+    // back between slices of them (runStartupSequenceSpaced), so a tap made
+    // just after the splash is not held behind the whole list.
+    let spaced: { cancel: () => void } | null = null;
+    const cancelFirstFrame = afterFirstFrame(() => {
+      spaced = runStartupSequenceSpaced([
         ...deferred,
         // The purges last, after everything that can write a completion.
         ...retentionPasses(),
@@ -314,23 +317,28 @@ function AppRoot() {
         ['request alarm authorization', () => {
           if (isAlarmKitAvailable()) requestAlarmAuthorization();
         }],
-      ]);
-      // Everything above was timed under its own name (runStartupStep). Saved
-      // here, after the sequence, so the one write is not part of what it times.
-      markMilestone('launch steps done');
-      // From here the person is in the app, so a task their own action satisfies
-      // may complete itself (src/utils/autoCompleteScope.ts). The launch passes
-      // above ran unattended and only marked rows ready.
-      setAutoCompleteAttended(true);
-      // The reports iOS builds about the app (launch time, hangs, memory) come
-      // in about once a day and only while something is listening, so listening
-      // starts at every launch. Read straight after, for any already delivered.
-      runStartupSequence([
-        ['start device metrics', startDeviceMetrics],
-        ['read device metrics', () => { collectDeviceMetrics(); }],
-      ]);
-      savePerfRun('launch');
+      ], () => {
+        // Everything above was timed under its own name (runStartupStep). Saved
+        // here, after the sequence, so the one write is not part of what it times.
+        markMilestone('launch steps done');
+        // From here the person is in the app, so a task their own action satisfies
+        // may complete itself (src/utils/autoCompleteScope.ts). The launch passes
+        // above ran unattended and only marked rows ready.
+        setAutoCompleteAttended(true);
+        // The reports iOS builds about the app (launch time, hangs, memory) come
+        // in about once a day and only while something is listening, so listening
+        // starts at every launch. Read straight after, for any already delivered.
+        runStartupSequence([
+          ['start device metrics', startDeviceMetrics],
+          ['read device metrics', () => { collectDeviceMetrics(); }],
+        ]);
+        savePerfRun('launch');
+      });
     });
+    return () => {
+      cancelFirstFrame();
+      spaced?.cancel();
+    };
   }, [initSecrets]);
 
   // The launch step above covers a cold start; this covers the app coming back

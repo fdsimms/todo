@@ -163,13 +163,27 @@ import {
 
 export type { SyncChangeSet, SyncDeletion } from '../utils/syncMerge';
 
+// A task row's JSON columns are empty on nearly every row ('[]', '{}' or
+// null), and reading the tasks at launch parsed each of them for every row of
+// history. An empty one is answered without the parser. Always a fresh value,
+// as JSON.parse gives, since callers keep what they are handed.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function jsonArray(raw: unknown): any {
+  return raw == null || raw === '[]' ? [] : JSON.parse(raw as string);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function jsonObject(raw: unknown): any {
+  return raw == null || raw === '{}' ? {} : JSON.parse(raw as string);
+}
+
 function parseWeatherWait(raw: unknown): WeatherCondition | null {
   return raw === 'sunny' || raw === 'rainy' || raw === 'snowy' || raw === 'cold' || raw === 'hot' ? raw : null;
 }
 
 /** A JSON array of ids from a TEXT column; anything unreadable is the empty list. */
 function parseIdList(raw: unknown): string[] {
-  if (typeof raw !== 'string') return [];
+  if (typeof raw !== 'string' || raw === '[]') return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
@@ -4552,7 +4566,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     windowEndSun: (row.window_end_sun as string) ?? null,
     recurrenceType: (row.recurrence_type as Task['recurrenceType']) ?? 'none',
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
-    recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
+    recurrenceDays: jsonArray(row.recurrence_days) as number[],
     recurrenceMonthDay: (row.recurrence_month_day as number | null) ?? null,
     recurrenceMonth: (row.recurrence_month as number | null) ?? null,
     recurrenceWeekOrdinal: (row.recurrence_week_ordinal as number | null) ?? null,
@@ -4613,10 +4627,10 @@ function rowToTask(row: Record<string, unknown>): Task {
     // weekly would quietly stop asking for six days.
     quotaPeriod: row.quota_period === 'week' ? 'week' : 'day',
     rotationEnabled: Boolean(row.rotation_enabled),
-    rotationItems: parseRotationItems(JSON.parse((row.rotation_items as string) ?? '[]')),
-    rotationLog: parseRotationLog(JSON.parse((row.rotation_log as string) ?? '[]')),
+    rotationItems: parseRotationItems(jsonArray(row.rotation_items)),
+    rotationLog: parseRotationLog(jsonArray(row.rotation_log)),
     rotationPeriodStart: (row.rotation_period_start as string | null) ?? null,
-    rotationLastDone: parseRotationLastDone(JSON.parse((row.rotation_last_done as string) ?? '{}')),
+    rotationLastDone: parseRotationLastDone(jsonObject(row.rotation_last_done)),
     supplyCount: (row.supply_count as number | null) ?? null,
     supplyUnit: (row.supply_unit as string | null) ?? null,
     supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
@@ -4628,8 +4642,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     supplyLeadDays: (row.supply_lead_days as number | null) ?? null,
     supplyDeclinedAtCount: (row.supply_declined_at_count as number | null) ?? null,
     supplyGroceryItemId: (row.supply_grocery_item_id as string | null) ?? null,
-    tags: JSON.parse((row.tags as string) ?? '[]') as string[],
-    personIds: JSON.parse((row.person_ids as string) ?? '[]') as string[],
+    tags: jsonArray(row.tags) as string[],
+    personIds: jsonArray(row.person_ids) as string[],
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     pinned: Boolean(row.pinned),
@@ -4653,7 +4667,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     // for existing installs. The JS-facing field names are the new ones.
     chainEnabled: Boolean(row.cycle_enabled),
     chainIndex: (row.cycle_index as number) ?? 0,
-    chainItems: parseChainItems(JSON.parse((row.cycle_items as string) ?? '[]')),
+    chainItems: parseChainItems(jsonArray(row.cycle_items)),
     chainStepOnSchedule: Boolean(row.chain_step_on_schedule),
     followUpTaskEveryN: (row.extra_task_every_n as number | null) ?? null,
     followUpTaskTitle: (row.extra_task_title as string | null) ?? null,
@@ -4731,7 +4745,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     seriesId: (row.series_id as string | null) ?? null,
-    seriesMonthDays: JSON.parse((row.series_month_days as string) ?? '[]') as number[],
+    seriesMonthDays: jsonArray(row.series_month_days) as number[],
     seriesRepeatMonths: (row.series_repeat_months as number) ?? 1,
     previousStreakCount: (row.previous_streak_count as number) ?? 0,
     priorBestStreak: (row.prior_best_streak as number) ?? 0,
@@ -4773,7 +4787,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     calendarEventExternalId: (row.calendar_event_external_id as string | null) ?? null,
     timeBlockExternalId: (row.time_block_external_id as string | null) ?? null,
     completionCalendarEventExternalId: (row.completion_calendar_event_external_id as string | null) ?? null,
-    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
+    backfillDismissedFields: jsonArray(row.backfill_dismissed_fields) as string[],
     location: (row.location as string) ?? null,
   };
 }
@@ -10346,7 +10360,7 @@ function parseAnswerGate(raw: unknown): AnswerGate | null {
 
 /** A JSON array of strings, or empty for anything else: a missing column, a bad write. */
 function parseStringList(raw: unknown): string[] {
-  if (typeof raw !== 'string') return [];
+  if (typeof raw !== 'string' || raw === '[]') return [];
   try {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
