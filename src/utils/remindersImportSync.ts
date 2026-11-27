@@ -1088,11 +1088,17 @@ export function useRemindersImportSync(): void {
     // nothing a Reminders list can hold. Nothing subscribes for the one-way
     // legs: a drain only ever reads the other side.
     let signature = groceryMirrorSignature();
-    const unsubscribeGroceries = useGroceryStore.subscribe(() => {
+    const unsubscribeGroceries = useGroceryStore.subscribe((state, prev) => {
+      // The signature is a pass over the catalog, so it is only worked out
+      // when the mirror is on and one of the two things it reads has changed.
+      // Left stale while the mirror is off, which only means the first change
+      // after it is turned on is seen as one.
+      if (state.items === prev.items && state.listEntries === prev.listEntries) return;
+      if (!mirrorTarget()) return;
       const next = groceryMirrorSignature();
       if (next === signature) return;
       signature = next;
-      if (mirrorTarget()) importReminders();
+      importReminders();
     });
 
     // The workhorse: said it to Siri, came back to the app.

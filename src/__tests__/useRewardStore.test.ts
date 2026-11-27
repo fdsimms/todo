@@ -42,6 +42,13 @@ describe('initialize', () => {
 });
 
 describe('earning and losing', () => {
+  it('keeps the ledger newest first, whether an entry is written now or backdated', () => {
+    state().recordEarn('t1', 1, 'First', '2026-10-01T09:00:00.000Z');
+    state().recordEarn('t2', 1, 'Later', '2026-10-03T09:00:00.000Z');
+    state().recordEarn('t3', 1, 'Backdated', '2026-10-02T09:00:00.000Z');
+    expect(state().entries.map(e => e.label)).toEqual(['Later', 'Backdated', 'First']);
+  });
+
   it('keys an earning by the completed row, so a redo writes the same entry', () => {
     state().recordEarn('t1', 3, 'Run', AT);
     state().recordEarn('t1', 3, 'Run', AT);

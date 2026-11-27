@@ -72,13 +72,26 @@ export function installNotificationBatch<S>(api: BatchableApi<S>): <T>(fn: () =>
  * `state` with each named action run inside one batch, for a store whose
  * multi-write actions are whole taps (the change, then its undo entry) and
  * not loops that call `batch` themselves.
+ *
+ * `around` runs each action inside something else as well, which is how a
+ * store makes one of these a single commit: it passes `dbTransaction`. It is
+ * handed in because this file knows nothing of the database.
  */
-export function withBatchedActions<S extends object>(api: BatchableApi<S>, names: readonly (keyof S)[], state: S): S {
+export function withBatchedActions<S extends object>(
+  api: BatchableApi<S>,
+  names: readonly (keyof S)[],
+  state: S,
+  around: (fn: () => void) => void = fn => fn(),
+): S {
   const batch = installNotificationBatch(api);
   const actions = state as Record<keyof S, unknown>;
   for (const name of names) {
     const action = actions[name] as (...args: unknown[]) => unknown;
-    actions[name] = (...args: unknown[]) => batch(() => action(...args));
+    actions[name] = (...args: unknown[]) => batch(() => {
+      let result: unknown;
+      around(() => { result = action(...args); });
+      return result;
+    });
   }
   return state;
 }
