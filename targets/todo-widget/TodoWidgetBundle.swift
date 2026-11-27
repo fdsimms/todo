@@ -32,6 +32,7 @@ struct TodoLiveActivities: WidgetBundle {
         TimerLiveActivity()
         TripLiveActivity()
         LeaveLiveActivity()
+        AlarmLiveActivity()
         FocusLiveActivity()
         WorkoutLiveActivity()
     }

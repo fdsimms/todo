@@ -30,7 +30,7 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
   return {
     id: 'a1', label: 'Wake up', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], fireAt: null, enabled: true,
     mission: { kind: 'pushups', count: 20 }, savedFocusId: null, quick: false, armedAt: NOW.toISOString(), missionDoneAt: null,
-    missionGaveUp: false, sound: null, soundPool: [], soundRolledAt: null, override: null,
+    missionGaveUp: false, sound: null, soundPool: [], soundRolledAt: null, override: null, skippedOn: null,
     createdAt: NOW.toISOString(), ...over,
   };
 }
@@ -96,6 +96,46 @@ describe('syncAlarmToDevice', () => {
     expect(scheduleNativeAlarm).not.toHaveBeenCalled();
     expect(cancelNativeAlarm).toHaveBeenCalledWith(alarmNativeUuid('a1:override'));
     expect(cancelNativeAlarm).toHaveBeenCalledWith(alarmNativeUuid('a1:fallback'));
+  });
+
+  it('leaves a skipped weekday out of the weekly and covers it a week later', async () => {
+    // Wed 14 Oct skipped: Mon, Tue, Thu, Fri weekly, and Wed 21 Oct at the usual time.
+    await syncAlarmToDevice(alarm({ hour: 18, skippedOn: '2026-10-14' }), NOW);
+    expect(scheduleWeeklyNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1'), 18, 0, [1, 2, 4, 5], 'Wake up', expect.anything(), null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledTimes(1);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1:skip-fallback'), new Date(2026, 9, 21, 18, 0), 'Wake up', expect.anything(), null);
+  });
+
+  it('handles a skipped day and a different day’s override together', async () => {
+    await syncAlarmToDevice(alarm({
+      hour: 18, skippedOn: '2026-10-14', override: { date: '2026-10-15', hour: 6, minute: 30 },
+    }), NOW);
+    expect(scheduleWeeklyNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1'), 18, 0, [1, 2, 5], 'Wake up', expect.anything(), null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1:override'), new Date(2026, 9, 15, 6, 30), 'Wake up', expect.anything(), null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1:fallback'), new Date(2026, 9, 22, 18, 0), 'Wake up', expect.anything(), null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1:skip-fallback'), new Date(2026, 9, 21, 18, 0), 'Wake up', expect.anything(), null);
+  });
+
+  it('rings nothing of its own when the override day is the skipped one', async () => {
+    await syncAlarmToDevice(alarm({
+      hour: 18, skippedOn: '2026-10-14', override: { date: '2026-10-14', hour: 19, minute: 0 },
+    }), NOW);
+    expect(scheduleNativeAlarm).toHaveBeenCalledTimes(1);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1:fallback'), new Date(2026, 9, 21, 18, 0), 'Wake up', expect.anything(), null);
+  });
+
+  it('goes back to the plain weekly once the skipped day is over', async () => {
+    await syncAlarmToDevice(alarm({ skippedOn: '2026-10-12' }), NOW);
+    expect(scheduleWeeklyNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1'), 7, 0, [1, 2, 3, 4, 5], 'Wake up', expect.anything(), null);
+    expect(scheduleNativeAlarm).not.toHaveBeenCalled();
   });
 
   it('does nothing on the device in demo mode', async () => {

@@ -83,6 +83,10 @@ jest.mock('../store/useFastStore', () => ({
 }));
 // What a workout link does is workoutLinkActions.test.ts's; here, only that
 // the right link reaches it.
+const mockPromptSkipAlarm = jest.fn();
+jest.mock('../utils/alarmSkipPrompt', () => ({
+  promptSkipAlarm: (...args: unknown[]) => mockPromptSkipAlarm(...args),
+}));
 jest.mock('../utils/workoutLinkActions', () => ({
   applyWorkoutLink: (...args: unknown[]) => mockApplyWorkoutLink(...args),
   skipRestFromLink: (...args: unknown[]) => mockSkipRestFromLink(...args),
@@ -140,6 +144,8 @@ jest.mock('../utils/demoState', () => ({
 }));
 
 import {
+  isAlarmSkipUrl,
+  alarmSkipUrlId,
   parseAddTaskUrl,
   handleIncomingUrl,
   isGroceriesUrl,
@@ -1378,5 +1384,24 @@ describe('backfill link', () => {
     expect(mockResetToBackfill).toHaveBeenLastCalledWith('person');
     expect(openInAppUrl('dundundun://backfill')).toBe(true);
     expect(mockResetToBackfill).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe('alarm skip link', () => {
+  it('names the alarm it asks about, and nothing else matches', () => {
+    expect(isAlarmSkipUrl('dundundun://alarm-skip?id=abc')).toBe(true);
+    expect(alarmSkipUrlId('dundundun://alarm-skip?id=abc')).toBe('abc');
+    expect(alarmSkipUrlId('dundundun://alarm-skip')).toBeNull();
+    expect(alarmSkipUrlId('dundundun://alarm-skip?id=')).toBeNull();
+    expect(isAlarmSkipUrl('dundundun://alarms')).toBe(false);
+  });
+
+  it('asks whether to skip that alarm, and opens Reminders for a link with no id', () => {
+    mockPromptSkipAlarm.mockClear();
+    expect(openInAppUrl('dundundun://alarm-skip?id=abc')).toBe(true);
+    expect(mockPromptSkipAlarm).toHaveBeenCalledWith('abc');
+    mockPromptSkipAlarm.mockClear();
+    expect(openInAppUrl('dundundun://alarm-skip')).toBe(true);
+    expect(mockPromptSkipAlarm).not.toHaveBeenCalled();
   });
 });

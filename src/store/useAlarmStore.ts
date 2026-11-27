@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Alarm, AlarmMission, AlarmSoundFile } from '../types';
 import { dbDeleteAlarm, dbGetAlarms, dbGetSetting, dbSaveAlarm, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
-import { isRepeating, isSpent, quickAlarmFields, repeatingRingOn, scheduleFields, soundOwesReroll } from '../utils/alarms';
+import { calendarKey, isRepeating, isSkipSpent, isSpent, quickAlarmFields, repeatingRingOn, scheduleFields, skippableRing, soundOwesReroll } from '../utils/alarms';
 import { isOverrideSpent, overrideFor } from '../utils/morningAlarm';
 import { normalizeMission } from '../utils/missions';
 import {
@@ -135,8 +135,17 @@ interface AlarmStore {
    * or doesn't ring that day.
    */
   setOverride: (id: string, day: Date, hour: number, minute: number) => boolean;
-  /** Puts back the alarms whose one-night change is over. Run on open. */
+  /** Puts back the alarms whose one-night change or skipped day is over. Run on open. */
   clearSpentOverrides: (now?: Date) => void;
+  /**
+   * "Skip today": a switched-on repeating alarm doesn't ring for its ring
+   * today, and rings as usual after that. The alarm stays on. False when there
+   * is no ring left today to skip (it rang, it is off, it doesn't repeat, or it
+   * doesn't ring today).
+   */
+  skipToday: (id: string, now?: Date) => boolean;
+  /** Takes back a skip, so today's ring is on again. False when nothing is skipped. */
+  undoSkip: (id: string) => boolean;
   /** A one-off alarm at `at` that deletes itself once it has rung, like a quick alarm. */
   addOneOffAlarm: (at: Date, setup: AlarmSetup, now?: Date) => Alarm;
   /** Stops every alarm offering saved focus session `id`, after it is deleted. */
@@ -180,6 +189,8 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       missionGaveUp: existing?.missionGaveUp ?? false,
       // A new time for every day it rings replaces any one-night change.
       override: null,
+      // Skipping today is a choice about one ring, not the time or the days, so editing the rest of the alarm keeps it.
+      skippedOn: input.repeatDays.length > 0 ? existing?.skippedOn ?? null : null,
       createdAt: existing?.createdAt ?? now.toISOString(),
     };
     write(alarm);
@@ -201,6 +212,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       missionDoneAt: null,
       missionGaveUp: false,
       override: null,
+      skippedOn: null,
       createdAt: now.toISOString(),
     };
     write(alarm);
@@ -274,8 +286,8 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
     // Switching a one-off back on sets it for the next time its clock time
     // comes round, the way the Clock app does.
     const alarm: Alarm = enabled
-      ? { ...current, ...scheduleFields(current.hour, current.minute, current.repeatDays, now), enabled, armedAt: now.toISOString() }
-      : { ...current, enabled };
+      ? { ...current, ...scheduleFields(current.hour, current.minute, current.repeatDays, now), enabled, armedAt: now.toISOString(), skippedOn: null }
+      : { ...current, enabled, skippedOn: null };
     write(alarm);
     set({ alarms: get().alarms.map(a => (a.id === id ? alarm : a)) });
   },
@@ -308,19 +320,44 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
 
   setOverride(id, day, hour, minute) {
     const current = get().alarms.find(a => a.id === id);
-    if (!current || !isRepeating(current) || repeatingRingOn({ ...current, override: null }, day) === null) return false;
-    const alarm: Alarm = { ...current, enabled: true, override: overrideFor(current, day, hour, minute) };
+    if (!current || !isRepeating(current) || repeatingRingOn({ ...current, override: null, skippedOn: null }, day) === null) return false;
+    // A time chosen for a day is a ring on that day, so it takes back a skip of it.
+    const skippedOn = current.skippedOn === calendarKey(day) ? null : current.skippedOn;
+    const alarm: Alarm = { ...current, enabled: true, override: overrideFor(current, day, hour, minute), skippedOn };
     write(alarm);
     set({ alarms: get().alarms.map(a => (a.id === id ? alarm : a)) });
     return true;
   },
 
   clearSpentOverrides(now = new Date()) {
-    const spent = get().alarms.filter(a => a.override && isOverrideSpent(a.override, now));
+    const spent = get().alarms.filter(a =>
+      (a.override && isOverrideSpent(a.override, now)) || (a.skippedOn && isSkipSpent(a.skippedOn, now)));
     if (spent.length === 0) return;
-    const cleared = new Map(spent.map(a => [a.id, { ...a, override: null }]));
+    const cleared = new Map(spent.map(a => [a.id, {
+      ...a,
+      override: a.override && isOverrideSpent(a.override, now) ? null : a.override,
+      skippedOn: a.skippedOn && isSkipSpent(a.skippedOn, now) ? null : a.skippedOn,
+    }]));
     for (const alarm of cleared.values()) write(alarm);
     set({ alarms: get().alarms.map(a => cleared.get(a.id) ?? a) });
+  },
+
+  skipToday(id, now = new Date()) {
+    const current = get().alarms.find(a => a.id === id);
+    if (!current || skippableRing(current, now) === null) return false;
+    const alarm: Alarm = { ...current, skippedOn: calendarKey(now) };
+    write(alarm);
+    set({ alarms: get().alarms.map(a => (a.id === id ? alarm : a)) });
+    return true;
+  },
+
+  undoSkip(id) {
+    const current = get().alarms.find(a => a.id === id);
+    if (!current || current.skippedOn === null) return false;
+    const alarm: Alarm = { ...current, skippedOn: null };
+    write(alarm);
+    set({ alarms: get().alarms.map(a => (a.id === id ? alarm : a)) });
+    return true;
   },
 
   addOneOffAlarm(at, setup, now = new Date()) {
@@ -340,6 +377,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       missionDoneAt: null,
       missionGaveUp: false,
       override: null,
+      skippedOn: null,
       createdAt: now.toISOString(),
     };
     write(alarm);

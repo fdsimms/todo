@@ -7,6 +7,11 @@ import type { AlarmOverride } from '../types';
  * the settings store). The rules are in morningAlarm.ts.
  */
 
+/** A stored skipped date (`Alarm.skippedOn`), or null for anything but `YYYY-MM-DD`. */
+export function parseAlarmSkip(value: unknown): string | null {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
 /** A stored override, or null for anything malformed. */
 export function parseAlarmOverride(json: unknown): AlarmOverride | null {
   if (typeof json !== 'string' || json === '') return null;

@@ -22,6 +22,7 @@ function screenSettingWrite(id: string, on: boolean): void {
   switch (id) {
     case 'mealLogPrompt': s.setMealLogPrompt(on); return;
     case 'tripLiveActivity': s.setTripLiveActivity(on); return;
+    case 'alarmLiveActivity': s.setAlarmLiveActivity(on); return;
     case 'autoCompleteProjects': s.setAutoCompleteProjectsOnDone(on); return;
     case 'postponeCheck': s.setPostponeCheckEnabled(on); return;
     case 'tipsEnabled': s.setTipsEnabled(on); return;
