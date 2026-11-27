@@ -66,6 +66,13 @@ export interface Alarm {
    * back to its own. Null for none. See src/utils/morningAlarm.ts.
    */
   override: AlarmOverride | null;
+  /**
+   * "Skip today": the calendar date (`YYYY-MM-DD`, local) of the one ring a
+   * repeating alarm is not to make, or null for none. The alarm stays on and
+   * rings as usual on every other day; after that day it clears itself
+   * (`clearSpentOverrides`). See src/utils/alarms.ts `isSkippedOn`.
+   */
+  skippedOn: string | null;
   createdAt: string;
 }
 

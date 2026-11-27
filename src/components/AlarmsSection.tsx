@@ -16,7 +16,9 @@ import {
   alarmMissionLine,
   alarmSubtitle,
   formatAlarmMinutes,
+  isSkippingToday,
   isSpent,
+  skippableRing,
   sortAlarms,
 } from '../utils/alarms';
 import { describeMission, missionKeyForAlarm } from '../utils/missions';
@@ -136,32 +138,55 @@ function AlarmRow({ alarm, now, owed, use24Hour, weekStartsOn, onPress, styles, 
     haptics.tap();
     useAlarmStore.getState().setEnabled(alarm.id, !live);
   };
+  // "Skip today" for a ring still ahead today, "Undo skip" once it is skipped.
+  // No alert: the row says "Skipping today" and Undo is right there.
+  const skipping = isSkippingToday(alarm, now);
+  const canSkip = !owed && skippableRing(alarm, now) !== null;
+  const skip = () => {
+    haptics.tap();
+    useAlarmStore.getState().skipToday(alarm.id, now);
+  };
+  const undoSkip = () => {
+    haptics.tap();
+    useAlarmStore.getState().undoSkip(alarm.id);
+  };
 
   return (
     <View style={styles.row}>
-      <TouchableOpacity
-        style={styles.rowMain}
-        onPress={press}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
-        accessibilityLabel={[clock, subtitle, missionLine].filter(Boolean).join(', ')}
-        accessibilityHint={owed ? 'Opens its mission' : 'Edits the alarm'}
-      >
-        {subtitle !== '' && <Text style={[styles.subtitle, !live && styles.dimSecondary]}>{subtitle}</Text>}
-        <Text style={[styles.time, !live && styles.dim]}>
-          {split ? split[1] : clock}
-          {split && <Text style={styles.meridiem}> {split[2]}</Text>}
-        </Text>
-        {details && (
-          <View style={styles.missionRow}>
-            {details.icons.map(name => (
-              <Ionicons key={name} name={name} size={iconSize.xs} color={live ? colors.textSecondary : colors.textTertiary} />
-            ))}
-            {details.text !== '' && <View style={styles.divider} />}
-            {details.text !== '' && <Text style={[styles.mission, !live && styles.dimSecondary]}>{details.text}</Text>}
-          </View>
+      <View style={styles.rowMain}>
+        <TouchableOpacity
+          onPress={press}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={[clock, subtitle, missionLine].filter(Boolean).join(', ')}
+          accessibilityHint={owed ? 'Opens its mission' : 'Edits the alarm'}
+        >
+          {subtitle !== '' && <Text style={[styles.subtitle, !live && styles.dimSecondary]}>{subtitle}</Text>}
+          <Text style={[styles.time, !live && styles.dim]}>
+            {split ? split[1] : clock}
+            {split && <Text style={styles.meridiem}> {split[2]}</Text>}
+          </Text>
+          {details && (
+            <View style={styles.missionRow}>
+              {details.icons.map(name => (
+                <Ionicons key={name} name={name} size={iconSize.xs} color={live ? colors.textSecondary : colors.textTertiary} />
+              ))}
+              {details.text !== '' && <View style={styles.divider} />}
+              {details.text !== '' && <Text style={[styles.mission, !live && styles.dimSecondary]}>{details.text}</Text>}
+            </View>
+          )}
+        </TouchableOpacity>
+        {(canSkip || skipping) && (
+          <InlineAction
+            label={skipping ? 'Undo skip' : 'Skip today'}
+            icon={skipping ? 'arrow-undo-outline' : 'play-skip-forward-outline'}
+            variant={skipping ? 'neutral' : 'accent'}
+            onPress={skipping ? undoSkip : skip}
+            accessibilityLabel={skipping ? `Undo skipping the ${clock} alarm today` : `Skip the ${clock} alarm today`}
+            style={styles.skipAction}
+          />
         )}
-      </TouchableOpacity>
+      </View>
       {owed ? (
         <View style={styles.ringing}>
           <Text style={styles.ringingText}>Ringing</Text>
@@ -217,6 +242,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
   },
   rowMain: { flex: 1, minWidth: 0 },
+  skipAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
   // A hero number, one of the literal sizes the font scale isn't for.
   time: { color: colors.text, fontSize: 34, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   meridiem: { fontSize: font.lg },

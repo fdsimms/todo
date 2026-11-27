@@ -820,6 +820,10 @@ interface SettingsStore {
   // How long before leaving that activity may start. Device-local, like the
   // switch above. Clamped by clampLeaveWindowMinutes.
   leaveWindowMinutes: number;
+  // The countdown to the next repeating alarm, with a Skip today button — see
+  // src/utils/alarmLiveActivity.ts. Device-local like the others (alarms are
+  // device-only). iOS 17+ only, defaults on.
+  alarmLiveActivity: boolean;
   // Same idea again, for the focus session in flight (useFocusStore.ts) — see
   // src/utils/focusLiveActivity.ts. iOS 17+ only, defaults on.
   focusLiveActivity: boolean;
@@ -2498,6 +2502,7 @@ interface SettingsStore {
   setTripLiveActivity: (on: boolean) => void;
   setLeaveLiveActivity: (on: boolean) => void;
   setLeaveWindowMinutes: (minutes: number) => void;
+  setAlarmLiveActivity: (on: boolean) => void;
   setFocusLiveActivity: (on: boolean) => void;
   setFocusHideTimers: (on: boolean) => void;
   setFocusBreaksEnabled: (on: boolean) => void;
@@ -2901,6 +2906,7 @@ const DEFAULT_SETTINGS = {
   tripLiveActivity: true,
   leaveLiveActivity: true,
   leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
+  alarmLiveActivity: true,
   focusLiveActivity: true,
   workoutLiveActivity: true,
   exerciseImagesEnabled: false,
@@ -3365,6 +3371,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   tripLiveActivity: true,
   leaveLiveActivity: true,
   leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
+  alarmLiveActivity: true,
   focusLiveActivity: true,
   workoutLiveActivity: true,
   exerciseImagesEnabled: false,
@@ -3802,6 +3809,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const tripLiveActivity = dbGetSetting('tripLiveActivity') !== 'false';
     // And for the leave-by one.
     const leaveLiveActivity = dbGetSetting('leaveLiveActivity') !== 'false';
+    const alarmLiveActivity = dbGetSetting('alarmLiveActivity') !== 'false';
     const storedLeaveWindow = parseInt(dbGetSetting('leaveWindowMinutes') ?? '', 10);
     const leaveWindowMinutes = clampLeaveWindowMinutes(Number.isFinite(storedLeaveWindow) ? storedLeaveWindow : undefined);
     // And again for the focus session's.
@@ -4423,6 +4431,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       activeListDrivenBy,
       afternoonStart,
       aiFeatureConfig,
+      alarmLiveActivity,
       appFont,
       appFontPool,
       appFontRandomize,
@@ -6406,6 +6415,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setLeaveLiveActivity(on: boolean) {
     dbSetSetting('leaveLiveActivity', on ? 'true' : 'false');
     set({ leaveLiveActivity: on });
+  },
+
+  setAlarmLiveActivity(on: boolean) {
+    dbSetSetting('alarmLiveActivity', on ? 'true' : 'false');
+    set({ alarmLiveActivity: on });
   },
 
   setLeaveWindowMinutes(minutes: number) {

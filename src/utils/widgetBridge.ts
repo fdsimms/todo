@@ -96,6 +96,12 @@ export interface WidgetBridge {
   syncLeaveLiveActivity: (jsonString: string) => Promise<boolean>;
   syncFocusLiveActivity: (jsonString: string) => Promise<boolean>;
   /**
+   * The countdown before a repeating alarm rings (`AlarmCountdownRun` as JSON,
+   * or '' for none) — see alarmLiveActivity.ts. Optional for the reason the
+   * dose drain is.
+   */
+  syncAlarmLiveActivity?: (jsonString: string) => Promise<boolean>;
+  /**
    * The workout's Live Activity (`WorkoutRun` as JSON, or '' for none) — see
    * workoutLiveActivity.ts. Optional for the reason the dose drain is.
    */

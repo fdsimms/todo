@@ -1971,6 +1971,24 @@ describe('leaveLiveActivity', () => {
   });
 });
 
+describe('alarmLiveActivity', () => {
+  it('defaults to on, and only turns off for an explicit "false"', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().alarmLiveActivity).toBe(true);
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'alarmLiveActivity' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().alarmLiveActivity).toBe(false);
+  });
+
+  it('round-trips through setAlarmLiveActivity', () => {
+    useSettingsStore.getState().setAlarmLiveActivity(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('alarmLiveActivity', 'false');
+    expect(useSettingsStore.getState().alarmLiveActivity).toBe(false);
+  });
+});
+
 describe('workoutLiveActivity', () => {
   // timerLiveActivity's reasoning: on unless someone turned it off.
   it('defaults to on, including when nothing is stored', () => {
