@@ -39,6 +39,8 @@ import { InlineAction } from './InlineAction';
 import { hhmmToDate, dateToHHMM } from '../utils/clockTime';
 import { formatTimeOfDay } from '../utils/dateUtils';
 
+const NO_TAGS: string[] = [];
+
 interface Props {
   visible: boolean;
   kind: GeneratedKind;
@@ -88,7 +90,8 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const setGeneratedTaskDefaults = useSettingsStore(s => s.setGeneratedTaskDefaults);
   const setGeneratedTaskExtras = useSettingsStore(s => s.setGeneratedTaskExtras);
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  // Only while open, as quick add does: collecting them is a pass over every task.
+  const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const categories = useCategoryStore(useShallow(s => s.categories));
 
   const [draftCategory, setDraftCategory] = useState<string | null>(category);

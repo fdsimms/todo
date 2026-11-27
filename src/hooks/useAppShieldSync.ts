@@ -144,7 +144,11 @@ export function useAppShieldSync(): void {
       lastGateKey = key;
       reconcile();
     };
-    const unsubscribeTasks = useTaskStore.subscribe(reconcileIfKeyChanged);
+    // Only a write to the task list: a tick also writes its hold and the undo
+    // bar, and the key is a pass over the tasks each time.
+    const unsubscribeTasks = useTaskStore.subscribe((state, prev) => {
+      if (state.tasks !== prev.tasks) reconcileIfKeyChanged();
+    });
     const unsubscribeCoins = useRewardStore.subscribe((state, prev) => {
       if (state.entries !== prev.entries) reconcileIfKeyChanged();
     });

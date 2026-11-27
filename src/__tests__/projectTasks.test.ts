@@ -1,4 +1,4 @@
-import { projectTasksOf, seriesTasksOf } from '../utils/projectTasks';
+import { projectTasksOf, seriesTasksOf, subtaskRowsOf } from '../utils/projectTasks';
 import { benchBaseTask } from '../__bench__/benchTask';
 import type { Task } from '../types';
 
@@ -32,3 +32,19 @@ describe('seriesTasksOf', () => {
   });
 });
 
+describe('subtaskRowsOf', () => {
+  const step = (id: string, parentId: string | null): Task => ({ ...benchBaseTask, id, parentId });
+  const tasks = [step('a', null), step('b', 'a'), step('c', 'x'), step('d', 'a')];
+
+  it('gives the same rows, in the same order, as filtering the list', () => {
+    for (const id of ['a', 'x', 'nobody']) {
+      expect(subtaskRowsOf(tasks, id)).toEqual(tasks.filter(t => t.parentId === id));
+    }
+  });
+
+  it('answers again for a new array', () => {
+    const next = [...tasks, step('e', 'a')];
+    expect(subtaskRowsOf(next, 'a').map(t => t.id)).toEqual(['b', 'd', 'e']);
+    expect(subtaskRowsOf(tasks, 'a').map(t => t.id)).toEqual(['b', 'd']);
+  });
+});

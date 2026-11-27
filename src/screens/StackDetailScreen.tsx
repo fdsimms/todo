@@ -48,6 +48,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { reuseUnchangedLists } from '../utils/stableLists';
 import { HoverTouchable } from '../components/HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 type RootStackParamList = {
   StackDetail: { groupId: string };
@@ -185,7 +186,7 @@ export function StackDetailScreen() {
   }, []);
 
   const handleRowEdit = useCallback((id: string) => {
-    const task = useTaskStore.getState().tasks.find(t => t.id === id);
+    const task = taskById(useTaskStore.getState().tasks, id);
     if (!task) return;
     setEditingTask(task);
     setEditorVisible(true);

@@ -648,7 +648,9 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
     // daily notification does before calling this (`notifications.ts`). The
     // widget must not count work the app itself is currently withholding.
     agenda: agendaCounts(
-      input.allTasks.filter(task => !isWithheld(task) && !isHeldBack(task)),
+      // Finished rows first: agendaCounts skips them anyway, and they are most
+      // of the list, each otherwise asked whether it is withheld or held back.
+      input.allTasks.filter(task => !task.completed && !isWithheld(task) && !isHeldBack(task)),
       input.now,
       input.dayResetTime
     ),

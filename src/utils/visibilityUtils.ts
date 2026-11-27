@@ -1403,9 +1403,27 @@ export function isTaskNew(task: Task): boolean {
 // routine instead of accumulating forever. Deliberately doesn't require
 // recurrence: a plain one-off grouped task still counts on the day it's done.
 export function isRelevantToGroupToday(task: Task): boolean {
+  return relevantToGroupOn(task, groupDay());
+}
+
+interface GroupDay { start: number; startIso: string }
+
+function groupDay(): GroupDay {
+  const start = getCurrentDayStart();
+  return { start: +start, startIso: start.toISOString() };
+}
+
+// The day is handed in so a roster works it out once rather than once per row.
+// A stack of daily habits is mostly finished rows, and nothing finished before
+// today started can belong to today, so those are ruled out on the stamp's own
+// text (as `completedOnDay` does) without parsing a date for each.
+function relevantToGroupOn(task: Task, day: GroupDay): boolean {
   if (!task.completed) return isTaskVisible(task);
-  if (!task.completedAt) return false;
-  return +getDayStart(new Date(task.completedAt)) === +getCurrentDayStart();
+  const at = task.completedAt;
+  if (!at) return false;
+  const canonical = at.length === 24 && at.charCodeAt(23) === 90;
+  if (canonical ? at < day.startIso : Date.parse(at) < day.start) return false;
+  return +getDayStart(new Date(at)) === day.start;
 }
 
 // A stack's real membership, and the only thing any surface should count.
@@ -1468,6 +1486,7 @@ function collapseSeries(tasks: Task[]): Task[] {
 }
 
 export function groupRoster(children: Task[]): Task[] {
+  const day = groupDay();
   const superseded = new Set<string>();
   const byId = new Map<string, Task>();
   for (const child of children) {
@@ -1487,8 +1506,8 @@ export function groupRoster(children: Task[]): Task[] {
     // only true for a genuinely same-day catch-up, but also true, spuriously,
     // for a `dueDate` computed under one timezone and re-read under another
     // after the device travels — and without this check both rows survive.
-    if (prev && isRelevantToGroupToday(prev) && !child.chainEnabled) return false;
-    if (isRelevantToGroupToday(child)) return true;
+    if (prev && relevantToGroupOn(prev, day) && !child.chainEnabled) return false;
+    if (relevantToGroupOn(child, day)) return true;
     if (child.completed || child.archived) return false;
     if (superseded.has(child.id)) return false;
     return true;

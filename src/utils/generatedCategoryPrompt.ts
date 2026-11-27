@@ -3,6 +3,7 @@ import type { Task } from '../types';
 import { confirmBulkScope } from './bulkScopePrompt';
 import { useTaskStore, writeEditToFollowUpSource } from '../store/useTaskStore';
 import { followUpDraftFieldsChanged, hasFollowUpSource } from './followUpTask';
+import { taskById } from './taskRows';
 import {
   generatedCategoryOffer,
   writeCategoryToSource,
@@ -50,7 +51,7 @@ export function bulkSetCategoryOffering(ids: string[], category: string | null, 
   const store = useTaskStore.getState();
   const selected = store.tasks.filter(t => ids.includes(t.id));
   confirmBulkScope(selected.filter(t => (t.category ?? null) !== category), 'the new category', scope => {
-    const changed = ids.filter(id => (useTaskStore.getState().tasks.find(t => t.id === id)?.category ?? null) !== category);
+    const changed = ids.filter(id => (taskById(useTaskStore.getState().tasks, id)?.category ?? null) !== category);
     useTaskStore.getState().bulkSetCategory(ids, category, { scope });
     offerGeneratedCategoryWriteBack(changed.map(id => ({ id, category })));
     onDone?.();

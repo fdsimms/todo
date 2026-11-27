@@ -17,6 +17,7 @@ import { formatCoinChange, netCoinsForTask } from '../utils/rewards';
 import { isAnsweredByRecord } from '../utils/recordTasks';
 import { BUTTON_LABEL } from '../copy/shared';
 import { HoverTouchable } from './HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 interface Props {
   visible: boolean;
@@ -135,7 +136,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
       updateTask(answer.taskId, answer.before);
     } else {
       uncompleteTask(answer.taskId);
-      const reopened = useTaskStore.getState().tasks.find(t => t.id === answer.taskId);
+      const reopened = taskById(useTaskStore.getState().tasks, answer.taskId);
       if (!reopened || reopened.completed) return;
       animateLayout();
     }
@@ -186,7 +187,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
   const answerSkip = (task: Task) => {
     haptics.tap();
     animateLayout();
-    const before = useTaskStore.getState().tasks.find(t => t.id === task.id) ?? task;
+    const before = taskById(useTaskStore.getState().tasks, task.id) ?? task;
     skipNextRecurrence(task.id);
     record(task, 'skip', 0, { ...before });
   };

@@ -227,6 +227,7 @@ import { RotatingChevron } from './RotatingChevron';
 import { runningOnMac } from '../utils/runningOnMac';
 import { useEscapeHandler } from '../hooks/useEscapeHandler';
 import { HoverTouchable } from './HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -547,6 +548,8 @@ function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters
  * whole tree, only for the closed sheet to draw nothing. The callers that
  * render it from a busy screen pass a stable `onClose` so this holds.
  */
+const NO_TAGS: string[] = [];
+
 export const TaskEditor = React.memo(TaskEditorSheet);
 
 // What a Start or End pill can follow: the clock, or the sun.
@@ -600,7 +603,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const setBlockedTasks = useTaskStore(s => s.setBlockedTasks);
   const archiveTask = useTaskStore(s => s.archiveTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
-  const allTagsStore = useTaskStore(useShallow(s => s.allTags()));
+  // Only while open, as quick add does: the editor stays mounted, and every
+  // task write re-collected the tags of every task for a closed sheet.
+  const allTagsStore = useTaskStore(useShallow(s => (visible || inline ? s.allTags() : NO_TAGS)));
   const allTags = allTagsStore;
   const categories = useCategoryStore(useShallow(s => s.categories));
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
@@ -956,13 +961,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // the pointer can go stale. Null on every task that isn't a follow-up task,
   // and null again once its parent has completed its own next cycle.
   const followUpSourceParent = useTaskStore(s =>
-    task?.followUpTaskSourceId ? s.tasks.find(t => t.id === task.followUpTaskSourceId) ?? null : null
+    task?.followUpTaskSourceId ? taskById(s.tasks, task.followUpTaskSourceId) ?? null : null
   );
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
   // The question the gate rides on, for its title and the answers it offers.
-  const gateQuestion = useTaskStore(s => (answerGate ? s.tasks.find(t => t.id === answerGate.taskId) ?? null : null));
+  const gateQuestion = useTaskStore(s => (answerGate ? taskById(s.tasks, answerGate.taskId) ?? null : null));
   const gateOptions = useMemo(() => {
     const offered = gateQuestion ? deliverableOptionsFor(gateQuestion) : [];
     // An answer ticked before the question's options were edited stays on
@@ -1037,7 +1042,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // The `task` prop is a snapshot taken when the sheet opened, and the streak
   // is written straight to the store by Apply, so read it live or the row keeps
   // showing the old count until the sheet is reopened.
-  const liveStreakTask = useTaskStore(s => (task ? s.tasks.find(t => t.id === task.id) ?? task : null));
+  const liveStreakTask = useTaskStore(s => (task ? taskById(s.tasks, task.id) ?? task : null));
   const [showStreak, setShowStreak] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [slipAllowance, setSlipAllowance] = useState<number | null>(null);
@@ -1169,7 +1174,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // whichever screen owns the prop to hand down a new object.
   const taskId = task?.id ?? null;
   const timeBlockEventId = useTaskStore(
-    s => (taskId ? s.tasks.find(t => t.id === taskId)?.timeBlockEventId ?? null : null)
+    s => (taskId ? taskById(s.tasks, taskId)?.timeBlockEventId ?? null : null)
   );
   // The length a block would get, chain-aware, off the saved row — what
   // planTimeBlock will actually propose. Null means the task has no length to
@@ -2420,7 +2425,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     // `data` always carries the full count; this is the one place that turns
     // it into this week's.
     const applyProration = (id: string) => {
-      const row = useTaskStore.getState().tasks.find(t => t.id === id);
+      const row = taskById(useTaskStore.getState().tasks, id);
       if (!row) return;
       const patch = quotaProrationPatch(
         row, targetCount, prorateFirstWeek ? proratedCount : null, prorationAnchor,
@@ -2468,7 +2473,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         // registers for itself — this snapshot puts the whole task back,
         // stack membership and category included.
         // Read after every write above, so redo puts back what the save left.
-        const saved = useTaskStore.getState().tasks.find(t => t.id === snapshot.id);
+        const saved = taskById(useTaskStore.getState().tasks, snapshot.id);
         const redoRule = captureFollowUpDrafts([task.id], scope);
         setLastAction({
           label: 'Edit saved',

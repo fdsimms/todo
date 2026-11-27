@@ -9,6 +9,7 @@ import { useEventPeopleStore } from './useEventPeopleStore';
 import { usePersonStore } from './usePersonStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useTaskStore } from './useTaskStore';
+import { taskById } from '../utils/taskRows';
 
 /**
  * What the event details task's Add and Skip do, and the read of the events
@@ -36,7 +37,7 @@ export function readEventDetailEntries(now: Date = new Date()): EventDetailEntry
  * Otherwise the check runs again so the title's count follows.
  */
 function settle(taskId: string): void {
-  const task = useTaskStore.getState().tasks.find(t => t.id === taskId);
+  const task = taskById(useTaskStore.getState().tasks, taskId);
   if (!task || task.completed) return;
   if (readEventDetailEntries().length === 0) markGeneratedReady(task);
   else useTaskStore.getState().checkEventDetailsTasks();

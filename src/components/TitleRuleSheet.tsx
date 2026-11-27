@@ -37,6 +37,8 @@ import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
 import { HoverTouchable } from './HoverTouchable';
 
+const NO_TAGS: string[] = [];
+
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'link';
 
 const MATCH_OPTIONS: SegmentOption<TitleRuleMatch>[] = [
@@ -76,7 +78,8 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  // Only while open, as quick add does: collecting them is a pass over every task.
+  const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));

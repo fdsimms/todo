@@ -29,6 +29,7 @@ import { useFloatingBarStore } from '../store/useFloatingBarStore';
 import { useFocusedRouteStore } from '../store/useFocusedRouteStore';
 import { isCookTimerRunning } from '../utils/recipeTimer';
 import { resetToFocusSession, isFullPageMode } from '../navigation/navigationRef';
+import { taskById } from '../utils/taskRows';
 
 interface Props {
   /** Reopens the session sheet. */
@@ -95,7 +96,7 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   // Only the step's own task, so a write to any other task doesn't re-render
   // the bar (it is mounted app-wide and already ticks every second).
   const stepTaskId = session ? currentFocusStep(session)?.taskId : undefined;
-  const task = useTaskStore(s => (stepTaskId ? s.tasks.find(t => t.id === stepTaskId) : undefined));
+  const task = useTaskStore(s => (stepTaskId ? taskById(s.tasks, stepTaskId) : undefined));
   const pause = useFocusStore(s => s.pause);
   const resume = useFocusStore(s => s.resume);
 

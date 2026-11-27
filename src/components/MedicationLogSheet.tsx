@@ -34,6 +34,7 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { HoverTouchable } from './HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 const NAME_MAX_LENGTH = 60;
 const NOTE_MAX_LENGTH = 200;
@@ -276,7 +277,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   );
 
   const attachToTask = (taskId: string) => {
-    const task = useTaskStore.getState().tasks.find(t => t.id === taskId);
+    const task = taskById(useTaskStore.getState().tasks, taskId);
     if (!task) return;
     updateTask(taskId, taskMedication());
     setAttachedTitle(displayTitleFor(task));

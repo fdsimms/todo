@@ -24,6 +24,7 @@ import {
   dbDeleteJournalEntry,
   dbInsertTask,
   dbUpdateTask,
+  taskUpdateShape,
   dbDeleteTask,
   dbDeleteSubtasks,
   dbClearAllPins,
@@ -725,6 +726,39 @@ describe('initDatabase', () => {
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
+
+describe('dbUpdateTask given the row as it was', () => {
+  const done = { completed: true, completedAt: '2025-01-05T09:00:00.000Z', streakCount: 4, tags: ['home'] };
+
+  it('pairs every column it can write with a value', () => {
+    const shape = taskUpdateShape(makeTask());
+    expect(shape.columns).toBe(shape.values);
+  });
+
+  it('leaves the row the same as writing all of it', () => {
+    const narrow = makeTask({ id: 'narrow' });
+    const whole = makeTask({ id: 'whole' });
+    dbInsertTask(narrow);
+    dbInsertTask(whole);
+    dbUpdateTask({ ...narrow, ...done }, narrow);
+    dbUpdateTask({ ...whole, ...done });
+    const byId = new Map(dbGetAllTasks().map(t => [t.id, t]));
+    expect({ ...byId.get('narrow')!, id: '', updatedAt: null }).toEqual({ ...byId.get('whole')!, id: '', updatedAt: null });
+    expect(byId.get('narrow')!.completed).toBe(true);
+    expect(byId.get('narrow')!.tags).toEqual(['home']);
+  });
+
+  it('writes only the columns that differ', () => {
+    const task = makeTask({ id: 't1', notes: 'as loaded' });
+    dbInsertTask(task);
+    // The stored row moves on without this copy hearing of it.
+    dbUpdateTask({ ...task, notes: 'changed since' });
+    dbUpdateTask({ ...task, completed: true }, task);
+    const stored = dbGetAllTasks().find(t => t.id === 't1')!;
+    expect(stored.completed).toBe(true);
+    expect(stored.notes).toBe('changed since');
+  });
+});
 
 describe('dbGetSetting / dbSetSetting', () => {
   it('returns null for a missing key', () => {

@@ -308,6 +308,22 @@ export const GroceryRow = React.memo(function GroceryRow({
   // rest of the row. Issue #1222: that's the only way in, so it now swaps the
   // name into an inline TextInput instead — the checkbox (its own zone below)
   // is what toggles checked now.
+  // The box flips on the tap and the write follows a frame later, as a
+  // subtask's does on a task row: the write re-renders the whole list, and the
+  // tick used to wait for that. `checkWritesPending` counts taps whose write
+  // hasn't run, so a double tap doesn't drop back to the stored value between.
+  const [checkOverride, setCheckOverride] = useState<boolean | null>(null);
+  const checkWritesPending = useRef(0);
+  const boxChecked = checkOverride ?? item.checked;
+  const toggleFromBox = () => {
+    setCheckOverride(!boxChecked);
+    checkWritesPending.current += 1;
+    requestAnimationFrame(() => {
+      onToggle(item.id);
+      checkWritesPending.current -= 1;
+      if (checkWritesPending.current === 0) setCheckOverride(null);
+    });
+  };
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(item.name);
   // A refused rename used to be an error haptic and nothing else, which on a
@@ -520,13 +536,13 @@ export const GroceryRow = React.memo(function GroceryRow({
       )}
       <HoverTouchable
         activeOpacity={interaction.activeOpacity}
-        onPress={() => (selectionMode ? onSelect?.(item.id) : onToggle(item.id))}
+        onPress={() => (selectionMode ? onSelect?.(item.id) : toggleFromBox())}
         onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
         delayLongPress={interaction.delayLongPress}
         hitSlop={CHECKBOX_HIT_SLOP}
         style={selectionMode ? styles.checkboxSelecting : undefined}
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: selectionMode ? selected : item.checked }}
+        accessibilityState={{ checked: selectionMode ? selected : boxChecked }}
         accessibilityLabel={label}
         accessibilityHint={
           selectionMode
@@ -542,7 +558,7 @@ export const GroceryRow = React.memo(function GroceryRow({
             (#2944). The touch target still selects while selecting, and its
             accessibility state follows: the dot is not its own element. */}
         <CheckPop
-          checked={item.checked}
+          checked={boxChecked}
           style={styles.checkbox}
           checkedStyle={styles.checkboxChecked}
           markStyle={styles.checkmarkInCart}

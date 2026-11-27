@@ -9,6 +9,7 @@ import { isAlarmKitAvailable } from './notifications';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { useSavedFocusStore } from '../store/useSavedFocusStore';
 import { savedFocusNameKey } from './savedFocus';
+import { taskById } from './taskRows';
 
 /**
  * What the Inbox cards' two buttons do (`agentSuggestions.ts` has the rules).
@@ -45,7 +46,7 @@ export async function applyTaskSuggestion(id: string): Promise<ApplyOutcome> {
   const request = store.requests.find(r => r.id === id);
   if (!request || request.status !== 'proposed') return 'failed';
   if (request.kind === 'new_alarm') return applyNewAlarmSuggestion(request);
-  const task = request.taskId ? useTaskStore.getState().tasks.find(t => t.id === request.taskId) : undefined;
+  const task = request.taskId ? taskById(useTaskStore.getState().tasks, request.taskId) : undefined;
   const plan = planTaskSuggestion(request, task, {
     now: new Date(),
     deadlineCalendarId: useSettingsStore.getState().deadlineCalendarId,

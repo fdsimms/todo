@@ -12,8 +12,10 @@
  * selector), and the time to re-run Today's selectors after it.
  *
  * Numbers are for comparing two checkouts on the same machine, not for
- * predicting a phone: Hermes on a device is slower than Node, and the native
- * bridges (notifications, calendar, widget) are stubbed out here.
+ * predicting a phone: Hermes on a device is slower than Node, the database is
+ * in memory (so a commit costs nothing, where a phone appends to the WAL once
+ * per transaction), and the native bridges (notifications, calendar, widget)
+ * are stubbed out here.
  */
 import { benchBaseTask } from './benchTask';
 import type { Task } from '../types';
@@ -25,19 +27,14 @@ jest.mock('../utils/checkInRecording', () => ({ cancelCheckInFor: jest.fn() }));
 jest.mock('expo-sqlite', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const BS = require('better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cache = new Map<string, any>();
   const raw = () => {
     if (!mockDb) mockDb = new BS(':memory:');
     return mockDb;
   };
-  // Compiled once per statement, as expo-sqlite's own statement cache does, so
-  // the timings are the app's work rather than better-sqlite3's parser.
-  const stmt = (sql: string) => {
-    let prepared = cache.get(sql);
-    if (!prepared) { prepared = raw().prepare(sql); cache.set(sql, prepared); }
-    return prepared;
-  };
+  // Compiled on every call, as expo-sqlite's runSync, getAllSync and
+  // getFirstSync do (prepare, run, finalize: it keeps no statement cache), so
+  // a write's cost here includes what it costs on a phone to prepare it.
+  const stmt = (sql: string) => raw().prepare(sql);
   return {
     openDatabaseSync: () => ({
       execSync(sql: string) { raw().exec(sql); },

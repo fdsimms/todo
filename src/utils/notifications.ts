@@ -958,7 +958,8 @@ function agendaRequest(
   // are filtered here rather than inside agendaCounts, which stays free of
   // store reads so it can be tested directly. Neither can be done today, so
   // counting them "due" and then "carried over" every morning was noise.
-  const counts = agendaCounts(tasks.filter(t => !isWithheld(t) && !isHeldBack(t)), when, dayResetTime);
+  // Finished rows go first for cost alone: agendaCounts skips them anyway.
+  const counts = agendaCounts(tasks.filter(t => !t.completed && !isWithheld(t) && !isHeldBack(t)), when, dayResetTime);
   // The day's meetings, when the calendar was read for it; a day it wasn't
   // read for says nothing about meetings rather than claiming none.
   if (calendarReadEnabled) {

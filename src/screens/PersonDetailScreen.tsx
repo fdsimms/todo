@@ -74,6 +74,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { explainLockedDelete } from '../utils/lockedDelete';
 import { HoverTouchable } from '../components/HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 type RootStackParamList = {
   // `returnTo` is the tab a task row's people link was tapped from (see
@@ -204,7 +205,7 @@ export function PersonDetailScreen() {
   // so an edit made in the editor shows straight away.
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const closeTaskEditor = useCallback(() => setEditingTaskId(null), []);
-  const editingTask = useTaskStore(s => (editingTaskId ? s.tasks.find(t => t.id === editingTaskId) ?? null : null));
+  const editingTask = useTaskStore(s => (editingTaskId ? taskById(s.tasks, editingTaskId) ?? null : null));
   // Two separate flags rather than one union: an in-progress add has no
   // `HistoryEntry` to carry (there's no task yet), so `entry: null` would be
   // ambiguous between "closed" and "adding".

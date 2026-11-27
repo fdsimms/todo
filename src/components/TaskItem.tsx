@@ -21,6 +21,7 @@ import {
   StyleSheet,
   Alert,
   Keyboard,
+  Easing as AnimatedEasing,
   LayoutChangeEvent,
   type NativeSyntheticEvent,
   type TextLayoutEventData,
@@ -81,6 +82,7 @@ import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '..
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
+import { taskById } from '../utils/taskRows';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { completionLogChips } from '../utils/completionLogChip';
@@ -854,6 +856,11 @@ const TaskItemRow = React.memo(function TaskItem({
   const pinLit = isPinnedOnToday(task);
   const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
+  // The same for a subtask's tick, by subtask id: the box and its title flip on
+  // the tap and the write follows a frame later. The tick used to start only
+  // after the write and the screen-wide render it causes.
+  const [subtaskOverrides, setSubtaskOverrides] = useState<Record<string, boolean>>({});
+  const subtaskWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
   // The mission sheet (Task.mission). Once the mission is done, the ref
   // says so to every completeTask below, which refuses the task otherwise.
@@ -997,7 +1004,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // re-renders the row.
   const eventRules = useSettingsStore(s => (task.generatedKind === 'travel' ? s.eventRules : NO_EVENT_RULES));
   const leavePrep = useTaskStore(s => (
-    task.generatedKind === 'travel' ? leavePrepLine(openLeavePrep(task, s.tasks, eventRules)) : null
+    task.generatedKind === 'travel' ? leavePrepLine(openLeavePrep(task, openTasksOf(s.tasks), eventRules)) : null
   ));
   const travelSource = task.generatedKind === 'travel' ? task.generatedSourceId : null;
   const canOpenTravelEvent = !!travelSource && travelSourceEventId(travelSource) !== null && !isDemoModeActive();
@@ -1392,7 +1399,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // way to leave the hold is for it to expire, which leaves the task completed
     // and this row on its way out of the list. Restoring that one would flash it
     // back in for the frame before it unmounts.
-    const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+    const current = taskById(useTaskStore.getState().tasks, task.id);
     if (!current || current.completed) return;
     restoreFromCompletion(current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2666,6 +2673,15 @@ const TaskItemRow = React.memo(function TaskItem({
     // done-by-someone-else circle just holds, its violet ring and glyph are the
     // whole send-off.
     const shakes = kind === 'missed' && !reduceMotion;
+    // Out and back on timed curves, not springs. The completion is saved when
+    // this sequence reports done, and a spring reports done only once it has
+    // fully settled, some 300ms after it has stopped visibly moving: two of
+    // them in a row held every tick back by most of a second with nothing on
+    // screen to show for it.
+    const circlePulse = (peak: number) => [
+      Animated.timing(circleScale, { toValue: peak, duration: animation.duration.fast, easing: AnimatedEasing.out(AnimatedEasing.cubic), useNativeDriver: true }),
+      Animated.timing(circleScale, { toValue: 1, duration: animation.duration.fast, easing: AnimatedEasing.inOut(AnimatedEasing.cubic), useNativeDriver: true }),
+    ];
     if (shakes) {
       circleShake.setValue(0);
       Animated.sequence([-3, 3, -2, 0].map(toValue =>
@@ -2676,21 +2692,15 @@ const TaskItemRow = React.memo(function TaskItem({
       ...(viaMeter ? [Animated.delay(QUOTA_TOPPING_MS)] : []),
       ...(kind || reduceMotion
         ? [Animated.delay(shakes ? SHAKE_STEP_MS * 4 : STILL_POP_MS)]
-        : [
-          Animated.spring(circleScale, { toValue: CIRCLE_POP_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
-          Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-        ]),
+        : circlePulse(CIRCLE_POP_SCALE)),
     ]);
     // Split from the pop so the routine's heavy pulse can start exactly when the
     // second ring pulse does, rather than on a guessed delay.
     const settle = () => Animated.sequence([
-      ...(finishing && !reduceMotion
-        ? [
-          Animated.spring(circleScale, { toValue: CHAIN_FINISH_PULSE_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
-          Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-        ]
-        : []),
-      Animated.delay(120),
+      // The routine's second pulse gets a beat after it. An ordinary completion
+      // is saved as soon as its pop lands: the row holds its checked look until
+      // the batch closes up, so nothing is waiting to be read here.
+      ...(finishing && !reduceMotion ? [...circlePulse(CHAIN_FINISH_PULSE_SCALE), Animated.delay(120)] : [Animated.delay(0)]),
     ]);
     completeAnimRef.current = pop;
     pop.start(({ finished: popped }) => {
@@ -2784,14 +2794,15 @@ const TaskItemRow = React.memo(function TaskItem({
         Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
       ]).start();
     }
-    await new Promise<void>(resolve => {
-      // The spring itself overshoots past 1 — that overshoot, applied directly
-      // as the title/badge's own scale, is the "gets slightly bigger" settle.
-      (reduceMotion
-        ? Animated.timing(chainStepAnim, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true })
-        : Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true })
-      ).start(() => resolve());
-    });
+    // The spring itself overshoots past 1 — that overshoot, applied directly
+    // as the title/badge's own scale, is the "gets slightly bigger" settle.
+    // The save waits a fixed span rather than for the spring to report done,
+    // which it does only after settling, well after the eye has it as arrived.
+    (reduceMotion
+      ? Animated.timing(chainStepAnim, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true })
+      : Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true })
+    ).start();
+    await new Promise(resolve => setTimeout(resolve, reduceMotion ? animation.duration.fast : animation.duration.slow));
     completingRef.current = false;
     const deliverableReasoning = pendingReasoningRef.current;
     pendingDeliverableRef.current = undefined;
@@ -3275,7 +3286,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // by now — the long-press undo took a unit back, or enough of the day
     // passed that the next one fell due — isn't going anywhere, so it just
     // gives the hold back and stays put instead of fading in place.
-    const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+    const current = taskById(useTaskStore.getState().tasks, task.id);
     if (!current || current.completed || isTaskVisible(current)) {
       endQuotaHold();
       return;
@@ -5278,6 +5289,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     // it stays a separate answer to a separate question.
                     const segment = segments.find(s => s.id === sub.id) ?? null;
                     const phase = segment ? segmentPhase(segment, timerElapsedNow) : null;
+                    const subDone = subtaskOverrides[sub.id] ?? sub.completed;
                     return (
                     // The add-subtask row pinned below the list is always the
                     // true last row, except on a notice, which has none.
@@ -5288,9 +5300,17 @@ const TaskItemRow = React.memo(function TaskItem({
                         // A check is the small-check haptic (a grocery row's
                         // too); unchecking is a tap.
                         onPress={() => {
-                          if (sub.completed) haptics.tap();
+                          if (subDone) haptics.tap();
                           else haptics.impactLight();
-                          toggleSubtask(sub.id);
+                          setSubtaskOverrides(prev => ({ ...prev, [sub.id]: !subDone }));
+                          subtaskWritesPending.current += 1;
+                          // A frame later, so the tick commits and starts before
+                          // the screen-wide render the write causes (as the pin does).
+                          requestAnimationFrame(() => {
+                            toggleSubtask(sub.id);
+                            subtaskWritesPending.current -= 1;
+                            if (subtaskWritesPending.current === 0) setSubtaskOverrides({});
+                          });
                         }}
                         // Same split as the row checkbox above — the gap to the
                         // title is this box's, so the title wrapper runs at 0 on
@@ -5298,10 +5318,10 @@ const TaskItemRow = React.memo(function TaskItem({
                         // ~32pt tall and hit-testing clips at its bounds.
                         hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
                         accessibilityRole="checkbox"
-                        accessibilityState={{ checked: sub.completed }}
+                        accessibilityState={{ checked: subDone }}
                         accessibilityLabel={sub.title}
                       >
-                        <CheckPop checked={sub.completed} style={styles.subtaskCheck} checkedStyle={styles.subtaskCheckDone}>
+                        <CheckPop checked={subDone} style={styles.subtaskCheck} checkedStyle={styles.subtaskCheckDone}>
                           <Ionicons name="checkmark" size={8} color={colors.done} />
                         </CheckPop>
                       </HoverTouchable>
@@ -5329,7 +5349,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         >
                           <Text style={[
                             styles.subtaskTitle,
-                            sub.completed && styles.subtaskTitleDone,
+                            subDone && styles.subtaskTitleDone,
                           ]} numberOfLines={2}>
                             {sub.title}
                           </Text>
