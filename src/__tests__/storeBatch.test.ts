@@ -1,5 +1,5 @@
 import { createStore } from 'zustand/vanilla';
-import { installNotificationBatch } from '../utils/storeBatch';
+import { installNotificationBatch, withBatchedActions } from '../utils/storeBatch';
 
 interface Counter { count: number; bump: () => void }
 
@@ -83,5 +83,66 @@ describe('installNotificationBatch', () => {
       unsubscribe();
     });
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+interface Tally {
+  count: number;
+  label: string;
+  bump: () => number;
+  fail: () => void;
+}
+
+function makeTallyStore() {
+  return createStore<Tally>((set, get, api) => withBatchedActions(api, ['bump', 'fail'], {
+    count: 0,
+    label: '',
+    bump() {
+      set({ count: get().count + 1 });
+      set({ label: `at ${get().count}` });
+      return get().count;
+    },
+    fail() {
+      set({ count: 99 });
+      throw new Error('after the write');
+    },
+  }));
+}
+
+describe('withBatchedActions', () => {
+  it('tells subscribers once for an action that writes twice, with the state before it as prev', () => {
+    const store = makeTallyStore();
+    const heard: [number, string, number][] = [];
+    store.subscribe((state, prev) => heard.push([state.count, state.label, prev.count]));
+    expect(store.getState().bump()).toBe(1);
+    expect(heard).toEqual([[1, 'at 1', 0]]);
+  });
+
+  it('still tells them at once for a write outside a batched action', () => {
+    const store = makeTallyStore();
+    const heard: number[] = [];
+    store.subscribe(state => heard.push(state.count));
+    store.setState({ count: 5 });
+    store.setState({ count: 6 });
+    expect(heard).toEqual([5, 6]);
+  });
+
+  it('tells them what an action wrote before it threw', () => {
+    const store = makeTallyStore();
+    const heard: number[] = [];
+    store.subscribe(state => heard.push(state.count));
+    expect(() => store.getState().fail()).toThrow('after the write');
+    expect(heard).toEqual([99]);
+    store.setState({ count: 1 });
+    expect(heard).toEqual([99, 1]);
+  });
+
+  it('stops telling a subscriber that has left', () => {
+    const store = makeTallyStore();
+    const heard: number[] = [];
+    const leave = store.subscribe(state => heard.push(state.count));
+    leave();
+    store.getState().bump();
+    expect(heard).toEqual([]);
   });
 });

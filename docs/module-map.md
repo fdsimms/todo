@@ -643,7 +643,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stepper.ts` — StepRange, clampCount, typedStepperValue, parseStepperInput, stepCount, canStep, holdRepeatDelay
 - `src/utils/storageReport.ts` — StorageTable, StorageStats, formatBytes, MIN_RECLAIMABLE_BYTES, worthOptimizing, optimizeBlockedReason, topAreas, describeAreas
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
-- `src/utils/storeBatch.ts` — installNotificationBatch
+- `src/utils/storeBatch.ts` — installNotificationBatch, withBatchedActions
 - `src/utils/storedFileBackup.ts` — storedFileNamesIn, collectStoredFiles, restoreStoredFiles
 - `src/utils/streakLeaderboard.ts` — LEADERBOARD_SIZE, streakScore, rankStreaks
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
@@ -791,7 +791,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/store`
 
-- `src/store/batchedNotify.ts` — batchNotifications, withBatchedActions
 - `src/store/blockOfferRuns.ts` — readBlockOfferRuns, writeBlockOfferRuns
 - `src/store/eventDetailActions.ts` — readEventDetailEntries, addEventDetailPerson, addEventDetailPlace, skipEventDetails
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource

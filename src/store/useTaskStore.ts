@@ -389,7 +389,7 @@ import {
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { subtaskRowsOf } from '../utils/projectTasks';
-import { withBatchedActions } from './batchedNotify';
+import { withBatchedActions } from '../utils/storeBatch';
 import { isProjectHidden, useProjectLockStore } from './useProjectLockStore';
 import { projectsKeptFromPurge, retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -3633,7 +3633,7 @@ function lockedUnlockBlocking(task: Task): RewardUnlock | null {
 }
 
 // The taps that write more than once (the change, then the undo bar's entry).
-// Each tells the store's subscribers once: see batchedNotify.ts.
+// Each tells the store's subscribers once: see storeBatch.ts.
 const ONE_NOTIFICATION_ACTIONS = [
   'completeTask', 'uncompleteTask', 'deferTask', 'deleteTask', 'bulkCompleteTasks', 'bulkUncompleteTasks',
 ] as const;

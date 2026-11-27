@@ -67,3 +67,18 @@ export function installNotificationBatch<S>(api: BatchableApi<S>): <T>(fn: () =>
     }
   };
 }
+
+/**
+ * `state` with each named action run inside one batch, for a store whose
+ * multi-write actions are whole taps (the change, then its undo entry) and
+ * not loops that call `batch` themselves.
+ */
+export function withBatchedActions<S extends object>(api: BatchableApi<S>, names: readonly (keyof S)[], state: S): S {
+  const batch = installNotificationBatch(api);
+  const actions = state as Record<keyof S, unknown>;
+  for (const name of names) {
+    const action = actions[name] as (...args: unknown[]) => unknown;
+    actions[name] = (...args: unknown[]) => batch(() => action(...args));
+  }
+  return state;
+}
