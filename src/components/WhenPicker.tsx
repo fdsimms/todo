@@ -214,8 +214,11 @@ const CAL_PADDING = 10;
 const ROW_HEIGHT = 40;
 const DAY_CIRCLE = 32;
 
-// How long the selection "pop" plays before the modal commits and closes.
-const CONFIRM_DELAY_MS = 320;
+// How long the selection "pop" plays before the modal commits and closes: the
+// moment the bouncy spring first reaches its peak. At 320 the pop had peaked
+// and was most of the way back before the sheet let go, and every reschedule
+// waited that out.
+const CONFIRM_DELAY_MS = 180;
 
 
 const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [

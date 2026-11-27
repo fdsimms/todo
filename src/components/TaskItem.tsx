@@ -856,6 +856,11 @@ const TaskItemRow = React.memo(function TaskItem({
   const pinLit = isPinnedOnToday(task);
   const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
+  // The same for a subtask's tick, by subtask id: the box and its title flip on
+  // the tap and the write follows a frame later. The tick used to start only
+  // after the write and the screen-wide render it causes.
+  const [subtaskOverrides, setSubtaskOverrides] = useState<Record<string, boolean>>({});
+  const subtaskWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
   // The mission sheet (Task.mission). Once the mission is done, the ref
   // says so to every completeTask below, which refuses the task otherwise.
@@ -5284,6 +5289,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     // it stays a separate answer to a separate question.
                     const segment = segments.find(s => s.id === sub.id) ?? null;
                     const phase = segment ? segmentPhase(segment, timerElapsedNow) : null;
+                    const subDone = subtaskOverrides[sub.id] ?? sub.completed;
                     return (
                     // The add-subtask row pinned below the list is always the
                     // true last row, except on a notice, which has none.
@@ -5294,9 +5300,17 @@ const TaskItemRow = React.memo(function TaskItem({
                         // A check is the small-check haptic (a grocery row's
                         // too); unchecking is a tap.
                         onPress={() => {
-                          if (sub.completed) haptics.tap();
+                          if (subDone) haptics.tap();
                           else haptics.impactLight();
-                          toggleSubtask(sub.id);
+                          setSubtaskOverrides(prev => ({ ...prev, [sub.id]: !subDone }));
+                          subtaskWritesPending.current += 1;
+                          // A frame later, so the tick commits and starts before
+                          // the screen-wide render the write causes (as the pin does).
+                          requestAnimationFrame(() => {
+                            toggleSubtask(sub.id);
+                            subtaskWritesPending.current -= 1;
+                            if (subtaskWritesPending.current === 0) setSubtaskOverrides({});
+                          });
                         }}
                         // Same split as the row checkbox above — the gap to the
                         // title is this box's, so the title wrapper runs at 0 on
@@ -5304,10 +5318,10 @@ const TaskItemRow = React.memo(function TaskItem({
                         // ~32pt tall and hit-testing clips at its bounds.
                         hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
                         accessibilityRole="checkbox"
-                        accessibilityState={{ checked: sub.completed }}
+                        accessibilityState={{ checked: subDone }}
                         accessibilityLabel={sub.title}
                       >
-                        <CheckPop checked={sub.completed} style={styles.subtaskCheck} checkedStyle={styles.subtaskCheckDone}>
+                        <CheckPop checked={subDone} style={styles.subtaskCheck} checkedStyle={styles.subtaskCheckDone}>
                           <Ionicons name="checkmark" size={8} color={colors.done} />
                         </CheckPop>
                       </HoverTouchable>
@@ -5335,7 +5349,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         >
                           <Text style={[
                             styles.subtaskTitle,
-                            sub.completed && styles.subtaskTitleDone,
+                            subDone && styles.subtaskTitleDone,
                           ]} numberOfLines={2}>
                             {sub.title}
                           </Text>
