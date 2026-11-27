@@ -389,6 +389,7 @@ import {
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { subtaskRowsOf } from '../utils/projectTasks';
+import { withBatchedActions } from './batchedNotify';
 import { isProjectHidden, useProjectLockStore } from './useProjectLockStore';
 import { projectsKeptFromPurge, retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -651,7 +652,8 @@ function readTasksForInitialize(
  * existed and an event on the person's calendar nothing would ever remove.
  */
 function releaseRowSideEffects(task: Task): void {
-  cancelTaskReminder(task.id);
+  // As in completeTask: nothing is scheduled for a task with no reminderTime.
+  if (task.reminderTime) cancelTaskReminder(task.id);
   if (task.quotaReminders) cancelQuotaNudges(task.id);
   cancelCompletionTimer(task.id);
   if (task.timerStartedAt !== null) cancelTimerAlarm(task.id);
@@ -694,9 +696,9 @@ function applyQuotaPlan({ closed, spawned, scaled = [] }: QuotaRolloverPlan & { 
   if (closed.length === 0 && spawned.length === 0 && scaled.length === 0) return;
   const held = new Set(useTaskStore.getState().tasks.map(t => t.id));
   dbTransaction(() => {
-    closed.forEach(dbUpdateTask);
+    closed.forEach(row => dbUpdateTask(row));
     spawned.forEach(row => writeSpawnedTask(row, held));
-    scaled.forEach(dbUpdateTask);
+    scaled.forEach(row => dbUpdateTask(row));
   });
   spawned.forEach(scheduleTaskReminder);
   // The day's nudges belong to the row that just closed; the new day's come
@@ -1578,7 +1580,10 @@ function reconcileTimeBlockEvent(task: Task, write?: ReconcileWrite): void {
 // full second has passed since the *last* tap. That gives the user a beat to
 // keep tapping through a list without the rows they already completed
 // vanishing out from under them mid-burst.
-const COMPLETION_HOLD_MS = 1000;
+// Long enough for the batch to close up inside it (COMPLETION_COLLAPSE_MS and
+// the 250ms collapse, below), with room for a tap that was still animating
+// when this one landed and was then taken back.
+const COMPLETION_HOLD_MS = 1300;
 let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
 // The held rows shrink away as a batch, and this is how long the store waits
@@ -1586,16 +1591,16 @@ let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
 // its gap in the same frame, rather than each one closing its own the instant
 // its tap's animation happened to finish — tapping four tasks used to reflow
 // the list four times, in tap order, which is exactly what the hold above
-// exists to avoid. It's much shorter than the hold because it doesn't have to
-// guess whether the burst is over: a tap that is still playing its completion
-// animation has already registered itself as in-flight
-// (beginCompletionAnimation), and this timer isn't armed until every one of
-// those has landed. So a lone completion collapses promptly, while a run of
-// them waits for the last row to catch up. The collapse animation
+// exists to avoid. A tap that is still playing its completion animation has
+// already registered itself as in-flight (beginCompletionAnimation), and this
+// timer isn't armed until every one of those has landed, but that animation is
+// short (about 300ms from tap to save), so this wait is also most of the beat
+// a person gets to tap the next row before the list moves under their finger:
+// about 900ms from one tap to the rows closing up. The collapse animation
 // (animation.duration.normal, 250ms) then has to finish inside the remaining
 // hold, or rows would be unmounted mid-shrink — both timers are armed by the
 // same completion, so this has to stay under COMPLETION_HOLD_MS minus that.
-const COMPLETION_COLLAPSE_MS = 300;
+const COMPLETION_COLLAPSE_MS = 600;
 let completionCollapseTimer: ReturnType<typeof setTimeout> | null = null;
 // Ids whose completion animation is playing but hasn't reached completeTask
 // yet. Only the collapse timing reads it, so it stays out of the store's state
@@ -3627,7 +3632,13 @@ function lockedUnlockBlocking(task: Task): RewardUnlock | null {
   });
 }
 
-export const useTaskStore = create<TaskStore>((set, get) => ({
+// The taps that write more than once (the change, then the undo bar's entry).
+// Each tells the store's subscribers once: see batchedNotify.ts.
+const ONE_NOTIFICATION_ACTIONS = [
+  'completeTask', 'uncompleteTask', 'deferTask', 'deleteTask', 'bulkCompleteTasks', 'bulkUncompleteTasks',
+] as const;
+
+export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActions(api, ONE_NOTIFICATION_ACTIONS, {
   tasks: [],
   tagRegistry: [],
   initialized: false,
@@ -4232,7 +4243,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
     if (step.kind === 'dissolve') {
       step.dropped.forEach(dropRow);
-      step.unfiled.forEach(dbUpdateTask);
+      step.unfiled.forEach(row => dbUpdateTask(row));
       const droppedIds = new Set(step.dropped.map(t => t.id));
       const unfiledById = new Map(step.unfiled.map(t => [t.id, t]));
       set(s => ({
@@ -4259,7 +4270,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       scheduleTaskReminder(t);
       reconcileDeadlineEvent(t);
     });
-    rewritten.forEach(dbUpdateTask);
+    rewritten.forEach(row => dbUpdateTask(row));
 
     const removedIds = new Set(removed.map(t => t.id));
     const rewrittenById = new Map(rewritten.map(t => [t.id, t]));
@@ -4428,7 +4439,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         skipPostponeCount: options?.skipPostponeCount,
         markSeenOnBecomeVisible: options?.markSeenOnBecomeVisible,
       });
-      dbUpdateTask(updated);
+      dbUpdateTask(updated, t);
       if (
         'reminderTime' in updates ||
         'reminderKind' in updates ||
@@ -4868,7 +4879,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // and a crash between two of them kept a repeating task's finished row
     // without the next one.
     dbTransaction(() => {
-      dbUpdateTask(completed);
+      dbUpdateTask(completed, task);
       // Coins: a completion earns, a miss costs (src/utils/rewards.ts). Both are
       // no-ops while rewards are off. A neutral completion is the app closing a
       // run on its own, which nobody did, so it moves nothing either way. The
@@ -4933,7 +4944,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         resyncOkAgain(completedDoses.map(d => d.name));
       }
 
-      cancelTaskReminder(id);
+      // Only a task with a reminder has one to cancel (scheduleTaskReminder sets
+      // nothing without a reminderTime), and a cancel is 13 native calls.
+      if (task.reminderTime) cancelTaskReminder(id);
       // A target's own nudges too, which cancelTaskReminder doesn't reach: met
       // for the day, it went on saying "one is due now" until evening.
       if (task.quotaReminders) cancelQuotaNudges(id);
@@ -5437,7 +5450,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Matched on FoodLogEntry.taskId, so it finds the entries on whatever day
     // they were written and touches nothing the person logged by hand.
     const removedFood = task.logSavedMealId ? useFoodLogStore.getState().removeEntriesForTask(id) : [];
-    dbUpdateTask(updated);
+    dbUpdateTask(updated, task);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
     // The completion timer this task's own completion may have scheduled no
@@ -5816,7 +5829,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return [{ ...rolled, ...closing, ...due, ...ended }];
     });
     if (patched.length === 0) return;
-    dbTransaction(() => patched.forEach(dbUpdateTask));
+    dbTransaction(() => patched.forEach(row => dbUpdateTask(row)));
     const byId = new Map(patched.map(t => [t.id, t]));
     set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
     toPay.forEach(({ before, patch }) => payCleanDays(before, patch, now));
@@ -6212,7 +6225,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // here explicitly: the launch call path chains into
     // rescheduleAllReminders right after this, but the foreground listener
     // doesn't, so this is the only place that would ever correct it there.
-    dbTransaction(() => updated.forEach(dbUpdateTask));
+    dbTransaction(() => updated.forEach(row => dbUpdateTask(row)));
     updated.forEach(scheduleTaskReminder);
     const updatedById = new Map(updated.map(t => [t.id, t]));
     set(s => ({
@@ -10865,7 +10878,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completed: !task.completed,
       completedAt: !task.completed ? new Date().toISOString() : null,
     };
-    dbUpdateTask(updated);
+    dbUpdateTask(updated, task);
     set(s => ({ tasks: withTaskReplaced(s.tasks, id, updated) }));
   },
 
@@ -12686,7 +12699,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               return next;
             }),
           }));
-          restored.forEach(dbUpdateTask);
+          restored.forEach(row => dbUpdateTask(row));
         }
         if (wasRegistered) {
           dbAddToTagRegistry(tag);
@@ -12857,7 +12870,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               return next;
             }),
           }));
-          restored.forEach(dbUpdateTask);
+          restored.forEach(row => dbUpdateTask(row));
         }
       },
     });

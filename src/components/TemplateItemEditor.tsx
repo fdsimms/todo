@@ -104,6 +104,8 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
 import { HoverTouchable } from './HoverTouchable';
 
+const NO_TAGS: string[] = [];
+
 // Ceilings for the two steppers whose hand-rolled versions had none. Both sit
 // well past any real value; CountStepper needs a bound to disable its + key
 // at, and an unbounded stepper is one a long press can run to nonsense.
@@ -161,7 +163,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  // Only while open, as quick add does: collecting them is a pass over every task.
+  const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addItem = useTemplateStore(s => s.addItem);

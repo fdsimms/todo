@@ -1790,7 +1790,7 @@ describe('deleteTask', () => {
   });
 
   it('calls db cleanup and cancels reminder', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', reminderTime: new Date(2030, 0, 1, 9).toISOString() })] });
     useTaskStore.getState().deleteTask('t1');
     expect(dbDeleteSubtasks).toHaveBeenCalledWith('t1');
     expect(dbDeleteTask).toHaveBeenCalledWith('t1');
@@ -2300,7 +2300,7 @@ describe('completeTask', () => {
   it('persists the completed task to the db', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
     useTaskStore.getState().completeTask('t1');
-    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: true }));
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: true }), expect.anything());
   });
 
   it('keeps pinned true through the completion hold, then clears it', () => {
@@ -2308,7 +2308,7 @@ describe('completeTask', () => {
     useTaskStore.getState().completeTask('t1');
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(true);
 
-    jest.advanceTimersByTime(1200);
+    jest.advanceTimersByTime(1500);
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(false);
   });
 
@@ -2317,14 +2317,14 @@ describe('completeTask', () => {
     useTaskStore.getState().completeTask('t1');
     useTaskStore.getState().uncompleteTask('t1');
 
-    jest.advanceTimersByTime(1200);
+    jest.advanceTimersByTime(1500);
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(true);
   });
 
   it('re-pins at its old rank when a completion is undone after the hold has unpinned it', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true, pinnedOrder: 3 })] });
     useTaskStore.getState().completeTask('t1');
-    jest.advanceTimersByTime(1200);
+    jest.advanceTimersByTime(1500);
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(false);
 
     useTaskStore.getState().uncompleteTask('t1');
@@ -2335,7 +2335,7 @@ describe('completeTask', () => {
   });
 
   it('cancels the reminder when completed', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', reminderTime: new Date(2030, 0, 1, 9).toISOString() })] });
     useTaskStore.getState().completeTask('t1');
     expect(cancelTaskReminder).toHaveBeenCalledWith('t1');
   });
@@ -3277,7 +3277,7 @@ describe('completeTask', () => {
       useTaskStore.getState().completeTask('t1');
       expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['t1']);
 
-      jest.advanceTimersByTime(1200);
+      jest.advanceTimersByTime(1500);
       expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
     });
 
@@ -3296,7 +3296,7 @@ describe('completeTask', () => {
       // so both are still held together.
       expect(useTaskStore.getState().visibleTasks().map(t => t.id).sort()).toEqual(['t1', 't2']);
 
-      jest.advanceTimersByTime(300);
+      jest.advanceTimersByTime(600);
       expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
     });
 
@@ -3305,7 +3305,7 @@ describe('completeTask', () => {
       useTaskStore.getState().completeTask('t1');
       expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['t1']);
 
-      jest.advanceTimersByTime(1200);
+      jest.advanceTimersByTime(1500);
       expect(useTaskStore.getState().pinnedTasks()).toHaveLength(0);
     });
   });
@@ -3333,7 +3333,7 @@ describe('completeTask', () => {
       store().completeTask('t1');
       expect(collapsed()).toEqual([]);
 
-      jest.advanceTimersByTime(300);
+      jest.advanceTimersByTime(600);
       expect(collapsed()).toEqual(['t1']);
       // Well inside the hold, so the row is still in the list to be collapsed
       // rather than being unmounted mid-shrink.
@@ -3351,7 +3351,7 @@ describe('completeTask', () => {
       expect(collapsed()).toEqual([]);
 
       store().completeTask('t2');
-      jest.advanceTimersByTime(300);
+      jest.advanceTimersByTime(600);
       expect(collapsed()).toEqual(['t1', 't2']);
     });
 
@@ -3364,7 +3364,7 @@ describe('completeTask', () => {
       expect(collapsed()).toEqual([]);
 
       store().cancelCompletionAnimation('t2');
-      jest.advanceTimersByTime(300);
+      jest.advanceTimersByTime(600);
       expect(collapsed()).toEqual(['t1']);
     });
 
@@ -3378,7 +3378,7 @@ describe('completeTask', () => {
       // it still has to let go of the batch on its way out.
       store().beginCompletionAnimation('t2');
       store().completeTask('t2');
-      jest.advanceTimersByTime(300);
+      jest.advanceTimersByTime(600);
       expect(collapsed()).toEqual(['t1']);
     });
 
@@ -3386,7 +3386,7 @@ describe('completeTask', () => {
       useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
       store().beginCompletionAnimation('t1');
       store().completeTask('t1');
-      jest.advanceTimersByTime(1200);
+      jest.advanceTimersByTime(1500);
       expect(collapsed()).toEqual([]);
       expect(useTaskStore.getState().completionHoldIds).toEqual([]);
     });
@@ -3395,7 +3395,7 @@ describe('completeTask', () => {
       useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
       store().beginCompletionAnimation('t1');
       store().completeTask('t1');
-      jest.advanceTimersByTime(300);
+      jest.advanceTimersByTime(600);
       expect(collapsed()).toEqual(['t1']);
 
       store().uncompleteTask('t1');
@@ -3415,7 +3415,7 @@ describe('completeTask', () => {
       useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday })] });
       store().beginCompletionAnimation('t1');
       store().completeTask('t1');
-      jest.advanceTimersByTime(300);
+      jest.advanceTimersByTime(600);
       expect(useTaskStore.getState().completionHoldIds).toEqual(['t1']);
 
       store().uncompleteTask('t1');
@@ -3424,7 +3424,7 @@ describe('completeTask', () => {
 
       store().beginCompletionAnimation('t1');
       store().completeTask('t1');
-      jest.advanceTimersByTime(1200);
+      jest.advanceTimersByTime(1500);
       expect(useTaskStore.getState().completionHoldIds).toEqual([]);
       expect(store().visibleTasks()).toHaveLength(0);
     });
@@ -3901,7 +3901,7 @@ describe('uncompleteTask', () => {
   it('persists the change to the db', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now' })] });
     useTaskStore.getState().uncompleteTask('t1');
-    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: false }));
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: false }), expect.anything());
   });
 
   it('deletes the completion calendar event and clears the field', () => {
@@ -3957,7 +3957,7 @@ describe('uncompleteTask', () => {
 
   it('removes the untouched follow-up occurrence spawned by the completion', () => {
     const original = makeTask({ id: 't1', completed: true, completedAt: 'now', recurrenceType: 'daily' });
-    const followUp = makeTask({ id: 't2', previousOccurrenceId: 't1', completed: false });
+    const followUp = makeTask({ id: 't2', previousOccurrenceId: 't1', completed: false, reminderTime: new Date(2030, 0, 1, 9).toISOString() });
     useTaskStore.setState({ tasks: [original, followUp] });
 
     useTaskStore.getState().uncompleteTask('t1');
@@ -4051,7 +4051,8 @@ describe('uncompleteTask', () => {
     expect(updated?.streakCount).toBe(5);
     expect(updated?.streakDate).toBe(yesterdayStart);
     expect(dbUpdateTask).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 't1', streakCount: 5, streakDate: yesterdayStart })
+      expect.objectContaining({ id: 't1', streakCount: 5, streakDate: yesterdayStart }),
+      expect.anything()
     );
   });
 
@@ -11982,7 +11983,7 @@ describe('reorderWithCategoryUpdates', () => {
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'b')).toMatchObject({ sortOrder: 1, category: 'Work' });
     expect(tasks.find(t => t.id === 'a')).toMatchObject({ sortOrder: 2, category: 'Work' });
-    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'b', category: 'Work' }));
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'b', category: 'Work' }), expect.anything());
   });
 
   it('queues an undo action that restores the previous category', () => {
@@ -13555,7 +13556,7 @@ describe('bulkSetWhen', () => {
     });
     useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
-    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', pinned: false }));
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', pinned: false }), expect.anything());
   });
 
   it('unpins a pinned task whose date is cleared', () => {
@@ -13564,7 +13565,7 @@ describe('bulkSetWhen', () => {
     });
     useTaskStore.getState().bulkSetWhen(['a'], null, []);
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
-    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', pinned: false }));
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', pinned: false }), expect.anything());
   });
 
   it('leaves a pinned task alone when the day is unchanged', () => {
@@ -22696,6 +22697,27 @@ describe('completeTask: what one tick costs', () => {
     expect(notifications.scheduleQuotaNudges).not.toHaveBeenCalled();
     useTaskStore.getState().completeTask('target');
     expect(notifications.scheduleQuotaNudges).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells subscribers once, for the change and its undo entry together', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'daily' })] });
+    const heard: boolean[] = [];
+    const leave = useTaskStore.subscribe(state => heard.push(state.lastAction !== null));
+    useTaskStore.getState().completeTask('t1');
+    leave();
+    expect(heard).toEqual([true]);
+  });
+
+  it('cancels a reminder only for a task that has one', () => {
+    const { cancelTaskReminder } = jest.requireMock('../utils/notifications') as { cancelTaskReminder: jest.Mock };
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'plain' }), makeTask({ id: 'reminded', reminderTime: new Date(2030, 0, 1, 9).toISOString() })],
+    });
+    cancelTaskReminder.mockClear();
+    useTaskStore.getState().completeTask('plain');
+    expect(cancelTaskReminder).not.toHaveBeenCalled();
+    useTaskStore.getState().completeTask('reminded');
+    expect(cancelTaskReminder).toHaveBeenCalledWith('reminded');
   });
 
   it('leaves Inbox as it was when a hold starts, since Inbox reads no hold', () => {

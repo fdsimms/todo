@@ -21,6 +21,7 @@ import {
   StyleSheet,
   Alert,
   Keyboard,
+  Easing as AnimatedEasing,
   LayoutChangeEvent,
   type NativeSyntheticEvent,
   type TextLayoutEventData,
@@ -2667,6 +2668,15 @@ const TaskItemRow = React.memo(function TaskItem({
     // done-by-someone-else circle just holds, its violet ring and glyph are the
     // whole send-off.
     const shakes = kind === 'missed' && !reduceMotion;
+    // Out and back on timed curves, not springs. The completion is saved when
+    // this sequence reports done, and a spring reports done only once it has
+    // fully settled, some 300ms after it has stopped visibly moving: two of
+    // them in a row held every tick back by most of a second with nothing on
+    // screen to show for it.
+    const circlePulse = (peak: number) => [
+      Animated.timing(circleScale, { toValue: peak, duration: animation.duration.fast, easing: AnimatedEasing.out(AnimatedEasing.cubic), useNativeDriver: true }),
+      Animated.timing(circleScale, { toValue: 1, duration: animation.duration.fast, easing: AnimatedEasing.inOut(AnimatedEasing.cubic), useNativeDriver: true }),
+    ];
     if (shakes) {
       circleShake.setValue(0);
       Animated.sequence([-3, 3, -2, 0].map(toValue =>
@@ -2677,21 +2687,15 @@ const TaskItemRow = React.memo(function TaskItem({
       ...(viaMeter ? [Animated.delay(QUOTA_TOPPING_MS)] : []),
       ...(kind || reduceMotion
         ? [Animated.delay(shakes ? SHAKE_STEP_MS * 4 : STILL_POP_MS)]
-        : [
-          Animated.spring(circleScale, { toValue: CIRCLE_POP_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
-          Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-        ]),
+        : circlePulse(CIRCLE_POP_SCALE)),
     ]);
     // Split from the pop so the routine's heavy pulse can start exactly when the
     // second ring pulse does, rather than on a guessed delay.
     const settle = () => Animated.sequence([
-      ...(finishing && !reduceMotion
-        ? [
-          Animated.spring(circleScale, { toValue: CHAIN_FINISH_PULSE_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
-          Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-        ]
-        : []),
-      Animated.delay(120),
+      // The routine's second pulse gets a beat after it. An ordinary completion
+      // is saved as soon as its pop lands: the row holds its checked look until
+      // the batch closes up, so nothing is waiting to be read here.
+      ...(finishing && !reduceMotion ? [...circlePulse(CHAIN_FINISH_PULSE_SCALE), Animated.delay(120)] : [Animated.delay(0)]),
     ]);
     completeAnimRef.current = pop;
     pop.start(({ finished: popped }) => {
@@ -2785,14 +2789,15 @@ const TaskItemRow = React.memo(function TaskItem({
         Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
       ]).start();
     }
-    await new Promise<void>(resolve => {
-      // The spring itself overshoots past 1 — that overshoot, applied directly
-      // as the title/badge's own scale, is the "gets slightly bigger" settle.
-      (reduceMotion
-        ? Animated.timing(chainStepAnim, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true })
-        : Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true })
-      ).start(() => resolve());
-    });
+    // The spring itself overshoots past 1 — that overshoot, applied directly
+    // as the title/badge's own scale, is the "gets slightly bigger" settle.
+    // The save waits a fixed span rather than for the spring to report done,
+    // which it does only after settling, well after the eye has it as arrived.
+    (reduceMotion
+      ? Animated.timing(chainStepAnim, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true })
+      : Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true })
+    ).start();
+    await new Promise(resolve => setTimeout(resolve, reduceMotion ? animation.duration.fast : animation.duration.slow));
     completingRef.current = false;
     const deliverableReasoning = pendingReasoningRef.current;
     pendingDeliverableRef.current = undefined;

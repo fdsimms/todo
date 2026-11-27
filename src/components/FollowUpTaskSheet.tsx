@@ -34,6 +34,8 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
 import { HoverTouchable } from './HoverTouchable';
 
+const NO_TAGS: string[] = [];
+
 // Ten hours, well past any real estimate. CountStepper needs a bound to
 // disable its + key at; the hand-rolled version it replaced had none.
 const MAX_CUSTOM_ESTIMATE_MINUTES = 600;
@@ -74,7 +76,8 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  // Only while open, as quick add does: collecting them is a pass over every task.
+  const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));

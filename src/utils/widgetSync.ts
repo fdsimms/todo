@@ -741,14 +741,22 @@ function widgetCalendar(allTasks: readonly Task[], now: Date): WidgetCalendar | 
   const todayStart = getDayStart(now, dayResetTime);
   const starts = [todayStart, addDays(todayStart, 1)];
   const keys = starts.map(dayKeyOf);
-  const buckets = buildDayBuckets([...allTasks], {
+  // Only today's and tomorrow's rows are drawn, and a finished task marks the
+  // day of its date or deadline. So a finished row whose dates are both before
+  // the first day is left out here, on the stamp's own text, rather than
+  // parsed and bucketed to be dropped: that is nearly all of history.
+  const fromIso = dayKeyToDate(keys[0]).toISOString();
+  const before = (iso: string | null | undefined) =>
+    iso == null || (iso.length === 24 && iso.charCodeAt(23) === 90 && iso < fromIso);
+  const inReach = allTasks.filter(t => !t.completed || !before(t.dueDate) || !before(t.deadline));
+  const buckets = buildDayBuckets(inReach, {
     from: dayKeyToDate(keys[0]),
     to: dayKeyToDate(keys[keys.length - 1]),
     dayResetTime,
     projecting: false,
     projectFrom: dayKeyToDate(keys[0]),
   });
-  const taskById = new Map(allTasks.map(t => [t.id, t]));
+  const taskById = new Map(inReach.map(t => [t.id, t]));
   const calendar = useCalendarStore.getState();
   return buildWidgetCalendar({
     days: starts.map((start, i) => ({
@@ -881,8 +889,8 @@ function writeSnapshotNow(): void {
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Longer than the other debounces here on purpose. The snapshot is several
-// passes over every task, and at 300ms it ran at the moment a ticked row
-// starts to close up (COMPLETION_COLLAPSE_MS), and once per tap in a run of
+// passes over every task, and at 300ms it ran while a ticked row was still
+// waiting to close up (COMPLETION_COLLAPSE_MS), once per tap in a run of
 // them. A second lets the row leave first and a burst share one write. Nothing
 // on screen waits for it, and leaving the app writes it at once
 // (flushSnapshotWrite), since a timer may never fire in the background.
