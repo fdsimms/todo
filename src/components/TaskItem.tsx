@@ -861,6 +861,23 @@ const TaskItemRow = React.memo(function TaskItem({
   // after the write and the screen-wide render it causes.
   const [subtaskOverrides, setSubtaskOverrides] = useState<Record<string, boolean>>({});
   const subtaskWritesPending = useRef(0);
+  // And for the selection dot while bulk selecting. The selection is the
+  // screen's own state, so a tap re-rendered the whole screen before this
+  // row's dot filled; here the dot fills first and the screen follows a frame
+  // later. A drag down the dots still sets `selected` directly.
+  const [selectedOverride, setSelectedOverride] = useState<boolean | null>(null);
+  const selectTapsPending = useRef(0);
+  const shownSelected = selectedOverride ?? selected;
+  const selectFromRow = () => {
+    if (!onSelect) return;
+    setSelectedOverride(!shownSelected);
+    selectTapsPending.current += 1;
+    requestAnimationFrame(() => {
+      onSelect(task.id);
+      selectTapsPending.current -= 1;
+      if (selectTapsPending.current === 0) setSelectedOverride(null);
+    });
+  };
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
   // The mission sheet (Task.mission). Once the mission is done, the ref
   // says so to every completeTask below, which refuses the task otherwise.
@@ -2028,7 +2045,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
   const handleContentPress = () => {
     if (isNew) markTaskSeen(task.id);
-    if (selectionMode) { onSelect?.(task.id); return; }
+    if (selectionMode) { selectFromRow(); return; }
     // A notice whose panel would be empty has nothing to open — see
     // `expandable`. Marking it seen above still counts: it was read.
     if (!expandable) return;
@@ -3463,7 +3480,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
   // ==== inline title and subtask editing ====
   const handleTitleTap = () => {
-    if (selectionMode) { onSelect?.(task.id); return; }
+    if (selectionMode) { selectFromRow(); return; }
     setTitleEdit(task.title);
     skipTitleSaveRef.current = false;
     setIsEditingTitle(true);
@@ -4513,7 +4530,7 @@ const TaskItemRow = React.memo(function TaskItem({
       <HoverTouchable
         activeOpacity={interaction.activeOpacity}
         onPress={
-          selectionMode ? () => onSelect?.(task.id)
+          selectionMode ? selectFromRow
           : isNegative ? handleSlip
           : completing ? (completingRef.current ? handleUndoComplete : handleUncompletePersisted)
           // Ahead of the meter for the reason completionTapFor puts 'pick'
@@ -4546,13 +4563,13 @@ const TaskItemRow = React.memo(function TaskItem({
           meterInteractive || (isNegative && !selectionMode)
             ? { disabled: completionLocked && !hoursLoggable }
             : {
-                checked: selectionMode ? selected : completing,
+                checked: selectionMode ? shownSelected : completing,
                 disabled: !selectionMode && completionLocked && !hoursLoggable,
               }
         }
         accessibilityLabel={
           selectionMode
-            ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
+            ? (shownSelected ? `Deselect ${task.title}` : `Select ${task.title}`)
             : isNegative
               ? slipped
                 ? `${task.title}, broken today, log another`
@@ -4825,7 +4842,7 @@ const TaskItemRow = React.memo(function TaskItem({
         // expandable one says — no `expanded` state and no hint offering a
         // gesture that does nothing.
         accessibilityState={
-          selectionMode ? { checked: selected } : expandable ? { expanded } : {}
+          selectionMode ? { checked: shownSelected } : expandable ? { expanded } : {}
         }
         accessibilityLabel={markerA11y ? `${displayTitle}, ${markerA11y}` : displayTitle}
       >
@@ -5140,7 +5157,7 @@ const TaskItemRow = React.memo(function TaskItem({
           unmounts in the same commit they do, which is what gives it its fade
           (animateLayout in enterSelectionMode/exitSelection). */}
       {selectionMode && (
-        <SelectionDot selected={selected} onPress={() => onSelect?.(task.id)} />
+        <SelectionDot selected={shownSelected} onPress={selectFromRow} />
       )}
 
       {travelPending && travelCompareModes && (

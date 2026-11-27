@@ -4,6 +4,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { syncWakeUpAlarm } from '../utils/wakeUpAlarm';
+import { shouldCatchUp, type CatchUpRun } from '../utils/foregroundCatchUp';
+import { getCurrentLogicalDayKey } from '../utils/dateUtils';
 
 /**
  * The passes a day going by can owe, run each time the app comes back to the
@@ -25,9 +27,18 @@ import { syncWakeUpAlarm } from '../utils/wakeUpAlarm';
  */
 export function useForegroundCatchUp(): void {
   useEffect(() => {
+    // The launch sequence has just run the same passes, so the first return
+    // counts from when this mounted.
+    let lastRun: CatchUpRun | null = { at: Date.now(), dayKey: getCurrentLogicalDayKey() };
     const subscription = AppState.addEventListener('change', state => {
       if (state !== 'active') return;
       if (!useTaskStore.getState().initialized) return;
+      // Not after a glance away (see foregroundCatchUp.ts). A new logical day
+      // always runs.
+      const now = Date.now();
+      const dayKey = getCurrentLogicalDayKey();
+      if (!shouldCatchUp(lastRun, now, dayKey)) return;
+      lastRun = { at: now, dayKey };
       useTaskStore.getState().checkVacationExpiry();
       // A project's pause that ran out overnight, the same way.
       useTaskStore.getState().forgivePausedProjectStreaks();

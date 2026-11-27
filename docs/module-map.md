@@ -240,6 +240,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodQueue.ts` — QueuedFood, QUEUED_FOOD_MAX_LENGTH, parseQueuedFoods
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, estimateWholeGrams, describedEstimateFactor, recalledFoodOf, typedEstimateFactor, helpingAtTypedWeight, descriptionClauses, +17 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
+- `src/utils/foregroundCatchUp.ts` — CATCH_UP_QUIET_MS, CatchUpRun, shouldCatchUp
 - `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, LIST_CONTENT_WIDTH, DASHBOARD_CONTENT_WIDTH, DASHBOARD_TWO_COLUMN_MIN_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, SIDEBAR_RAIL_WIDTH, sidebarWidthFor, frameWidthFor, +13 more
 - `src/utils/frankiStudy.ts` — FrankiStudyDay, studySeconds, studyDayAt, minutesStudiedToday, minutesReadToday, formatStudyMinutes, FrankiWeekBar, FrankiWeek, frankiWeek, describeFrankiWeek
 - `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiReadToday, FrankiReadSpent, parseFrankiReadSpent, frankiReadSpentToday, withFrankiReadSpent, FrankiSnapshot, FrankiCram, FrankiReviewMode, FRANKI_REVIEW_MODE_DEFAULT, +46 more
