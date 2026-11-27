@@ -27,11 +27,14 @@ const TICK_MS = 1000;
  * every reader in one render, rather than each one calling `Date.now()` and
  * disagreeing by a millisecond across a countdown and its progress bar.
  */
-export function useFocusSession(): { session: FocusSession | null; now: number } {
+export function useFocusSession(watching = true): { session: FocusSession | null; now: number } {
   const session = useFocusStore(s => s.session);
   const [now, setNow] = useState(() => Date.now());
 
-  const running = session !== null && isFocusRunning(session);
+  // `watching` false is a caller nobody can see: the session sheet stays
+  // mounted once opened, and closed it was re-rendered every second of every
+  // session by a clock it wasn't showing.
+  const running = watching && session !== null && isFocusRunning(session);
 
   useEffect(() => {
     if (!running) return;

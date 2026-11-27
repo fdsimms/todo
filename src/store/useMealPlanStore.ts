@@ -18,6 +18,7 @@ import {
   dbPurgeOldWeekPoolEntries,
   dbGetMealPlanAddedToList,
   dbSetMealPlanAddedToList,
+  dbTransaction,
 } from '../db/database';
 // useTaskStore imports this module back (its initialize() fans out to every
 // store), so these two form an import cycle. It's inert: neither module touches
@@ -89,6 +90,7 @@ import {
   withReplay,
 } from '../utils/undoHistory';
 import { keepUnchanged } from '../utils/structuralSharing';
+import { withBatchedActions } from '../utils/storeBatch';
 
 export interface MealPlanDraft {
   date: string;
@@ -841,7 +843,14 @@ export function sameMealPlanEntries(held: readonly MealPlanEntry[], read: readon
   return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
 }
 
-export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
+// Marking a meal cooked writes its row and then, through the stores it
+// touches, the recipe's timers and cook count, the pantry, the cook task, the
+// day's coins and the leftovers: five to ten commits and as many
+// notifications of this store's own. Each is one commit, and tells this
+// store's subscribers once.
+const ONE_COMMIT_ACTIONS = ['setCooked', 'setCookedPaired'] as const;
+
+export const useMealPlanStore = create<MealPlanStore>((set, get, api) => withBatchedActions(api, ONE_COMMIT_ACTIONS, {
   entries: [],
   pool: [],
   rangeStart: null,
@@ -1850,7 +1859,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       })
       .catch(() => {});
   },
-}));
+}, dbTransaction));
 
 /**
  * How far ahead a planned night still counts as wanting its recipe's shopping,
