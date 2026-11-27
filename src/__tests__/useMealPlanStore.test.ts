@@ -1213,6 +1213,18 @@ describe('setRecipeScale', () => {
 });
 
 describe('setCooked', () => {
+  it('tells subscribers once, for the row and its recap together', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+    let heard = 0;
+    const leave = useMealPlanStore.subscribe(() => { heard += 1; });
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+    leave();
+
+    expect(heard).toBe(1);
+  });
+
   it('stamps cookedAt and writes it back', () => {
     const dinner = entry('2026-08-05', 'dinner');
     loadWeek([dinner]);

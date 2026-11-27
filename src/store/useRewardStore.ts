@@ -240,7 +240,13 @@ function goalStillOpen(reward: Reward, entries: readonly CoinEntry[]): boolean {
 export const useRewardStore = create<RewardStore>((set, get) => {
   const write = (entry: CoinEntry) => {
     dbUpsertCoinEntry(entry);
-    set(s => ({ entries: sortCoinEntries([entry, ...s.entries.filter(e => e.id !== entry.id)]) }));
+    set(s => {
+      const rest = s.entries.filter(e => e.id !== entry.id);
+      // The ledger is kept newest first and nearly every entry is written
+      // now, so it goes on the front. Only a backdated one needs the sort.
+      const newest = rest.length === 0 || entry.at >= rest[0].at;
+      return { entries: newest ? [entry, ...rest] : sortCoinEntries([entry, ...rest]) };
+    });
   };
   // Only a change happening now is announced. A backdated one (the morning
   // check-in, a widget tap drained later, the demo seed) is something nobody

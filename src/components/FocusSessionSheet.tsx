@@ -101,7 +101,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
 
-  const { session: liveSession, now } = useFocusSession();
+  const { session: liveSession, now } = useFocusSession(visible);
   // Held through the dismissal (useSheetSubject): the session ends in the same
   // commit `visible` drops, and a sheet torn out of the tree can't hold its own
   // close back (see noUnmountedSheet.test.ts).
