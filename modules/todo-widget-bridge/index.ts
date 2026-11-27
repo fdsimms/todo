@@ -63,6 +63,10 @@ interface TodoWidgetBridgeNativeModule {
   // See src/utils/focusLiveActivity.ts for the JSON shape (FocusRun) and the
   // reconciliation this drives. Empty string means "no session wanted".
   syncFocusLiveActivity(jsonString: string): Promise<boolean>;
+  // See src/utils/alarmLiveActivity.ts for the JSON shape (AlarmCountdownRun)
+  // and the reconciliation this drives. Empty string means "no countdown
+  // wanted". Exported undefined by `hasNative` on a binary built before it.
+  syncAlarmLiveActivity(jsonString: string): Promise<boolean>;
   // See src/utils/workoutLiveActivity.ts for the JSON shape (WorkoutRun). The
   // one activity updated in place rather than restarted. Empty string means
   // "no workout wanted".
@@ -181,6 +185,10 @@ export function syncLeaveLiveActivity(jsonString: string): Promise<boolean> {
 export function syncFocusLiveActivity(jsonString: string): Promise<boolean> {
   return TodoWidgetBridge.syncFocusLiveActivity(jsonString);
 }
+
+export const syncAlarmLiveActivity = hasNative('syncAlarmLiveActivity')
+  ? (jsonString: string): Promise<boolean> => TodoWidgetBridge.syncAlarmLiveActivity(jsonString)
+  : undefined;
 
 export const syncWorkoutLiveActivity = hasNative('syncWorkoutLiveActivity')
   ? (jsonString: string): Promise<boolean> => TodoWidgetBridge.syncWorkoutLiveActivity(jsonString)

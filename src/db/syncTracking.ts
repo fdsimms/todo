@@ -843,7 +843,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *
  * - `hapticsEnabled`, `shakeToUndoEnabled`, `beatSoundEnabled`,
  *   `beatLastDayKey`, `timerLiveActivity`,
- *   `tripLiveActivity`, `leaveLiveActivity`, `leaveWindowMinutes`, `focusLiveActivity`,
+ *   `tripLiveActivity`, `leaveLiveActivity`, `leaveWindowMinutes`, `alarmLiveActivity`, `focusLiveActivity`,
  *   `workoutLiveActivity`, `fabHand`, `mapsApp`,
  *   `mirroringMode`, `textSize` — capabilities and
  *   ergonomics of one device. A Mac has no haptics and no thumb reach, and

@@ -15,6 +15,10 @@ import {
   previousFireAt,
   quickAlarmFields,
   scheduleFields,
+  isSkipSpent,
+  isSkippingToday,
+  repeatingRingOn,
+  skippableRing,
   sortAlarms,
 } from '../utils/alarms';
 import { taskAlarmUuid } from '../utils/alarmChain';
@@ -40,7 +44,7 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
     sound: null,
     soundPool: [],
     soundRolledAt: null,
-    override: null,
+    override: null, skippedOn: null,
     createdAt: new Date(2026, 9, 1).toISOString(),
     ...over,
   };
@@ -223,5 +227,41 @@ describe('alarmMissionLine', () => {
     const gaveUp = alarm({ mission: pushups, missionGaveUp: true, missionDoneAt: new Date(2026, 9, 14, 7, 5).toISOString() });
     expect(alarmMissionLine(gaveUp, NOW)).toBe('20 pushups · gave up');
     expect(alarmMissionLine(gaveUp, new Date(2026, 9, 15, 8))).toBe('20 pushups');
+  });
+});
+
+describe('skip today', () => {
+  // Wed 14 Oct 2026. The 7:00 weekday alarm has rung; an 18:00 one hasn't.
+  const evening = (over: Partial<Alarm> = {}) => alarm({ hour: 18, ...over });
+
+  it('offers the ring still ahead today, and nothing once it has rung or for an alarm it cannot skip', () => {
+    expect(skippableRing(evening(), NOW)).toEqual(new Date(2026, 9, 14, 18, 0));
+    expect(skippableRing(alarm(), NOW)).toBeNull();
+    expect(skippableRing(evening({ enabled: false }), NOW)).toBeNull();
+    expect(skippableRing(evening({ repeatDays: [] , fireAt: new Date(2026, 9, 14, 18).toISOString() }), NOW)).toBeNull();
+    expect(skippableRing(evening({ repeatDays: [1, 5] }), NOW)).toBeNull();
+    expect(skippableRing(evening({ skippedOn: '2026-10-14' }), NOW)).toBeNull();
+  });
+
+  it('leaves the skipped day out of every question about its rings, and no other day', () => {
+    const skipping = evening({ skippedOn: '2026-10-14' });
+    expect(repeatingRingOn(skipping, new Date(2026, 9, 14))).toBeNull();
+    expect(repeatingRingOn(skipping, new Date(2026, 9, 15))).toEqual(new Date(2026, 9, 15, 18, 0));
+    expect(nextFireAt(skipping, NOW)).toEqual(new Date(2026, 9, 15, 18, 0));
+    expect(previousFireAt(skipping, new Date(2026, 9, 14, 20))).toEqual(new Date(2026, 9, 13, 18, 0));
+    expect(missedMissionRing(skipping, new Date(2026, 9, 14, 18, 5))).toBeNull();
+  });
+
+  it('skips the one-night time too, since the day has no ring', () => {
+    const moved = evening({ skippedOn: '2026-10-14', override: { date: '2026-10-14', hour: 19, minute: 0 } });
+    expect(repeatingRingOn(moved, new Date(2026, 9, 14))).toBeNull();
+  });
+
+  it('says it is skipping only on a day it would have rung, and a skip is spent when its day is over', () => {
+    expect(isSkippingToday(evening({ skippedOn: '2026-10-14' }), NOW)).toBe(true);
+    expect(isSkippingToday(evening({ skippedOn: '2026-10-13' }), NOW)).toBe(false);
+    expect(isSkippingToday(evening({ skippedOn: '2026-10-14', enabled: false }), NOW)).toBe(false);
+    expect(isSkipSpent('2026-10-14', new Date(2026, 9, 14, 23, 59))).toBe(false);
+    expect(isSkipSpent('2026-10-14', new Date(2026, 9, 15, 0, 0))).toBe(true);
   });
 });

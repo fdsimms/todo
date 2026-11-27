@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Alert, AppState, Linking } from 'react-native';
+import { View, Alert, AppState, Linking, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore, DEFAULT_REMINDER_LEAD_OPTIONS } from '../../store/useSettingsStore';
@@ -53,6 +53,8 @@ export function NotificationSettings() {
   const setTripReminderEnabled = useSettingsStore(s => s.setTripReminderEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const setDefaultReminderLeadMinutes = useSettingsStore(s => s.setDefaultReminderLeadMinutes);
+  const alarmLiveActivity = useSettingsStore(s => s.alarmLiveActivity);
+  const setAlarmLiveActivity = useSettingsStore(s => s.setAlarmLiveActivity);
 
   const quietHoursStart = useSettingsStore(s => s.quietHoursStart);
   const quietHoursEnd = useSettingsStore(s => s.quietHoursEnd);
@@ -396,6 +398,23 @@ export function NotificationSettings() {
           label="Default reminder lead time"
         />
       </SettingsSection>
+
+      {Platform.OS === 'ios' && (
+        <SettingsSection
+          label="Alarms"
+          footer="Requires iOS 17. On iOS 26 and later it appears on its own, as long as you have opened the app since the alarm was set. On earlier versions it appears only if the app is open in the 10 minutes before. iOS shows a notice when it appears."
+        >
+          <SettingsRow
+            entryId="alarmLiveActivity"
+            icon="alarm-outline"
+            iconColor={alarmLiveActivity ? colors.accent : undefined}
+            label="Live Activity before an alarm"
+            hint="Counts down the 10 minutes before a repeating alarm on the Lock Screen and Dynamic Island, with a Skip today button. When off, skipping stays on the Alarms screen"
+            toggle={alarmLiveActivity}
+            onPress={() => setAlarmLiveActivity(!alarmLiveActivity)}
+          />
+        </SettingsSection>
+      )}
 
       {/* Reminders and nudges come from more than this group: tasks the app
           adds on its own, and projects that bring themselves back up, each

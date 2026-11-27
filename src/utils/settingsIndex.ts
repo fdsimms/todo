@@ -555,6 +555,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['quiet hours', 'end', 'silence', 'morning'] },
   { id: 'quietHoursFromAwake', requires: 'quietHours', groupId: 'notifications', label: 'Set from awake hours', section: 'Notifications',
     keywords: ['quiet hours', 'match', 'copy', 'day & time'] },
+  { id: 'alarmLiveActivity', iosOnly: true, groupId: 'notifications', label: 'Live Activity before an alarm', section: 'Alarms',
+    keywords: ['lock screen', 'dynamic island', 'countdown', 'skip', 'skip today', 'wake up', 'morning', 'ring'] },
   { id: 'defaultReminderLead', groupId: 'notifications', label: 'Remind me before', section: 'Default reminder',
     keywords: ['lead', 'early', 'ahead', 'start time', 'automatic', 'notification', 'alert'] },
   // The meal-plan nudge used to sit here, on the grounds that it fires on a

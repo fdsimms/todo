@@ -35,6 +35,7 @@ const SWIFT_FILES = [
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',
   'LeaveLiveActivity.swift',
+  'AlarmLiveActivity.swift',
   'FocusLiveActivity.swift',
   'WorkoutLiveActivity.swift',
 ];
@@ -60,6 +61,7 @@ const SHARED_SWIFT_FILES = [
   'TimerActivityAttributes.swift',
   'TripActivityAttributes.swift',
   'LeaveActivityAttributes.swift',
+  'AlarmActivityAttributes.swift',
   'FocusActivityAttributes.swift',
   'WorkoutActivityAttributes.swift',
   'CompleteTaskIntent.swift',

@@ -1297,6 +1297,16 @@ export function seedDemoData(): void {
     soundPool: ['chime', 'rise'],
   });
 
+  // A daily evening alarm with no mission, so its row offers "Skip today"
+  // for most of the day (utils/alarms.ts `skippableRing`).
+  useAlarmStore.getState().saveAlarm({
+    label: 'Wind down',
+    hour: 21,
+    minute: 30,
+    repeatDays: [0, 1, 2, 3, 4, 5, 6],
+    mission: null,
+  });
+
   // A saved focus session, offered by a weekday alarm once it is turned off
   // (utils/savedFocus.ts), so the alarm editor's "When it stops" row has one.
   const deepWork = useSavedFocusStore.getState().save({

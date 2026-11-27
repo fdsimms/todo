@@ -38,6 +38,7 @@ import { useStepTimerStore } from './src/store/useStepTimerStore';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
 import { useLeaveLiveActivitySync } from './src/utils/leaveLiveActivity';
+import { useAlarmLiveActivitySync } from './src/utils/alarmLiveActivity';
 import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useWorkoutLiveActivitySync } from './src/hooks/useWorkoutLiveActivitySync';
 import { useWatchClashPrompt } from './src/hooks/useWatchClashPrompt';
@@ -472,6 +473,9 @@ function AppRoot() {
 
   // Keeps the next "Leave for X" event's Lock Screen Live Activity in sync.
   useLeaveLiveActivitySync();
+
+  // Counts down the next repeating alarm on the Lock Screen, with a Skip today button.
+  useAlarmLiveActivitySync();
 
   // Keeps the focus session's Lock Screen Live Activity in sync.
   useFocusLiveActivitySync();

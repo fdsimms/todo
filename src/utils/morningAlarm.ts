@@ -1,5 +1,5 @@
 import type { Alarm, AlarmOverride } from '../types';
-import { alarmMissionLine, atTime, calendarKey, isRepeating, repeatingRingOn } from './alarms';
+import { alarmMissionLine, atTime, calendarKey, isRepeating, isSkippingToday, repeatingRingOn } from './alarms';
 import { logicalDayStart } from './clockTime';
 
 /**
@@ -116,11 +116,11 @@ export function isOverrideSpent(override: AlarmOverride, now: Date): boolean {
 
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export type AlarmDetailIcon = 'barbell-outline' | 'volume-high-outline' | 'moon-outline';
+export type AlarmDetailIcon = 'barbell-outline' | 'volume-high-outline' | 'moon-outline' | 'play-skip-forward-outline';
 
 /**
  * What an alarm's row says under its time, as a row of icons (mission, a
- * chosen sound, a one-night time) and the words for the ones that
+ * chosen sound, skipping today, a one-night time) and the words for the ones that
  * need them. Null when it has none, so a plain alarm draws nothing. `clock`
  * formats a time the way the person's settings do.
  */
@@ -137,6 +137,10 @@ export function alarmDetails(
     words.push(mission);
   }
   if (alarm.sound !== null) icons.push('volume-high-outline');
+  if (isSkippingToday(alarm, now)) {
+    icons.push('play-skip-forward-outline');
+    words.push('Skipping today');
+  }
   const o = alarm.override;
   if (o && isRepeating(alarm) && !isOverrideSpent(o, now)) {
     icons.push('moon-outline');

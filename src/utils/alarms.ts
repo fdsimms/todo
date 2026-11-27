@@ -74,13 +74,47 @@ export function calendarKey(day: Date): string {
 /**
  * When a repeating alarm rings on `day`'s calendar date, or null if it
  * doesn't ring that day: its own time, or the one-night time its `override`
- * names for that date (see morningAlarm.ts).
+ * names for that date (see morningAlarm.ts). A day it was told to skip
+ * (`skippedOn`, "Skip today") has no ring, so every question about the next or
+ * the last ring (the row, the countdown, a mission owed, a sound re-roll)
+ * already leaves that day out.
  */
-export function repeatingRingOn(alarm: Pick<Alarm, 'repeatDays' | 'hour' | 'minute' | 'override'>, day: Date): Date | null {
+export function repeatingRingOn(
+  alarm: Pick<Alarm, 'repeatDays' | 'hour' | 'minute' | 'override'> & { skippedOn?: string | null },
+  day: Date,
+): Date | null {
   if (!alarm.repeatDays.includes(day.getDay())) return null;
+  if (alarm.skippedOn && alarm.skippedOn === calendarKey(day)) return null;
   const o = alarm.override;
   if (o && o.date === calendarKey(day)) return atTime(day, o.hour, o.minute);
   return atTime(day, alarm.hour, alarm.minute);
+}
+
+/**
+ * The ring "Skip today" would cancel: today's, still ahead, of a switched-on
+ * repeating alarm that isn't already skipping it. Null when there is nothing
+ * to skip, which is when the control is hidden. "Today" is the calendar date,
+ * the way a wake-up alarm belongs to a calendar morning (morningAlarm.ts), so
+ * a 3:30 AM alarm is Monday's on Monday whatever `dayResetTime` says.
+ */
+export function skippableRing(alarm: Alarm, now: Date): Date | null {
+  if (!alarm.enabled || !isRepeating(alarm)) return null;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const at = repeatingRingOn({ ...alarm, skippedOn: null }, today);
+  if (!at || at.getTime() <= now.getTime()) return null;
+  return alarm.skippedOn === calendarKey(today) ? null : at;
+}
+
+/** Whether the alarm is skipping a ring that is still to come (today's, until it would have rung). */
+export function isSkippingToday(alarm: Alarm, now: Date): boolean {
+  if (!alarm.enabled || !isRepeating(alarm) || alarm.skippedOn !== calendarKey(now)) return false;
+  return repeatingRingOn({ ...alarm, skippedOn: null }, now) !== null;
+}
+
+/** A skip whose day is over: the alarm is back to ringing every day it repeats on. */
+export function isSkipSpent(skippedOn: string, now: Date): boolean {
+  const [y, m, d] = skippedOn.split('-').map(Number);
+  return new Date(y, m - 1, d + 1).getTime() <= now.getTime();
 }
 
 /**

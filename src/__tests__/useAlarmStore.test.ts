@@ -256,3 +256,52 @@ describe('useAlarmStore', () => {
     expect(useAlarmStore.getState().addQuickAlarm(20, { mission: null, sound: null }, NOW).savedFocusId).toBeNull();
   });
 });
+
+describe('skip today', () => {
+  const evening = { label: 'Evening', hour: 18, minute: 0, repeatDays: [0, 1, 2, 3, 4, 5, 6], mission: null };
+
+  it('skips today’s ring, puts the change on the device, and refuses when there is none left', () => {
+    const alarm = useAlarmStore.getState().saveAlarm(evening, NOW);
+    mockSync.mockClear();
+    expect(useAlarmStore.getState().skipToday(alarm.id, NOW)).toBe(true);
+    expect(useAlarmStore.getState().alarms[0].skippedOn).toBe('2026-10-14');
+    expect(mockRows.get(alarm.id)?.skippedOn).toBe('2026-10-14');
+    expect(mockSync).toHaveBeenCalledTimes(1);
+    expect(useAlarmStore.getState().skipToday(alarm.id, NOW)).toBe(false);
+    const morning = useAlarmStore.getState().saveAlarm({ ...evening, hour: 7 }, NOW);
+    expect(useAlarmStore.getState().skipToday(morning.id, NOW)).toBe(false);
+    const once = useAlarmStore.getState().addQuickAlarm(20, { mission: null, sound: null }, NOW);
+    expect(useAlarmStore.getState().skipToday(once.id, NOW)).toBe(false);
+  });
+
+  it('takes a skip back, and clears it when the alarm is switched off and on', () => {
+    const alarm = useAlarmStore.getState().saveAlarm(evening, NOW);
+    useAlarmStore.getState().skipToday(alarm.id, NOW);
+    expect(useAlarmStore.getState().undoSkip(alarm.id)).toBe(true);
+    expect(useAlarmStore.getState().alarms[0].skippedOn).toBeNull();
+    expect(useAlarmStore.getState().undoSkip(alarm.id)).toBe(false);
+    useAlarmStore.getState().skipToday(alarm.id, NOW);
+    useAlarmStore.getState().setEnabled(alarm.id, false, NOW);
+    expect(useAlarmStore.getState().alarms[0].skippedOn).toBeNull();
+  });
+
+  it('keeps a skip through an edit of the alarm, and drops it from one that no longer repeats', () => {
+    const alarm = useAlarmStore.getState().saveAlarm(evening, NOW);
+    useAlarmStore.getState().skipToday(alarm.id, NOW);
+    expect(useAlarmStore.getState().saveAlarm({ ...evening, id: alarm.id, label: 'Dinner' }, NOW).skippedOn).toBe('2026-10-14');
+    expect(useAlarmStore.getState().saveAlarm({ ...evening, id: alarm.id, repeatDays: [] }, NOW).skippedOn).toBeNull();
+  });
+
+  it('forgets the skip once its day is over, and a time chosen for that day takes it back', () => {
+    const alarm = useAlarmStore.getState().saveAlarm(evening, NOW);
+    useAlarmStore.getState().skipToday(alarm.id, NOW);
+    useAlarmStore.getState().clearSpentOverrides(new Date(2026, 9, 14, 23, 0));
+    expect(useAlarmStore.getState().alarms[0].skippedOn).toBe('2026-10-14');
+    useAlarmStore.getState().clearSpentOverrides(new Date(2026, 9, 15, 0, 1));
+    expect(useAlarmStore.getState().alarms[0].skippedOn).toBeNull();
+
+    useAlarmStore.getState().skipToday(alarm.id, NOW);
+    expect(useAlarmStore.getState().setOverride(alarm.id, new Date(2026, 9, 14), 19, 0)).toBe(true);
+    expect(useAlarmStore.getState().alarms[0].skippedOn).toBeNull();
+  });
+});

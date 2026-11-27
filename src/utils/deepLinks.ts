@@ -462,6 +462,23 @@ export function taskUrlWantsLocate(url: string): boolean {
   return value === '1' || value.toLowerCase() === 'true';
 }
 
+// `dundundun://alarm-skip?id=…` — the alarm Live Activity's Skip today button
+// (targets/todo-widget/AlarmLiveActivity.swift). Opens the Alarms screen and
+// asks whether to skip that alarm's ring today (alarmSkipPrompt.ts).
+const ALARM_SKIP_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?alarm-skip\\/?(?:\\?(.*))?$`, 'i');
+
+export function isAlarmSkipUrl(url: string): boolean {
+  return typeof url === 'string' && ALARM_SKIP_RE.test(url.trim());
+}
+
+/** The alarm a skip link names, or null for a malformed one. */
+export function alarmSkipUrlId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = ALARM_SKIP_RE.exec(url.trim());
+  if (!match) return null;
+  return (parseQuery(match[1] ?? '').id ?? '').trim() || null;
+}
+
 // `dundundun://project?id=…` — one project's own page. Singular, unlike
 // `projects`, which opens the pull sheet (see PROJECTS_RE).
 const PROJECT_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?project\\/?(?:\\?(.*))?$`, 'i');
@@ -1045,6 +1062,14 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isDeloadUrl(url)) {
     resetToDeload();
+    return true;
+  }
+  if (isAlarmSkipUrl(url)) {
+    const id = alarmSkipUrlId(url);
+    // Required here, like cookRecipeNow below: the prompt reaches the alarm
+    // store, which the MCP server (it loads this file for its links) can't.
+    if (id) (require('./alarmSkipPrompt') as typeof import('./alarmSkipPrompt')).promptSkipAlarm(id);
+    else openScreenByName('Reminders');
     return true;
   }
   if (isCompleteTaskUrl(url)) {

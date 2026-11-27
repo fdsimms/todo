@@ -977,14 +977,15 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       missionDoneAt: null, missionGaveUp: false, sound: 'custom:snd1',
       soundPool: ['custom:snd1', 'chime'], soundRolledAt: '2026-10-14T07:00:00.000Z',
       override: { date: '2026-10-26', hour: 6, minute: 30 },
+      skippedOn: '2026-10-28',
       createdAt: '2026-10-14T07:00:00.000Z',
     };
     dbSaveAlarm(alarm);
     expect(dbGetAlarms()).toEqual([alarm]);
     dbSaveAlarm({ ...alarm, enabled: false, missionGaveUp: true, missionDoneAt: '2026-10-15T07:05:00.000Z' });
     expect(dbGetAlarms()[0]).toMatchObject({ enabled: false, missionGaveUp: true });
-    dbSaveAlarm({ ...alarm, sound: null, soundPool: [], soundRolledAt: null, override: null });
-    expect(dbGetAlarms()[0]).toMatchObject({ sound: null, soundPool: [], soundRolledAt: null, override: null });
+    dbSaveAlarm({ ...alarm, sound: null, soundPool: [], soundRolledAt: null, override: null, skippedOn: null });
+    expect(dbGetAlarms()[0]).toMatchObject({ sound: null, soundPool: [], soundRolledAt: null, override: null, skippedOn: null });
     dbDeleteAlarm('al1');
     expect(dbGetAlarms()).toEqual([]);
   });

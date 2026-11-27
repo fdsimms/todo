@@ -156,6 +156,15 @@ private struct LeaveRunPayload: Codable {
   let staleAtMs: Double?
 }
 
+// Mirrors the AlarmCountdownRun shape written by src/utils/alarmLiveActivity.ts.
+private struct AlarmRunPayload: Codable {
+  let alarmId: String
+  let title: String
+  let ringAtMs: Double
+  let startAtMs: Double
+  let staleAtMs: Double?
+}
+
 // Mirrors the FocusRun shape written by src/utils/focusLiveActivity.ts.
 private struct FocusRunPayload: Codable {
   let key: String
@@ -1075,6 +1084,111 @@ public class TodoWidgetBridgeModule: Module {
         }
         let content = ActivityContent(state: LeaveActivityAttributes.ContentState(), staleDate: staleDate)
         _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+
+        succeeded = true
+      }
+      return succeeded
+    }
+    .runOnQueue(.main)
+
+    // ─── Live Activity (alarm coming up) ──────────────────────────────────
+    // syncLeaveLiveActivity's shape: zero-or-one activity, an empty string
+    // meaning "none wanted", a changed run being the old activity ending and a
+    // new one starting. The start is the difference. A repeating alarm rings
+    // while the app is closed, and ActivityKit refuses a start from the
+    // background, so on iOS 26+ the activity is requested ahead of time with a
+    // start date and the system starts it then (`Activity.request(...start:)`,
+    // declared `static func request(attributes:content:pushType:style:
+    // alertConfiguration:start:) throws`, iOS 26.0; the discussion says the
+    // system starts it at that date even with the app in the background and
+    // that an AlertConfiguration is required). Before iOS 26 it can only start
+    // now, so it starts only once the app is open inside the lead window. A
+    // pending activity is listed in `Activity.activities` like a live one
+    // (`ActivityState.pending`), so it is matched and ended the same way.
+    // The stale date is the ring time, which flips AlarmLiveActivity.swift to
+    // its rang state with nothing pushed. See src/utils/alarmLiveActivity.ts.
+    AsyncFunction("syncAlarmLiveActivity") { (jsonString: String) -> Bool in
+      var succeeded = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard #available(iOS 17.0, *) else { return }
+
+        let existing = Activity<AlarmActivityAttributes>.activities.filter { !hasEnded($0.activityState) }
+
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        guard
+          !jsonString.isEmpty,
+          let data = jsonString.data(using: .utf8),
+          let run = try? JSONDecoder().decode(AlarmRunPayload.self, from: data)
+        else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        let ringAt = Date(timeIntervalSince1970: run.ringAtMs / 1000)
+        let startAt = Date(timeIntervalSince1970: run.startAtMs / 1000)
+
+        // Already live or waiting for this exact ring: keep it.
+        if let current = existing.first,
+           current.attributes.alarmId == run.alarmId,
+           current.attributes.title == run.title,
+           sameInstant(current.attributes.ringAt, ms: run.ringAtMs),
+           sameInstant(current.attributes.startAt, ms: run.startAtMs) {
+          for stale in existing.dropFirst() {
+            Task { await stale.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        for activity in existing {
+          Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+        // A ring already behind us has nothing to count down to.
+        guard ringAt > Date() else {
+          succeeded = true
+          return
+        }
+        let attributes = AlarmActivityAttributes(
+          alarmId: run.alarmId,
+          title: run.title,
+          ringAt: ringAt,
+          startAt: startAt
+        )
+        let staleDate: Date? = run.staleAtMs.map {
+          max(Date(timeIntervalSince1970: $0 / 1000), Date().addingTimeInterval(1))
+        }
+        let content = ActivityContent(state: AlarmActivityAttributes.ContentState(), staleDate: staleDate)
+
+        if startAt > Date().addingTimeInterval(5) {
+          // The window hasn't opened. Only iOS 26+ can be asked to start later.
+          if #available(iOS 26.0, *) {
+            let alert = AlertConfiguration(
+              title: "Alarm in 10 minutes",
+              body: "You can skip it today from the Lock Screen.",
+              sound: .default
+            )
+            _ = try? Activity.request(
+              attributes: attributes,
+              content: content,
+              pushType: nil,
+              style: .standard,
+              alertConfiguration: alert,
+              start: startAt
+            )
+          }
+        } else {
+          _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+        }
 
         succeeded = true
       }

@@ -1595,6 +1595,8 @@ describe('demo mode', () => {
 
     expect(alarms.some(a => a.mission?.kind === 'pushups' && a.repeatDays.length > 0)).toBe(true);
     expect(alarms.some(a => a.soundPool.join() === 'chime,rise' && a.sound !== null)).toBe(true);
+    // A daily alarm with nothing to do at the ring, which Skip today applies to.
+    expect(alarms.some(a => a.repeatDays.length === 7 && a.mission === null)).toBe(true);
     expect(useTaskStore.getState().tasks.some(t => t.alarmLink === 'next')).toBe(true);
   });
 
