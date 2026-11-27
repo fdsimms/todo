@@ -39,9 +39,11 @@ export function EmergencyReleaseSheet({ visible, reasons, formatTime, onClose }:
   const card = useCardSheet();
   const log = useShieldReleaseStore(s => s.log);
   const [reason, setReason] = useState('');
+  // The scroll stands down while the button is held, or a drifting finger would cancel the hold.
+  const [holding, setHolding] = useState(false);
 
   useEffect(() => {
-    if (visible) setReason('');
+    if (visible) { setReason(''); setHolding(false); }
   }, [visible]);
 
   const problem = releaseReasonProblem(reason);
@@ -65,7 +67,7 @@ export function EmergencyReleaseSheet({ visible, reasons, formatTime, onClose }:
       controller={card}
       onRequestClose={() => dismiss()}
     >
-      <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" bounces={false} scrollEnabled={!holding} showsVerticalScrollIndicator={false}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss()} minWidth={56} />
@@ -113,6 +115,7 @@ export function EmergencyReleaseSheet({ visible, reasons, formatTime, onClose }:
           holdMs={RELEASE_HOLD_MS}
           onConfirm={confirm}
           disabled={problem !== null}
+          onHoldingChange={setHolding}
           accessibilityLabel={`End all blocks, hold for ${holdSeconds} seconds`}
           style={styles.confirm}
         />
