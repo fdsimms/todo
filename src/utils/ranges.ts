@@ -47,7 +47,30 @@ export function mergeRanges(ranges: [number, number][]): [number, number][] {
  * fold to a different length ("İ" lowercases to two code units), which is why
  * the ranges can't simply be reused.
  */
-function foldForSearch(text: string): { folded: string; starts: number[]; ends: number[] } {
+interface Folded { folded: string; starts: number[] | null; ends: number[] | null }
+
+// Search folds every title, note, category and step of every task for each
+// word typed, history included, and the texts are the same from one keystroke
+// to the next, so the result is kept by text. Emptied when it fills, which a
+// list has to be very large to do.
+const foldCache = new Map<string, Folded>();
+const FOLD_CACHE_LIMIT = 30000;
+const ASCII_ONLY = /^[\x00-\x7F]*$/;
+
+function foldForSearch(text: string): Folded {
+  const hit = foldCache.get(text);
+  if (hit) return hit;
+  const made = foldUncached(text);
+  if (foldCache.size >= FOLD_CACHE_LIMIT) foldCache.clear();
+  foldCache.set(text, made);
+  return made;
+}
+
+function foldUncached(text: string): Folded {
+  // Plain ASCII, which most text is, folds to its own lower case with every
+  // character where it was: no per-character pass and no index maps
+  // (`starts`/`ends` null means folded index i is original index i).
+  if (ASCII_ONLY.test(text)) return { folded: text.toLowerCase(), starts: null, ends: null };
   let folded = '';
   const starts: number[] = [];
   const ends: number[] = [];
@@ -74,11 +97,12 @@ function foldForSearch(text: string): { folded: string; starts: number[]; ends: 
 const MIN_SCATTER_DENSITY = 0.4;
 
 export function scoreSubstring(haystack: string, needle: string): { score: number; ranges: [number, number][] } {
-  if (!needle) return { score: 0, ranges: [] };
+  if (!needle || !haystack) return { score: 0, ranges: [] };
   const { folded: h, starts, ends } = foldForSearch(haystack);
   const n = foldForSearch(needle).folded;
   if (!n) return { score: 0, ranges: [] };
-  const toRange = (first: number, last: number): [number, number] => [starts[first], ends[last]];
+  const toRange = (first: number, last: number): [number, number] =>
+    starts && ends ? [starts[first], ends[last]] : [first, last + 1];
 
   // Exact substring match. Where it lands decides the score: the start of the
   // string beats the start of a later word beats the middle of a word, so "lo"

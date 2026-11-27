@@ -52,3 +52,47 @@ export function runStartupSequence(steps: Array<[string, () => void]>): string[]
   }
   return failed;
 }
+
+/** How long a run of deferred steps may hold the JS thread before it lets a tap in. */
+const STEP_SLICE_MS = 8;
+
+/**
+ * `runStartupSequence` for the steps that run once the first frame is up, with
+ * the JS thread handed back between slices of them. Run in one go they were a
+ * single block of several dozen passes, and a tap made in the first moment
+ * after the splash waited behind all of it. The order is the same and each
+ * step is still isolated; `done` is called with the names that threw once the
+ * last one has run. `cancel` stops before the next slice.
+ */
+export function runStartupSequenceSpaced(
+  steps: Array<[string, () => void]>,
+  done: (failed: string[]) => void,
+): { cancel: () => void } {
+  const failed: string[] = [];
+  let next = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let cancelled = false;
+  const slice = () => {
+    timer = null;
+    const started = Date.now();
+    while (next < steps.length) {
+      const [name, step] = steps[next++];
+      if (!runStartupStep(name, step)) failed.push(name);
+      if (next < steps.length && Date.now() - started >= STEP_SLICE_MS) {
+        timer = setTimeout(slice, 0);
+        return;
+      }
+    }
+    if (!cancelled) done(failed);
+  };
+  slice();
+  return {
+    cancel() {
+      cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      next = steps.length;
+    },
+  };
+}
+
