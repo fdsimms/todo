@@ -3481,6 +3481,15 @@ export function dbSyncChangesSince(since: string | null, transport?: string): Sy
  * read as pending until this clock caught up.
  */
 export function dbHasLocalChangesSince(since: string): boolean {
+  // Asked every two seconds while the app is open, and the probe below is one
+  // statement over every synced table, prepared afresh each time. So once it
+  // has answered "nothing" for a window, it is not asked again until this
+  // connection has written something: `total_changes()` counts every row a
+  // statement here has changed, and costs nothing to read.
+  const changes = db.getFirstSync<{ n: number }>('SELECT total_changes() AS n')?.n ?? null;
+  if (quietProbe && changes !== null && quietProbe.db === db && quietProbe.since === since && quietProbe.changes === changes) {
+    return false;
+  }
   const synced = SYNCED_SETTING_KEYS;
   const probes = SYNC_TRACKED_TABLES.map(({ name }) =>
     name === 'settings'
@@ -3499,8 +3508,14 @@ export function dbHasLocalChangesSince(since: string): boolean {
   params.push(since);
   // Each arm is wrapped so its own LIMIT is legal inside the compound select.
   const sql = probes.map(p => `SELECT * FROM (${p} LIMIT 1)`).join(' UNION ALL ');
-  return db.getFirstSync(`${sql} LIMIT 1`, params) !== null;
+  const found = db.getFirstSync(`${sql} LIMIT 1`, params) !== null;
+  quietProbe = found || changes === null ? null : { db, since, changes };
+  return found;
 }
+
+// The last `dbHasLocalChangesSince` that found nothing: which database, for
+// which window, and how many changes the connection had made by then.
+let quietProbe: { db: typeof realDb; since: string; changes: number } | null = null;
 
 /**
  * Adds to `rows` the peer rows that arrived in the window over a transport

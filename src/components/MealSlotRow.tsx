@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MealPlanEntry } from '../types';
@@ -142,7 +142,23 @@ export function MealSlotRow({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const cooked = !!entry.cookedAt;
+  // The tick flips on the tap and the write follows a frame later, as a
+  // grocery row's does: marking a meal cooked writes to five stores, and the
+  // tick used to wait for all of it. `cookWritesPending` counts taps whose
+  // write hasn't run, so a double tap doesn't drop back to the stored value.
+  const [cookedOverride, setCookedOverride] = useState<boolean | null>(null);
+  const cookWritesPending = useRef(0);
+  const cooked = cookedOverride ?? !!entry.cookedAt;
+  const toggleCookedFromRow = () => {
+    if (!onToggleCooked) return;
+    setCookedOverride(!cooked);
+    cookWritesPending.current += 1;
+    requestAnimationFrame(() => {
+      onToggleCooked();
+      cookWritesPending.current -= 1;
+      if (cookWritesPending.current === 0) setCookedOverride(null);
+    });
+  };
   // So a drag down the column of selection dots picks up this row (#2944).
   // A no-op on a screen with no provider; see `onSwipeSelect` for the gate.
   const paintRowRef = usePaintSelectionRow(onSwipeSelect ? entry.id : null);
@@ -248,7 +264,7 @@ export function MealSlotRow({
         <HoverTouchable
           // The caller's setCooked picks the haptic (success to cook, tap to
           // undo), so a tap here doubled it.
-          onPress={onToggleCooked}
+          onPress={toggleCookedFromRow}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"
