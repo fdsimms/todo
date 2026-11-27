@@ -33,6 +33,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { explainRefusedDeletes } from '../utils/lockedDelete';
 import { HoverTouchable } from '../components/HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -122,7 +123,7 @@ export function ArchivedScreen() {
   }, [pendingFocusId, filtered]);
 
   const restore = useCallback((id: string) => {
-    const task = useTaskStore.getState().tasks.find(t => t.id === id);
+    const task = taskById(useTaskStore.getState().tasks, id);
     if (!task) return;
     resumeTasks([task], unarchiveTask, () => {
       haptics.tap();

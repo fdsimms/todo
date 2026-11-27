@@ -138,6 +138,7 @@ import { openExternalUrl } from '../utils/openExternalUrl';
 import { shareContent } from '../utils/shareContent';
 import { RotatingChevron } from '../components/RotatingChevron';
 import { HoverTouchable } from '../components/HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string; returnTo?: string };
@@ -892,7 +893,7 @@ function ProjectDetailContent() {
   }, []);
 
   const handleRowEdit = useCallback((id: string) => {
-    const task = useTaskStore.getState().tasks.find(t => t.id === id);
+    const task = taskById(useTaskStore.getState().tasks, id);
     if (!task) return;
     setEditingTask(task);
     setEditorVisible(true);
@@ -1529,7 +1530,7 @@ function ProjectDetailContent() {
     let lastId: string | null = null;
     for (const line of cleanPastedLines(lines)) {
       lastId = addLineAfter(anchor, line);
-      anchor = useTaskStore.getState().tasks.find(t => t.id === lastId) ?? anchor;
+      anchor = taskById(useTaskStore.getState().tasks, lastId) ?? anchor;
     }
     return lastId;
   };

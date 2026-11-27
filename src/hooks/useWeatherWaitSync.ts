@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWeatherStore } from '../store/useWeatherStore';
+import { openTasksOf } from '../utils/openTasks';
 
 /** The part of a task `applyWeatherWaits` reads, so a change to anything else is not a reason to run it. */
 function waitSignature(tasks: ReturnType<typeof useTaskStore.getState>['tasks']): string {
-  return tasks
+  // Open rows only: the pass skips a finished task, and history is most of the list.
+  return openTasksOf(tasks)
     .filter(t => t.weatherWait)
     .map(t => `${t.id}:${t.weatherWait}:${t.deferUntil ?? ''}:${t.dueDate ?? ''}`)
     .join('|');

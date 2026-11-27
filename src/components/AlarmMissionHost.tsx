@@ -20,6 +20,7 @@ import { requestDismissAllSheets } from '../utils/sheetModal';
 import { animateLayout } from '../utils/layoutAnimation';
 import { asksOnCompletion } from '../utils/deliverables';
 import { missedMissionRing } from '../utils/alarms';
+import { taskById as findTaskById } from '../utils/taskRows';
 import {
   MISSION_COUNTING_GRACE_SECONDS,
   MISSION_HEARTBEAT_MS,
@@ -132,11 +133,12 @@ export function AlarmMissionHost() {
   const { owed, stale } = useMemo(() => {
     if (!ready) return { owed: [] as OwedMission[], stale: [] as string[] };
     const now = new Date();
-    const byId = new Map(tasks.map(t => [t.id, t]));
     const alarmById = new Map(alarms.map(a => [a.id, a]));
     return owedMissions({
       pending,
-      taskById: id => byId.get(id),
+      // Looked up one at a time: the pending list is a few ids, and a map of
+      // every task was rebuilt on each task write to answer for none of them.
+      taskById: id => findTaskById(tasks, id),
       alarmById: id => alarmById.get(id),
       missedRingAlarmIds: alarms.filter(a => missedMissionRing(a, now) !== null).map(a => a.id),
       ending: ending.current,
@@ -229,7 +231,7 @@ export function AlarmMissionHost() {
     }
     // Giving up stops the alarm and leaves the task as it was.
     if (gaveUp) return;
-    const task = useTaskStore.getState().tasks.find(t => t.id === o.id);
+    const task = findTaskById(useTaskStore.getState().tasks, o.id);
     if (!task || task.completed) return;
     if (asksOnCompletion(task)) {
       setPromptTaskId(task.id);

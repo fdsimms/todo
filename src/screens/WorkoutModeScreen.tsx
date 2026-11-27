@@ -175,6 +175,7 @@ import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { sameMinute } from '../utils/workoutTimes';
 import { BUTTON_LABEL } from '../copy/shared';
 import { HoverTouchable } from '../components/HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 /** "today" is this workout's note on the exercise, "always" the exercise's own. */
 type NoteKind = 'today' | 'always';
@@ -233,7 +234,7 @@ export function WorkoutModeScreen() {
   const healthWriteOn = useSettingsStore(s => s.healthWriteEnabled && s.workoutHealthWrite && s.workoutsEnabled);
   const demoActive = useDemoStore(s => s.active);
   const writesToHealth = healthWriteOn && !demoActive;
-  const linkedTask = useTaskStore(s => (session?.taskId ? s.tasks.find(t => t.id === session.taskId) ?? null : null));
+  const linkedTask = useTaskStore(s => (session?.taskId ? taskById(s.tasks, session.taskId) ?? null : null));
   const sets = useMemo(() => cachedSets ?? [], [cachedSets]);
   const routine = session?.routineId ? routines.find(r => r.id === session.routineId) ?? null : null;
   // The version the workout was started on, which its rests and suggestions are read from (`sessionPlan`).

@@ -68,6 +68,7 @@ import { REST_NUDGE_FORWARD_SECONDS } from './stepTimers';
 import type { PlannedRoutineSet } from '../store/useWorkoutStore';
 import type { RestTimer, WorkoutSet } from '../types';
 import { sessionPlan } from './routineVersions';
+import { taskById } from './taskRows';
 
 const DEBOUNCE_MS = 300;
 
@@ -519,7 +520,7 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
           useTaskStore.getState().logQuotaUnit(action.id);
           break;
         case 'deferTask': {
-          const task = useTaskStore.getState().tasks.find(t => t.id === action.id);
+          const task = taskById(useTaskStore.getState().tasks, action.id);
           if (task) {
             useTaskStore.getState().updateTask(action.id, quietDeferUpdates(task, dayResetTime), { markSeenOnBecomeVisible: true });
           }
@@ -879,12 +880,28 @@ function writeSnapshotNow(): void {
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Longer than the other debounces here on purpose. The snapshot is several
+// passes over every task, and at 300ms it ran at the moment a ticked row
+// starts to close up (COMPLETION_COLLAPSE_MS), and once per tap in a run of
+// them. A second lets the row leave first and a burst share one write. Nothing
+// on screen waits for it, and leaving the app writes it at once
+// (flushSnapshotWrite), since a timer may never fire in the background.
+const SNAPSHOT_DEBOUNCE_MS = 1000;
+
 function scheduleSnapshotWrite(): void {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     writeSnapshotNow();
-  }, DEBOUNCE_MS);
+  }, SNAPSHOT_DEBOUNCE_MS);
+}
+
+/** Writes a snapshot that is still waiting out its debounce, now. */
+function flushSnapshotWrite(): void {
+  if (!debounceTimer) return;
+  clearTimeout(debounceTimer);
+  debounceTimer = null;
+  writeSnapshotNow();
 }
 
 // ==== The Apple Watch's workout ====
@@ -1241,6 +1258,9 @@ export function useWidgetSync(): void {
           processPendingWorkoutStarts(),
           processQuietWidgetTaps(),
         ]).finally(scheduleSnapshotWrite);
+      } else {
+        // On the way out, so the widget has the last tap before the app sleeps.
+        flushSnapshotWrite();
       }
     });
 

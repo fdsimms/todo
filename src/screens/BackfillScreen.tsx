@@ -140,6 +140,7 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { completesThroughQueue } from '../utils/bulkCompletion';
 import { HoverTouchable } from '../components/HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -1902,7 +1903,7 @@ export function BackfillScreen() {
     const id = heldAdvanceId;
     setHeldAdvanceId(null);
     // Cancelling the question leaves the task open, and the card with it.
-    if (!useTaskStore.getState().tasks.find(t => t.id === id)?.completed) return;
+    if (!taskById(useTaskStore.getState().tasks, id)?.completed) return;
     if (currentId === id) recordVisited();
     animateLayout();
     advance(id);

@@ -81,6 +81,7 @@ import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '..
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
+import { taskById } from '../utils/taskRows';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { completionLogChips } from '../utils/completionLogChip';
@@ -997,7 +998,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // re-renders the row.
   const eventRules = useSettingsStore(s => (task.generatedKind === 'travel' ? s.eventRules : NO_EVENT_RULES));
   const leavePrep = useTaskStore(s => (
-    task.generatedKind === 'travel' ? leavePrepLine(openLeavePrep(task, s.tasks, eventRules)) : null
+    task.generatedKind === 'travel' ? leavePrepLine(openLeavePrep(task, openTasksOf(s.tasks), eventRules)) : null
   ));
   const travelSource = task.generatedKind === 'travel' ? task.generatedSourceId : null;
   const canOpenTravelEvent = !!travelSource && travelSourceEventId(travelSource) !== null && !isDemoModeActive();
@@ -1392,7 +1393,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // way to leave the hold is for it to expire, which leaves the task completed
     // and this row on its way out of the list. Restoring that one would flash it
     // back in for the frame before it unmounts.
-    const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+    const current = taskById(useTaskStore.getState().tasks, task.id);
     if (!current || current.completed) return;
     restoreFromCompletion(current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3275,7 +3276,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // by now — the long-press undo took a unit back, or enough of the day
     // passed that the next one fell due — isn't going anywhere, so it just
     // gives the hold back and stays put instead of fading in place.
-    const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+    const current = taskById(useTaskStore.getState().tasks, task.id);
     if (!current || current.completed || isTaskVisible(current)) {
       endQuotaHold();
       return;

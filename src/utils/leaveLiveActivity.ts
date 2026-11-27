@@ -24,6 +24,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { travelOriginOfEvent, useTravelTimeStore } from '../store/useTravelTimeStore';
+import { openTasksOf } from './openTasks';
 
 /**
  * Drives the "time to leave" Live Activity (Lock Screen + Dynamic Island) —
@@ -157,9 +158,14 @@ export function buildLeaveRun(
 // Through widgetBridge(), like the other three. The demo gate matters for the
 // same reason as the trip's: nothing here would be real in the demo database,
 // and travel tasks refuse demo mode, but the gate is the door, not this file.
+// Whether the last thing sent was "nothing to show", so a task write can skip
+// saying it again (see the task subscription below).
+let lastSentNothing = false;
+
 function syncNativeLeaveActivity(run: LeaveRun | null): void {
   const bridge = widgetBridge();
   if (!bridge) return;
+  lastSentNothing = run === null;
   bridge.syncLeaveLiveActivity(run ? JSON.stringify(run) : '').catch(() => {});
 }
 
@@ -177,7 +183,8 @@ function currentRun(): LeaveRun | null {
       }
     : undefined;
   return buildLeaveRun(
-    useTaskStore.getState().tasks,
+    // Open rows only, which is all a Leave row can be.
+    openTasksOf(useTaskStore.getState().tasks),
     useCalendarStore.getState().events,
     new Date(),
     { enabled, check, windowMinutes: settings.leaveWindowMinutes },
@@ -196,8 +203,14 @@ export function useLeaveLiveActivitySync(): void {
     const sync = () => syncNativeLeaveActivity(currentRun());
     sync();
 
+    // Every task write lands here, a tick included, and nearly all of them
+    // find nothing to show. Saying so once is enough: the native call ran
+    // inside the write, on every one. The other triggers below still always send.
     const unsubTasks = useTaskStore.subscribe((state, prev) => {
-      if (state.tasks !== prev.tasks) sync();
+      if (state.tasks === prev.tasks) return;
+      const run = currentRun();
+      if (run === null && lastSentNothing) return;
+      syncNativeLeaveActivity(run);
     });
     const unsubCalendar = useCalendarStore.subscribe((state, prev) => {
       if (state.events !== prev.events) sync();

@@ -53,3 +53,26 @@ export function seriesTasksOf(tasks: readonly Task[], seriesId: string): readonl
   return bySeries.get(seriesId) ?? NONE;
 }
 
+
+const byParentCache = new WeakMap<readonly Task[], Map<string, Task[]>>();
+
+/**
+ * The subtasks of one task, in the array's own order, bucketed once per array
+ * for the same reason as `projectTasksOf`. A completion asks for its task's
+ * subtasks (and the row's streak preview asks again a moment before, of the
+ * same array), and each ask was a pass over every task, history included.
+ */
+export function subtaskRowsOf(tasks: readonly Task[], parentId: string): readonly Task[] {
+  let byParent = byParentCache.get(tasks);
+  if (!byParent) {
+    byParent = new Map();
+    for (const task of tasks) {
+      if (!task.parentId) continue;
+      const rows = byParent.get(task.parentId);
+      if (rows) rows.push(task);
+      else byParent.set(task.parentId, [task]);
+    }
+    byParentCache.set(tasks, byParent);
+  }
+  return byParent.get(parentId) ?? NONE;
+}

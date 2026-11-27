@@ -26,6 +26,7 @@ import type { RecordState, RuleListName } from './agentRecordRevert';
 import type { AgentUndoAction, AgentUndoReaders } from './agentUndo';
 import { entryFor } from './groceryLists';
 import { explainLockedDelete } from './lockedDelete';
+import { taskById } from './taskRows';
 
 function ruleListOf(type: RuleListName): unknown {
   const s = useSettingsStore.getState();
@@ -68,7 +69,7 @@ export function agentUndoReaders(): AgentUndoReaders {
     hasNote: text => readAgentNotes().some(n => sameText(n.text, text)),
     calendarRequest: id => dbGetCalendarRequest(id),
   };
-  return { task: id => useTaskStore.getState().tasks.find(t => t.id === id) ?? null, record };
+  return { task: id => taskById(useTaskStore.getState().tasks, id) ?? null, record };
 }
 
 export function applyAgentUndo(plan: AgentUndoAction): void {
@@ -110,7 +111,7 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
       useTaskStore.getState().restoreTasks(deleted);
       // Only what is still loose: a task filed somewhere else since stays there.
       for (const id of unfiledTaskIds) {
-        const task = useTaskStore.getState().tasks.find(t => t.id === id);
+        const task = taskById(useTaskStore.getState().tasks, id);
         if (task && task.projectId === null) useTaskStore.getState().updateTask(id, { projectId: project.id });
       }
       for (const id of unfiledStackIds) {
@@ -129,7 +130,7 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
       useTaskGroupStore.getState().restoreGroup(stack);
       useTaskStore.getState().restoreTasks(deleted);
       for (const id of unfiledTaskIds) {
-        const task = useTaskStore.getState().tasks.find(t => t.id === id);
+        const task = taskById(useTaskStore.getState().tasks, id);
         if (task && task.groupId === null && !task.completed) useTaskStore.getState().updateTask(id, { groupId: stack.id });
       }
       return;

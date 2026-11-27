@@ -10,6 +10,7 @@ import {
   useTransitStore,
 } from '../store/useTransitStore';
 import { travelEstimatesWanted, useTravelTimeStore } from '../store/useTravelTimeStore';
+import { openTasksOf } from '../utils/openTasks';
 
 /** How often an open, foregrounded app asks the MTA again. Matches the stale threshold. */
 const FOREGROUND_REFRESH_INTERVAL_MS = TRANSIT_SNAPSHOT_STALE_MS;
@@ -73,17 +74,17 @@ export function useTravelTaskSync(): void {
     // A prep task ticked off (or written) changes its Leave row's notes and
     // reminder. The signature is empty unless a rule is tied to leaving, so
     // this costs nothing on a task write for anyone not using it.
-    let prepSignature = leavePrepSignature(useTaskStore.getState().tasks, useSettingsStore.getState().eventRules);
+    let prepSignature = leavePrepSignature(openTasksOf(useTaskStore.getState().tasks), useSettingsStore.getState().eventRules);
     const unsubscribePrep = useTaskStore.subscribe((state, prev) => {
       if (state.tasks === prev.tasks) return;
-      const next = leavePrepSignature(state.tasks, useSettingsStore.getState().eventRules);
+      const next = leavePrepSignature(openTasksOf(state.tasks), useSettingsStore.getState().eventRules);
       if (next === prepSignature) return;
       prepSignature = next;
       check();
     });
     const unsubscribeSettings = useSettingsStore.subscribe((state, prev) => {
       if (state.eventRules !== prev.eventRules) {
-        prepSignature = leavePrepSignature(useTaskStore.getState().tasks, state.eventRules);
+        prepSignature = leavePrepSignature(openTasksOf(useTaskStore.getState().tasks), state.eventRules);
         check();
       }
       if (

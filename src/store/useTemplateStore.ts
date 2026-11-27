@@ -36,6 +36,7 @@ import { dueTemplateRun, schedulesEqual } from '../utils/templateSchedule';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { useSettingsStore } from './useSettingsStore';
 import { keepUnchanged } from '../utils/structuralSharing';
+import { taskById } from '../utils/taskRows';
 
 /** Everything the apply sheet collects beyond the item selection and anchors. */
 export interface ApplyTemplateOptions {
@@ -554,7 +555,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
           const id = idFor('task');
           const task = !id
             ? tasks.addTask(draft)
-            : useTaskStore.getState().tasks.find(t => t.id === id) ?? tasks.addTask(draft, id);
+            : taskById(useTaskStore.getState().tasks, id) ?? tasks.addTask(draft, id);
           madeTaskIds.add(task.id);
           return task;
         },
@@ -562,7 +563,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
           const id = idFor('subtask');
           const sub = !id
             ? tasks.addSubtask(parentId, title)
-            : useTaskStore.getState().tasks.find(t => t.id === id) ?? tasks.addSubtask(parentId, title, id);
+            : taskById(useTaskStore.getState().tasks, id) ?? tasks.addSubtask(parentId, title, id);
           madeTaskIds.add(sub.id);
           return sub;
         },

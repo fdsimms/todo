@@ -64,6 +64,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { reuseUnchangedLists } from '../utils/stableLists';
 import { HoverTouchable } from '../components/HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
@@ -240,7 +241,7 @@ export function TagsScreen() {
   }, [selectionMode, exitSelection]);
 
   const handleRowEdit = useCallback((id: string) => {
-    const task = useTaskStore.getState().tasks.find(t => t.id === id);
+    const task = taskById(useTaskStore.getState().tasks, id);
     if (!task) return;
     setEditingTask(task);
     setEditorVisible(true);

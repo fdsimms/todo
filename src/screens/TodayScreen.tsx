@@ -1608,7 +1608,7 @@ export function TodayScreen() {
   // Where a task went when saving it in the editor took it off this list: the
   // same "it moved, and here is where" the quick-add toast gives, without Undo.
   const presentEditedTask = (previous: Task) => {
-    const updated = useTaskStore.getState().tasks.find(t => t.id === previous.id);
+    const updated = taskById(useTaskStore.getState().tasks, previous.id);
     if (!updated) return;
     const destination = editedTaskMove(previous, updated, viewMode);
     if (!destination) return;
@@ -2289,7 +2289,7 @@ export function TodayScreen() {
   // whether the window has two panes is read from a ref.
   const handleRowEdit = useCallback((id: string) => {
     switchEditor(() => {
-      setEditingTask(useTaskStore.getState().tasks.find(t => t.id === id) ?? null);
+      setEditingTask(taskById(useTaskStore.getState().tasks, id) ?? null);
       setEditorInitialDraft(null);
       setEditorVisible(true);
     });
@@ -2355,10 +2355,10 @@ export function TodayScreen() {
   // stable and TaskItem's memo keeps holding — the same reason every other row
   // handler here takes an id instead of being made per row.
   const handleApplyImport = useCallback((id: string) => {
-    const before = useTaskStore.getState().tasks.find(t => t.id === id);
+    const before = taskById(useTaskStore.getState().tasks, id);
     if (!before) return;
     useTaskStore.getState().applyPendingImport(id);
-    const after = useTaskStore.getState().tasks.find(t => t.id === id);
+    const after = taskById(useTaskStore.getState().tasks, id);
     if (after) presentMovedFromInboxRef.current(before, after);
   }, []);
 
@@ -4883,7 +4883,7 @@ export function TodayScreen() {
    */
   const locateTask = (task: Task, editorIfMissing = true) => {
     const root = (task.parentId
-      ? useTaskStore.getState().tasks.find(t => t.id === task.parentId)
+      ? taskById(useTaskStore.getState().tasks, task.parentId)
       : undefined) ?? task;
     const home = taskHomeFor(root);
     if (home === 'archived') {
@@ -4925,7 +4925,7 @@ export function TodayScreen() {
     const stamp = route.params?.locateTask as number | undefined;
     if (stamp === undefined || stamp === handledLocateTask) return;
     setHandledLocateTask(stamp);
-    const task = useTaskStore.getState().tasks.find(t => t.id === route.params?.locateTaskId);
+    const task = taskById(useTaskStore.getState().tasks, route.params?.locateTaskId);
     if (task) locateTask(task, route.params?.locateEditorIfMissing !== false);
   }, [route.params?.locateTask, route.params?.locateTaskId, handledLocateTask]);
 
@@ -5291,7 +5291,7 @@ export function TodayScreen() {
 
   const cursorTask = (): Task | null => {
     const id = useRowCursorStore.getState().cursorId;
-    return id === null ? null : useTaskStore.getState().tasks.find(t => t.id === id) ?? null;
+    return id === null ? null : taskById(useTaskStore.getState().tasks, id) ?? null;
   };
 
   /** Space: complete the task under the cursor, by the checkbox's own rules. */

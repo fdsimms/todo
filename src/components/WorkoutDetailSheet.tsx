@@ -42,6 +42,7 @@ import { WORKOUT_EFFORT, cleanWorkoutName } from '../utils/workoutData';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { resolveMaxHeartRate } from '../utils/heartRateZones';
 import { BUTTON_LABEL } from '../copy/shared';
+import { taskById } from '../utils/taskRows';
 
 interface Props {
   visible: boolean;
@@ -324,7 +325,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine 
     // `deleteSession` never touches a task, so a task the workout completed
     // stays done. Said only when it is done: a target the workout logged one
     // unit on is still open, and "checked off" would be untrue of it.
-    const task = taskId ? useTaskStore.getState().tasks.find(t => t.id === taskId) ?? null : null;
+    const task = taskId ? taskById(useTaskStore.getState().tasks, taskId) ?? null : null;
     confirmDelete({
       title: 'Delete this workout?',
       message: [

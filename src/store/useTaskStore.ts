@@ -388,6 +388,7 @@ import {
   sunLocationOn,
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
+import { subtaskRowsOf } from '../utils/projectTasks';
 import { isProjectHidden, useProjectLockStore } from './useProjectLockStore';
 import { projectsKeptFromPurge, retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -552,7 +553,7 @@ import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask, screenTimeRuleIdOf } from '../utils/screenTimeRules';
 import {
-  blockOfferCoinsFor, blockOfferRunOutcome, blockOfferSourceId, describeOfferCoins, parseBlockOfferSourceId,
+  blockOfferCoinsFor, isBlockOfferTask, blockOfferRunOutcome, blockOfferSourceId, describeOfferCoins, parseBlockOfferSourceId,
 } from '../utils/blockOfferTasks';
 import { readBlockOfferRuns, writeBlockOfferRuns } from './blockOfferRuns';
 import { useShieldReleaseStore } from './useShieldReleaseStore';
@@ -1811,12 +1812,12 @@ export const LENS_SETTING_KEYS = [
   'sunLocation',
 ] as const;
 
-function lensInputs(state: Pick<TaskStore, 'tasks' | 'completionHoldIds' | 'quotaHoldIds'>): unknown[] {
+function lensInputs(state: Pick<TaskStore, 'tasks' | 'completionHoldIds' | 'quotaHoldIds'>, readsHolds: boolean): unknown[] {
   const settings = useSettingsStore.getState();
   return [
     state.tasks,
-    state.completionHoldIds,
-    state.quotaHoldIds,
+    readsHolds ? state.completionHoldIds : null,
+    readsHolds ? state.quotaHoldIds : null,
     ...LENS_SETTING_KEYS.map(key => settings[key]),
     useCategoryStore.getState(),
     useProjectStore.getState(),
@@ -1830,8 +1831,11 @@ function cachedLens(
   name: string,
   state: Pick<TaskStore, 'tasks' | 'completionHoldIds' | 'quotaHoldIds'>,
   compute: () => Task[],
+  // False for a lens that reads neither hold (Inbox, Unscheduled, Waiting), so
+  // a hold starting or letting go, which changes no task, leaves it cached.
+  readsHolds = true,
 ): Task[] {
-  const inputs = lensInputs(state);
+  const inputs = lensInputs(state, readsHolds);
   const hit = lensCache.get(name);
   if (hit && hit.inputs.every((v, i) => v === inputs[i])) return hit.result;
   const result = compute();
@@ -4590,8 +4594,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A subtask goes with its parent, so a required one holds the parent too.
     if (!opts.ignoreUnlockLock && (lockedUnlockBlocking(task) || subtasks.some(s => lockedUnlockBlocking(s)))) return false;
 
-    dbDeleteSubtasks(id);
-    dbDeleteTask(id);
+    dbTransaction(() => {
+      dbDeleteSubtasks(id);
+      dbDeleteTask(id);
+    });
     // The calendar event is not restored on undo below — deleting a device
     // event isn't reversible, so an undone delete gets a fresh event on its
     // next reconcile rather than a promise this can't keep.
@@ -4853,103 +4859,115 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const creditedAt = creditPenaltyShield(task, now);
     if (creditedAt !== null) completed.penaltyCreditedAt = creditedAt;
 
-    dbUpdateTask(completed);
-    // Coins: a completion earns, a miss costs (src/utils/rewards.ts). Both are
-    // no-ops while rewards are off. A neutral completion is the app closing a
-    // run on its own, which nobody did, so it moves nothing either way. The
-    // streak read is the one this completion just wrote, so the occurrence
-    // that reaches a bonus step is the first to be paid it.
-    if (!neutral && earnsCoins(task)) {
-      const rewards = useRewardStore.getState();
-      const label = displayTitleFor(task);
-      // Declining an offer is not failing a task, so a block offer costs nothing to miss.
-      if (missed) rewards.recordMiss(id, task.generatedKind === 'blockOffer' ? 0 : coinsForLoss(task), label, completedAt.toISOString());
-      else {
-        // Taps on a task paid per tap (Task.coinsPerTap) were paid as they
-        // happened, so the completion earns the rest of the total.
-        // A block offer pays the amount its rule promised, and only once the
-        // block has run (blockOfferCoinsFor is zero before that), whatever
-        // route completed it.
-        const offerCoins = blockOfferCoinsFor(task, readBlockOfferRuns(), useSettingsStore.getState().blockOfferRules);
-        const owed = offerCoins ?? coinsForCompletion(task, completed.streakCount) - rewards.tapCoinsPaid(id);
-        rewards.recordEarn(id, owed, label, completedAt.toISOString());
-      }
-    }
-    // A completed row has nothing left to be late for — its deadline event,
-    // if it had one, is deleted rather than left dangling on the calendar.
-    reconcileDeadlineEvent(completed);
-    // Opt-in and one-shot, unlike the reconcile above — only fired when the
-    // task actually asked for it.
-    if (task.logCompletionToCalendar) logCompletionEvent(completed, completedAt);
-    // Opt-in like the two above, but deliberately *not* one-shot: this writes
-    // into the app's own record rather than somebody else's database, and
-    // uncompleteTask takes it back (see Task.medicationName). Nothing is asked
-    // at the tick — the dose is what the task already says it is, and asking
-    // again would be the "same fact twice" the medication log exists not to be.
-    //
-    // A missed sweep completes the row without anybody having taken anything,
-    // so it records no dose: `missed` is exactly the case where the task closed
-    // because the day ended rather than because it was done.
-    //
-    // Read through medicationFor rather than off the task, so a chain step
-    // carrying its own medication records that one — "morning pills / evening
-    // pills" would otherwise log the morning dose again at night.
-    // A target records one dose per unit logged, so its extras are left out:
-    // `uncompleteTask` takes back only the last of those, which would strand the
-    // others' doses. Every other task records its main dose and its extras.
-    const completedDoses = options?.missed
-      ? []
-      : isQuotaTask(task) ? [medicationFor(task)].filter(d => d !== null) : medicationsFor(task);
     // What the tick wrote into the app's own logs, named on the undo bar so a
     // dose or a meal landing in a log isn't silent (see UndoableAction.announce).
     let loggedLabel: string | null = null;
-    if (completedDoses.length > 0) {
-      loggedLabel = completedDoses.length === 1
-        ? `Logged ${completedDoses[0].name} in the medication log`
-        : `Logged ${completedDoses.map(d => d.name).join(' and ')} in the medication log`;
-      for (const dose of completedDoses) {
-        useMedicationStore.getState().addLog({
-          ...dose,
-          taskId: id,
-          at: completedAt,
-          useUsualDose: true,
-        });
+    let spawned: Task[] = [];
+    // One commit for every row this completion writes: the finished row, its
+    // coins and doses, and the rows it spawns. Apart they were a commit each,
+    // and a crash between two of them kept a repeating task's finished row
+    // without the next one.
+    dbTransaction(() => {
+      dbUpdateTask(completed);
+      // Coins: a completion earns, a miss costs (src/utils/rewards.ts). Both are
+      // no-ops while rewards are off. A neutral completion is the app closing a
+      // run on its own, which nobody did, so it moves nothing either way. The
+      // streak read is the one this completion just wrote, so the occurrence
+      // that reaches a bonus step is the first to be paid it.
+      if (!neutral && earnsCoins(task)) {
+        const rewards = useRewardStore.getState();
+        const label = displayTitleFor(task);
+        // Declining an offer is not failing a task, so a block offer costs nothing to miss.
+        if (missed) rewards.recordMiss(id, task.generatedKind === 'blockOffer' ? 0 : coinsForLoss(task), label, completedAt.toISOString());
+        else {
+          // Taps on a task paid per tap (Task.coinsPerTap) were paid as they
+          // happened, so the completion earns the rest of the total.
+          // A block offer pays the amount its rule promised, and only once the
+          // block has run (blockOfferCoinsFor is zero before that), whatever
+          // route completed it.
+          // The runs are a settings read, so only a block offer asks for them.
+          const offerCoins = isBlockOfferTask(task)
+            ? blockOfferCoinsFor(task, readBlockOfferRuns(), useSettingsStore.getState().blockOfferRules)
+            : null;
+          const owed = offerCoins ?? coinsForCompletion(task, completed.streakCount) - rewards.tapCoinsPaid(id);
+          rewards.recordEarn(id, owed, label, completedAt.toISOString());
+        }
       }
-      resyncOkAgain(completedDoses.map(d => d.name));
-    }
+      // A completed row has nothing left to be late for — its deadline event,
+      // if it had one, is deleted rather than left dangling on the calendar.
+      reconcileDeadlineEvent(completed);
+      // Opt-in and one-shot, unlike the reconcile above — only fired when the
+      // task actually asked for it.
+      if (task.logCompletionToCalendar) logCompletionEvent(completed, completedAt);
+      // Opt-in like the two above, but deliberately *not* one-shot: this writes
+      // into the app's own record rather than somebody else's database, and
+      // uncompleteTask takes it back (see Task.medicationName). Nothing is asked
+      // at the tick — the dose is what the task already says it is, and asking
+      // again would be the "same fact twice" the medication log exists not to be.
+      //
+      // A missed sweep completes the row without anybody having taken anything,
+      // so it records no dose: `missed` is exactly the case where the task closed
+      // because the day ended rather than because it was done.
+      //
+      // Read through medicationFor rather than off the task, so a chain step
+      // carrying its own medication records that one — "morning pills / evening
+      // pills" would otherwise log the morning dose again at night.
+      // A target records one dose per unit logged, so its extras are left out:
+      // `uncompleteTask` takes back only the last of those, which would strand the
+      // others' doses. Every other task records its main dose and its extras.
+      const completedDoses = options?.missed
+        ? []
+        : isQuotaTask(task) ? [medicationFor(task)].filter(d => d !== null) : medicationsFor(task);
+      if (completedDoses.length > 0) {
+        loggedLabel = completedDoses.length === 1
+          ? `Logged ${completedDoses[0].name} in the medication log`
+          : `Logged ${completedDoses.map(d => d.name).join(' and ')} in the medication log`;
+        for (const dose of completedDoses) {
+          useMedicationStore.getState().addLog({
+            ...dose,
+            taskId: id,
+            at: completedAt,
+            useUsualDose: true,
+          });
+        }
+        resyncOkAgain(completedDoses.map(d => d.name));
+      }
 
-    cancelTaskReminder(id);
-    // A target's own nudges too, which cancelTaskReminder doesn't reach: met
-    // for the day, it went on saying "one is due now" until evening.
-    if (task.quotaReminders) cancelQuotaNudges(id);
+      cancelTaskReminder(id);
+      // A target's own nudges too, which cancelTaskReminder doesn't reach: met
+      // for the day, it went on saying "one is due now" until evening.
+      if (task.quotaReminders) cancelQuotaNudges(id);
 
-    // Every row this completion adds, and which of their ids are here already
-    // (see writeSpawnedTask). Asked about these few ids rather than by
-    // collecting every id in the list, which was a pass and a set the size of
-    // the whole history on every tick.
-    const spawned = [
-      ...(nextTask ? [nextTask] : []),
-      ...nextSubtasks,
-      ...rolledOver,
-      ...(followUpTask ? [followUpTask] : []),
-      ...followUpSubtasks,
-    ];
-    const held = idsPresent(get().tasks, spawned.map(t => t.id));
-    if (nextTask) {
-      writeSpawnedTask(nextTask, held);
-      scheduleTaskReminder(nextTask);
-      scheduleQuotaNudges(nextTask);
-      reconcileDeadlineEvent(nextTask);
-    }
-    nextSubtasks.forEach(sub => {
-      writeSpawnedTask(sub, held);
-      scheduleTaskReminder(sub);
-    });
-    if (followUpTask) writeSpawnedTask(followUpTask, held);
-    followUpSubtasks.forEach(sub => writeSpawnedTask(sub, held));
-    rolledOver.forEach(row => {
-      writeSpawnedTask(row, held);
-      scheduleTaskReminder(row);
+      // Every row this completion adds, and which of their ids are here already
+      // (see writeSpawnedTask). Asked about these few ids rather than by
+      // collecting every id in the list, which was a pass and a set the size of
+      // the whole history on every tick.
+      spawned = [
+        ...(nextTask ? [nextTask] : []),
+        ...nextSubtasks,
+        ...rolledOver,
+        ...(followUpTask ? [followUpTask] : []),
+        ...followUpSubtasks,
+      ];
+      const held = idsPresent(get().tasks, spawned.map(t => t.id));
+      if (nextTask) {
+        writeSpawnedTask(nextTask, held);
+        scheduleTaskReminder(nextTask);
+        // Only a target has nudges. Asked of every repeating task, this listed
+        // every pending notification and cancelled six that were never set.
+        if (nextTask.quotaReminders) scheduleQuotaNudges(nextTask);
+        reconcileDeadlineEvent(nextTask);
+      }
+      nextSubtasks.forEach(sub => {
+        writeSpawnedTask(sub, held);
+        scheduleTaskReminder(sub);
+      });
+      if (followUpTask) writeSpawnedTask(followUpTask, held);
+      followUpSubtasks.forEach(sub => writeSpawnedTask(sub, held));
+      rolledOver.forEach(row => {
+        writeSpawnedTask(row, held);
+        scheduleTaskReminder(row);
+      });
     });
 
     set(s => ({
@@ -5435,14 +5453,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its last outstanding date inserts every date of the next set at once
     // (see completeTask). Matching only the first left next month on the board
     // after the completion that conjured it had been taken back.
-    const followUps = get().tasks.filter(t => t.previousOccurrenceId === id && !t.completed);
+    const followUps = openTasksOf(get().tasks).filter(t => t.previousOccurrenceId === id);
     const followUpIds = new Set(followUps.map(f => f.id));
     const followUpSubtasks = followUps.flatMap(f => get().subtasksOf(f.id));
-    followUps.forEach(f => {
+    dbTransaction(() => followUps.forEach(f => {
       dbDeleteSubtasks(f.id);
       dbDeleteTask(f.id);
-      releaseRowSideEffects(f);
-    });
+    }));
+    followUps.forEach(releaseRowSideEffects);
 
     set(s => ({
       tasks: withTaskReplaced(
@@ -12468,14 +12486,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const state = get();
     return cachedLens('inbox', state, () => openTasksOf(state.tasks)
       .filter(isInboxTask)
-      .sort((a, b) => a.sortOrder - b.sortOrder));
+      .sort((a, b) => a.sortOrder - b.sortOrder), false);
   },
 
   unscheduledTasks() {
     const state = get();
     return cachedLens('unscheduled', state, () => openTasksOf(state.tasks)
       .filter(isUnscheduledTask)
-      .sort((a, b) => a.sortOrder - b.sortOrder));
+      .sort((a, b) => a.sortOrder - b.sortOrder), false);
   },
 
   // Grouped by blocker so everything queued behind one task reads as a run,
@@ -12489,7 +12507,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const state = get();
     return cachedLens('waiting', state, () => openTasksOf(state.tasks)
       .filter(isWaitingTask)
-      .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder));
+      .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder), false);
   },
 
   // Reads the user's own threshold rather than a constant of its own: the
@@ -12596,8 +12614,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   subtasksOf(parentId) {
-    return get().tasks
-      .filter(t => t.parentId === parentId)
+    return [...subtaskRowsOf(get().tasks, parentId)]
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 

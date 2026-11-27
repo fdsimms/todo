@@ -25,6 +25,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { TITLE_MAX_LENGTH } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { HoverTouchable } from './HoverTouchable';
+import { taskById } from '../utils/taskRows';
 
 interface Props {
   visible: boolean;
@@ -73,7 +74,7 @@ export function TaskBreakdownSheet({ visible, taskId, manual = false, onClose }:
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addSubtask = useTaskStore(s => s.addSubtask);
-  const task = useTaskStore(s => s.tasks.find(t => t.id === taskId));
+  const task = useTaskStore(s => (taskId ? taskById(s.tasks, taskId) : undefined));
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [loading, setLoading] = useState(false);
@@ -95,7 +96,7 @@ export function TaskBreakdownSheet({ visible, taskId, manual = false, onClose }:
   const requestRef = useRef(0);
 
   const load = useCallback(async () => {
-    const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
+    const current = (taskId ? taskById(useTaskStore.getState().tasks, taskId) : undefined);
     if (!current) return;
     const request = ++requestRef.current;
     setLoading(true);

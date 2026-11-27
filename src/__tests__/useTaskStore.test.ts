@@ -237,7 +237,20 @@ jest.mock('../db/database', () => ({
   dbRemoveFromTagRegistry: jest.fn(),
   dbRemoveTagFromAllTasks: jest.fn(),
   dbMarkTaskSeen: jest.fn(),
-  dbTransaction: jest.fn((fn: () => void) => fn()),
+  // As the real one does, a call made inside another joins it, and
+  // `outermostTransaction` counts the ones that open a transaction of their own.
+  ...(() => {
+    let depth = 0;
+    const outermostTransaction = jest.fn();
+    return {
+      outermostTransaction,
+      dbTransaction: jest.fn((fn: () => void) => {
+        if (depth === 0) outermostTransaction();
+        depth++;
+        try { fn(); } finally { depth--; }
+      }),
+    };
+  })(),
   dbGetAllTemplates: jest.fn().mockReturnValue([]),
   dbInsertTemplate: jest.fn(),
   dbUpdateTemplate: jest.fn(),
@@ -697,6 +710,8 @@ beforeEach(() => {
 });
 
 // ─── initialize ───────────────────────────────────────────────────────────────
+
+const { outermostTransaction } = jest.requireMock('../db/database') as { outermostTransaction: jest.Mock };
 
 describe('initialize', () => {
   it('calls initDatabase, loads tasks, and marks as initialized', () => {
@@ -12548,7 +12563,7 @@ describe('completeGroup', () => {
       ],
     });
     useTaskStore.getState().completeGroup('g1');
-    expect(dbTransaction).toHaveBeenCalledTimes(1);
+    expect(outermostTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('never force-completes a child not yet due (mismatched recurrence cadence)', () => {
@@ -12826,7 +12841,7 @@ describe('deleteGroup', () => {
       tasks: [makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'b', groupId: 'g1' })],
     });
     useTaskStore.getState().deleteGroup('g1', { cascade: true });
-    expect(dbTransaction).toHaveBeenCalledTimes(1);
+    expect(outermostTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('queues an undo that restores the group and its orphaned children', () => {
@@ -13009,7 +13024,7 @@ describe('bulkCompleteTasks', () => {
       tasks: [makeTask({ id: 'a', recurrenceType: 'none' }), makeTask({ id: 'b', recurrenceType: 'none' })],
     });
     useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
-    expect(dbTransaction).toHaveBeenCalledTimes(1);
+    expect(outermostTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('queues an undo action that uncompletes every specified task', () => {
@@ -13141,7 +13156,7 @@ describe('bulkMarkMissed', () => {
   it('runs its writes inside a single db transaction', () => {
     useTaskStore.setState({ tasks: [recurring('a'), recurring('b')] });
     useTaskStore.getState().bulkMarkMissed(['a', 'b']);
-    expect(dbTransaction).toHaveBeenCalledTimes(1);
+    expect(outermostTransaction).toHaveBeenCalledTimes(1);
   });
 
   // Same per-task guard as markMissed itself — a mixed selection just skips
@@ -13201,7 +13216,7 @@ describe('bulkUncompleteTasks', () => {
       ],
     });
     useTaskStore.getState().bulkUncompleteTasks(['a', 'b']);
-    expect(dbTransaction).toHaveBeenCalledTimes(1);
+    expect(outermostTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('skips ids that are not completed', () => {
@@ -14650,7 +14665,7 @@ describe('deleteProject', () => {
       tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1' })],
     });
     useTaskStore.getState().deleteProject('p1', { cascade: true });
-    expect(dbTransaction).toHaveBeenCalledTimes(1);
+    expect(outermostTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('deletes member tasks too (cascade: true)', () => {
@@ -22653,6 +22668,41 @@ describe('addCompletedTask', () => {
     const rows = useTaskStore.getState().tasks;
     expect(rows.find(t => t.id === linked.id)!.linkUrl).toBe('dundundun://journal?entry=j1');
     expect(rows.find(t => t.id === plain.id)!.linkUrl ?? null).toBeNull();
+  });
+});
+
+describe('completeTask: what one tick costs', () => {
+  const notifications = jest.requireMock('../utils/notifications') as { scheduleQuotaNudges: jest.Mock };
+
+  it('commits the finished row and the next one together', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'daily' })] });
+    (dbTransaction as jest.Mock).mockClear();
+    outermostTransaction.mockClear();
+    useTaskStore.getState().completeTask('t1');
+    expect(dbUpdateTask).toHaveBeenCalled();
+    expect(dbInsertTask).toHaveBeenCalled();
+    expect(outermostTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('sets up nudges for the next one only when the task is a target with reminders', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'plain', recurrenceType: 'daily' }),
+        makeTask({ id: 'target', recurrenceType: 'daily', targetCount: 3, progressCount: 2, quotaReminders: true }),
+      ],
+    });
+    notifications.scheduleQuotaNudges.mockClear();
+    useTaskStore.getState().completeTask('plain');
+    expect(notifications.scheduleQuotaNudges).not.toHaveBeenCalled();
+    useTaskStore.getState().completeTask('target');
+    expect(notifications.scheduleQuotaNudges).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves Inbox as it was when a hold starts, since Inbox reads no hold', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'loose', dueDate: null, category: '' })] });
+    const before = useTaskStore.getState().inboxTasks();
+    useTaskStore.setState({ completionHoldIds: ['someone-else'] });
+    expect(useTaskStore.getState().inboxTasks()).toBe(before);
   });
 });
 
