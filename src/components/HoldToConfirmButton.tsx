@@ -10,6 +10,14 @@ interface Props {
   holdMs: number;
   onConfirm: () => void;
   disabled?: boolean;
+  /**
+   * Fired true when the touch lands and false when the hold ends, however it
+   * ends. A button inside a `ScrollView` passes this to the scroll's
+   * `scrollEnabled`: held for this long a finger drifts, the native scroll
+   * claims the touch, and the press is cancelled, which reads as a button that
+   * never fills.
+   */
+  onHoldingChange?: (holding: boolean) => void;
   accessibilityLabel: string;
   /** Layout only (margins); the shape and colors are the component's. */
   style?: object;
@@ -22,7 +30,7 @@ interface Props {
  * made half asleep. The alarm mission's Give up and the Screen Time screen's
  * End all blocks are both this, so the two can't feel different.
  */
-export function HoldToConfirmButton({ label, holdMs, onConfirm, disabled, accessibilityLabel, style }: Props) {
+export function HoldToConfirmButton({ label, holdMs, onConfirm, disabled, onHoldingChange, accessibilityLabel, style }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const fill = useRef(new Animated.Value(0)).current;
@@ -30,6 +38,7 @@ export function HoldToConfirmButton({ label, holdMs, onConfirm, disabled, access
   const [width, setWidth] = useState(0);
 
   const drain = () => {
+    onHoldingChange?.(false);
     holding.current?.stop();
     holding.current = null;
     Animated.timing(fill, { toValue: 0, duration: 150, useNativeDriver: false }).start();
@@ -44,6 +53,7 @@ export function HoldToConfirmButton({ label, holdMs, onConfirm, disabled, access
   const start = () => {
     if (disabled) return;
     haptics.impactLight();
+    onHoldingChange?.(true);
     holding.current = Animated.timing(fill, {
       toValue: 1,
       duration: holdMs,
@@ -52,6 +62,7 @@ export function HoldToConfirmButton({ label, holdMs, onConfirm, disabled, access
     holding.current.start(({ finished }) => {
       if (!finished) return;
       holding.current = null;
+      onHoldingChange?.(false);
       haptics.warning();
       onConfirm();
     });

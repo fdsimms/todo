@@ -1,0 +1,1 @@
+{ "message": "Fixed Hold to end all blocks not filling or finishing. The sheet no longer scrolls while you hold the button, so a drifting finger can't cancel the hold.", "date": "2026-11-27" }
