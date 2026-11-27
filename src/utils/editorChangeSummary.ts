@@ -28,7 +28,7 @@ const LABELS: Record<string, string> = {
   slotIn: 'slot in',
   timedMinutes: 'timer', completionTimerMinutes: 'timer', completionTimerNote: 'timer',
   targetCount: 'target', prorateFirstWeek: 'target', targetUnit: 'target', allowOvershoot: 'target',
-  coinsPerTap: 'target', quotaIntervalMinutes: 'target', quotaReminders: 'target', quotaPlaceIds: 'target',
+  coinsPerTap: 'target', quotaIntervalMinutes: 'target', quotaReminders: 'target', quotaCountdownSeconds: 'target', quotaPlaceIds: 'target',
   quotaAlwaysVisible: 'target', quotaRestAfterLog: 'target', followWaterTarget: 'target', quotaPeriod: 'target',
   quotaRampStep: 'target', quotaRampEvery: 'target', quotaRampGoal: 'target',
   healthMetric: 'health goal', healthTarget: 'health goal', healthFollowGoal: 'health goal',

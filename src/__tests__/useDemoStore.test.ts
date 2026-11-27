@@ -1174,6 +1174,7 @@ describe('demo mode', () => {
     // The nudge is the whole reason this kind exists — a cadence you have to
     // keep checking the app for is the thing it's meant to replace.
     expect(paced!.quotaReminders).toBe(true);
+    expect(paced!.quotaCountdownSeconds).toBe(20);
     // Behind and short of its count: the state it spends the day in, and the
     // one it closes out in without that being a miss.
     expect(paced!.progressCount).toBeGreaterThan(0);

@@ -2649,6 +2649,10 @@ function runInitDatabase(): void {
     'ALTER TABLE gyms ADD COLUMN dumbbell_step_kg REAL',
     // Task.experimentId: NULL on every existing row, which is no linked experiment.
     'ALTER TABLE tasks ADD COLUMN experiment_id TEXT',
+    // How many seconds a tap on one of a daily target's nudges counts down
+    // (a 20/20/20 eye break's 20) — see Task.quotaCountdownSeconds. Null on
+    // every existing row: a nudge has only ever opened Today.
+    'ALTER TABLE tasks ADD COLUMN quota_countdown_seconds INTEGER',
     // Experiment.days: NULL on every existing experiment, which already has its
     // last day, so the planned length is never read.
     'ALTER TABLE experiments ADD COLUMN days INTEGER',
@@ -4633,6 +4637,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     allowOvershoot: Boolean(row.allow_overshoot),
     quotaIntervalMinutes: (row.quota_interval_minutes as number | null) ?? null,
     quotaReminders: Boolean(row.quota_reminders),
+    quotaCountdownSeconds: (row.quota_countdown_seconds as number | null) ?? null,
     quotaStartedAt: (row.quota_started_at as string | null) ?? null,
     quotaAlwaysVisible: Boolean(row.quota_always_visible),
     followWaterTarget: Boolean(row.follow_water_target),
@@ -4871,8 +4876,8 @@ export function dbInsertTask(task: Task): void {
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, quota_tap_times, medication_extras, attachments, reminder_place_id, reminder_place_on,
-      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool, template_id, experiment_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool, template_id, experiment_id, quota_countdown_seconds
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -5030,6 +5035,7 @@ export function dbInsertTask(task: Task): void {
       task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
       task.templateId ?? null,
       task.experimentId ?? null,
+      task.quotaCountdownSeconds ?? null,
     ]
   );
 }
@@ -5069,7 +5075,7 @@ const TASK_UPDATE_SET = `
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, quota_tap_times=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
-      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?, template_id=?, experiment_id=?`;
+      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?, template_id=?, experiment_id=?, quota_countdown_seconds=?`;
 
 const TASK_UPDATE_COLUMNS = TASK_UPDATE_SET.split(',').map(part => part.trim().replace(/=\?$/, ''));
 
@@ -5231,6 +5237,7 @@ function taskUpdateValues(task: Task) {
     task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
     task.templateId ?? null,
     task.experimentId ?? null,
+    task.quotaCountdownSeconds ?? null,
   ];
 }
 

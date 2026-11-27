@@ -16,6 +16,8 @@ export interface NotificationTapData {
   activeTripReminder?: boolean;
   checkInId?: string;
   experimentId?: string;
+  quotaNudge?: boolean;
+  countdownSeconds?: number;
 }
 
 /** Where a tap on a notification lands, and what it does on the way. */
@@ -32,6 +34,8 @@ export type NotificationTapRoute =
   | { kind: 'checkIn'; checkInId: string; answer: CheckInAnswer | null }
   /** An experiment's finish notice: its page. */
   | { kind: 'experiment'; experimentId: string }
+  /** A tap on a target's nudge that carries a look-away countdown: the card, over whatever screen is up. */
+  | { kind: 'countdown'; seconds: number }
   /** The Complete button on a task reminder. */
   | { kind: 'complete'; taskId: string }
   /** The Snooze button on a task reminder. */
@@ -63,5 +67,11 @@ export function routeNotificationTap(
   if (data?.completionTimer) return { kind: 'completionTimer', taskId };
   if (actionIdentifier === COMPLETE_ACTION_IDENTIFIER) return { kind: 'complete', taskId };
   if (actionIdentifier === SNOOZE_ACTION_IDENTIFIER) return { kind: 'snooze', taskId };
+  // After the buttons, so Complete and Snooze on a nudge still do what they say;
+  // a plain tap is the countdown, which takes nothing away from the screen the
+  // person was on, so it does not navigate.
+  if (data?.quotaNudge && typeof data.countdownSeconds === 'number' && data.countdownSeconds > 0) {
+    return { kind: 'countdown', seconds: data.countdownSeconds };
+  }
   return { kind: 'open', taskId };
 }

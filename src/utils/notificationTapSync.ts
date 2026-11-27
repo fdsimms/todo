@@ -10,6 +10,7 @@ import { speakAgenda } from './agendaSpeech';
 import { runOrHoldForDemo } from './demoHold';
 import { answerCheckIn, askCheckIn } from './checkInRecording';
 import { resetToExperiment, resetToMedications } from '../navigation/navigationRef';
+import { useLookAwayStore } from '../store/useLookAwayStore';
 
 // Tapping a reminder (or a fired AlarmKit alarm, which launches the app the
 // same way a notification tap does) used to do nothing app-specific — the
@@ -92,6 +93,9 @@ export function useNotificationTapSync(): void {
         case 'experiment':
           // "Experiment finished": its page, with the whole stretch to read.
           resetToExperiment(route.experimentId);
+          return;
+        case 'countdown':
+          useLookAwayStore.getState().start(route.seconds);
           return;
         case 'open':
           resetToToday();

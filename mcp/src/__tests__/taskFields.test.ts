@@ -310,6 +310,22 @@ describe('target', () => {
     });
   });
 
+  it('sets a look-away countdown on a target with reminders, and clears it with them', () => {
+    expect(ok({ target: { per: 'day', everyMinutes: 20, remind: true, countdownSeconds: 20 } })).toMatchObject({
+      quotaReminders: true, quotaCountdownSeconds: 20,
+    });
+    expect(ok({ target: { per: 'day', everyMinutes: 20, remind: false } })).toMatchObject({ quotaCountdownSeconds: null });
+    expect(ok({ target: null })).toMatchObject({ quotaCountdownSeconds: null });
+    expect(ok({ target: { per: 'day', everyMinutes: 20, remind: true, countdownSeconds: null } })).toMatchObject({ quotaCountdownSeconds: null });
+  });
+
+  it('refuses a countdown that cannot work', () => {
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 20, remind: true, countdownSeconds: 2 } })).toMatch(/5 to 300/);
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 20, remind: true, countdownSeconds: 900 } })).toMatch(/5 to 300/);
+    expect(errorsOf({ target: { per: 'day', everyMinutes: 20, countdownSeconds: 20 } })).toMatch(/needs target.remind/);
+    expect(errorsOf({ target: { per: 'week', count: 3, countdownSeconds: 20 } })).toMatch(/per day/);
+  });
+
   it('keeps the limits in step with the app\'s own', () => {
     // Copied rather than imported, like supplyCount; this is what holds them together.
     expect([MIN_QUOTA_INTERVAL_MINUTES, MAX_QUOTA_INTERVAL_MINUTES]).toEqual([...LIMITS.quotaInterval]);

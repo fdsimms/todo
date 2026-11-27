@@ -1106,6 +1106,13 @@ export interface Task {
   // to be nudged about is a real thing to ask for, and so is being nudged
   // about a plain count.
   quotaReminders: boolean;
+  // Seconds a tap on one of this target's nudges counts down in a card over the
+  // screen, for a target whose unit is a short act rather than a count to log:
+  // a 20/20/20 eye break (every 20 minutes, look 20 feet away for 20 seconds)
+  // is the case it exists for. Null = a tap opens Today, as it always has.
+  // Meaningful only with quotaReminders, since it rides on the nudge's payload
+  // (`scheduleQuotaNudges`); `taskDraft` and the editors clear it without one.
+  quotaCountdownSeconds: number | null;
   // Saved places (`SavedPlace.id`) the reminders above are limited to; empty or
   // absent = anywhere. See src/utils/placeGate.ts: the app never reads location
   // in the background, so "at" means the last foreground fix, and a reminder is

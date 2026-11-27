@@ -22,6 +22,23 @@ describe('routeNotificationTap', () => {
     expect(routeNotificationTap({ experimentId: 'e1' }, TAP)).toEqual({ kind: 'experiment', experimentId: 'e1' });
   });
 
+  it('opens the look-away countdown from a nudge that carries one', () => {
+    expect(routeNotificationTap({ taskId: 't1', quotaNudge: true, countdownSeconds: 20 }, TAP))
+      .toEqual({ kind: 'countdown', seconds: 20 });
+  });
+
+  it('keeps Complete and Snooze working on a nudge with a countdown', () => {
+    const data = { taskId: 't1', quotaNudge: true, countdownSeconds: 20 };
+    expect(routeNotificationTap(data, 'complete')).toEqual({ kind: 'complete', taskId: 't1' });
+    expect(routeNotificationTap(data, 'snooze')).toEqual({ kind: 'snooze', taskId: 't1' });
+  });
+
+  it('opens Today for a nudge with no countdown, or a countdown on a plain reminder', () => {
+    expect(routeNotificationTap({ taskId: 't1', quotaNudge: true }, TAP)).toEqual({ kind: 'open', taskId: 't1' });
+    expect(routeNotificationTap({ taskId: 't1', countdownSeconds: 20 }, TAP)).toEqual({ kind: 'open', taskId: 't1' });
+    expect(routeNotificationTap({ taskId: 't1', quotaNudge: true, countdownSeconds: 0 }, TAP)).toEqual({ kind: 'open', taskId: 't1' });
+  });
+
   it('opens Today for a plain tap on a task reminder', () => {
     expect(routeNotificationTap({ taskId: 't1' }, TAP)).toEqual({ kind: 'open', taskId: 't1' });
   });

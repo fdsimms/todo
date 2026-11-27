@@ -800,6 +800,8 @@ export function seedDemoData(): void {
     // the window rather than the other way round.
     quotaIntervalMinutes: 20,
     quotaReminders: true,
+    // Tapping a nudge opens the 20 second look-away countdown.
+    quotaCountdownSeconds: 20,
     targetCount: 24,
     targetUnit: 'breaks',
     windowStart: '09:00',

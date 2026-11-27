@@ -62,6 +62,11 @@ const NOT_SEEDED: Record<string, string[]> = {
   // carry ids that name nothing on their phone.
   'a choice among the person\'s own saved places': ['quotaPlaceIds'],
 
+  // The look-away countdown a tap on a target's nudge opens. It belongs to one
+  // recurring habit (a 20/20/20 eye break), set on that task, so a template has
+  // no use for pre-setting it.
+  'a countdown for one habit task': ['quotaCountdownSeconds'],
+
   // A count of something on a shelf. Seeded on every run, it would hand each
   // new task a fresh stock nobody bought.
   'inventory, which a template would duplicate on every run': [

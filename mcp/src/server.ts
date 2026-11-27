@@ -1731,6 +1731,8 @@ const taskFieldsShape = {
       .describe('Per day only: one unit every N minutes (5 to 240) across the task\'s window, or the person\'s active hours ("look away every 20 minutes" with window 09:00 to 18:00). The count follows the window, so set it in the same call. Not with allowOvershoot or rampUp. null: a plain count.'),
     remind: z.boolean().optional()
       .describe('Per day, count 2 or more: notify as each unit falls due (it reaches the Apple Watch). A few are scheduled ahead, the rest as the app is opened.'),
+    countdownSeconds: z.number().int().nullable().optional()
+      .describe('With remind: tapping a notification opens a countdown card of this many seconds (5 to 300) over whatever the person is doing. For the 20/20/20 rule use everyMinutes 20, remind true and countdownSeconds 20. null: none.'),
     onlyAtPlaces: z.array(z.string()).nullable().optional()
       .describe('With remind: notify only at these saved places, by name (each needs a map pin). Checked when the app is opened, never in the background, so notifications stop within about 2 hours of leaving. [] or null: anywhere.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),

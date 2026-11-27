@@ -146,8 +146,12 @@ export function deferPastQuietHours(
  */
 export function isRedundantInForeground(data: unknown, appIsActive: boolean): boolean {
   if (!appIsActive || typeof data !== 'object' || data === null) return false;
-  const { focusSessionId, restTimerId } = data as { focusSessionId?: unknown; restTimerId?: unknown };
-  return typeof focusSessionId === 'string' || typeof restTimerId === 'string';
+  const { focusSessionId, restTimerId, lookAwayEnd } = data as {
+    focusSessionId?: unknown; restTimerId?: unknown; lookAwayEnd?: unknown;
+  };
+  // A look-away countdown's own end: the card on screen chimes at the same
+  // instant, so only a phone put down mid-countdown wants the banner.
+  return typeof focusSessionId === 'string' || typeof restTimerId === 'string' || lookAwayEnd === true;
 }
 
 Notifications.setNotificationHandler({
@@ -1030,6 +1034,39 @@ export async function cancelDailyAgenda(): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(DAILY_AGENDA_ID).catch(() => {});
 }
 
+// ─── Look-away countdown ─────────────────────────────────────────────────────
+
+// A single fixed id: a countdown is seconds long, so there is only ever one.
+const LOOK_AWAY_END_ID = 'look-away-end';
+
+/**
+ * The chime for a look-away countdown's last second, for a phone put down or
+ * locked once it started. With the app in front the card chimes itself and
+ * `isRedundantInForeground` keeps this one off the screen. Quiet hours suppress
+ * it, like a timer alarm: nothing in them is scheduled.
+ */
+export async function scheduleLookAwayEnd(endsAt: Date): Promise<void> {
+  await cancelLookAwayEnd();
+  if (isDemoModeActive()) return;
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (isWithinQuietHours(endsAt, quietHoursStart, quietHoursEnd)) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: LOOK_AWAY_END_ID,
+    content: {
+      title: 'Break over',
+      body: 'You can look back at the screen.',
+      data: { lookAwayEnd: true },
+      sound: true,
+      interruptionLevel: 'active',
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: endsAt },
+  });
+}
+
+export async function cancelLookAwayEnd(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(LOOK_AWAY_END_ID).catch(() => {});
+}
+
 // Timer alarms are namespaced away from reminders, which use the bare task id as
 // their identifier. Sharing the id would mean any title/notes edit — which
 // cancels and reschedules the reminder — silently destroying a running timer's
@@ -1261,7 +1298,7 @@ export const MAX_QUOTA_NUDGES_AHEAD = 6;
  * scheduled between rebuilds without asking it: a reminder set mid-session
  * (`scheduleTaskReminder` adds one without a rebuild), a cooking step timer, a
  * focus step alarm and its meeting heads-up, a completion timer, a medication's
- * "OK again". A run's extension is a nicety and those are not, so a queue filled
+ * "OK again", a look-away countdown's end chime. A run's extension is a nicety and those are not, so a queue filled
  * to the cap with nudges would be the extension spending a slot it was only
  * borrowing. Eight covers a session's worth with room over.
  */
@@ -1441,7 +1478,9 @@ export async function scheduleQuotaNudges(
         // whose whole content is "what do I actually do", that sentence is the
         // notification, and the title alone would be a nag with no method.
         body,
-        data: { taskId: task.id, quotaNudge: true },
+        // countdownSeconds rides along so a tap can open the look-away card
+        // without reading the task, which a cold launch may not have loaded yet.
+        data: { taskId: task.id, quotaNudge: true, ...(task.quotaCountdownSeconds ? { countdownSeconds: task.quotaCountdownSeconds } : {}) },
         sound: true,
         categoryIdentifier: TASK_REMINDER_CATEGORY,
         // A generated pacing nudge, not a moment the user asked to be

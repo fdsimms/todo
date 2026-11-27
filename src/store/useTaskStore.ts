@@ -4478,6 +4478,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
         QUOTA_SPAN_FIELDS.some(f => f in updates) ||
         ROTATION_TARGET_FIELDS.some(f => f in updates) ||
         'quotaReminders' in updates ||
+        'quotaCountdownSeconds' in updates ||
         'targetCount' in updates ||
         'vacationPause' in updates ||
         'completed' in updates ||
@@ -10795,6 +10796,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
       allowOvershoot: false,
       quotaIntervalMinutes: null,
       quotaReminders: false,
+      quotaCountdownSeconds: null,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
       followWaterTarget: false,
@@ -11024,6 +11026,7 @@ export const useTaskStore = create<TaskStore>((set, get, api) => withBatchedActi
       allowOvershoot: false,
       quotaIntervalMinutes: null,
       quotaReminders: false,
+      quotaCountdownSeconds: null,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
       followWaterTarget: false,
