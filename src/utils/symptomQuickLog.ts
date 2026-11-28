@@ -14,6 +14,14 @@ import { symptomKey } from './moodLog';
 export interface SymptomPhrase {
   /** The words left once the lead, the severity and the time are taken off. */
   words: string;
+  /**
+   * A trailing 0-to-10 style rating ("headache 6", "headache 6/10"), 1 to 10,
+   * or null. Whether it means a rating or is part of the name ("vitamin 3
+   * rash") is the caller's call, since only it knows the symptoms: `words`
+   * still holds the number, and `wordsWithoutRating` is the name without it.
+   */
+  rating: number | null;
+  wordsWithoutRating: string;
   /** Stated severity, or null for "not said" (the row then waits for a severity to be tapped). */
   severity: SymptomSeverity | null;
   /** The moment stated, in the past, or null for now. */
@@ -32,6 +40,8 @@ const SOFTENERS_RE = /^(?:a\s+bit|a\s+little|kind\s+of|kinda|pretty|really|very|
 const SEVERITY: Record<string, SymptomSeverity> = { mild: 1, moderate: 2, severe: 3 };
 const LEADING_SEVERITY_RE = /^(mild|moderate|severe)\s+/i;
 const TRAILING_SEVERITY_RE = /[\s,]+(mild|moderate|severe)$/i;
+
+const RATING_RE = /(?:^|\s)(\d{1,2})(?:\s*(?:\/|out\s+of)\s*10)?$/i;
 
 const AT_RE = /(?:^|\s)(at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$/i;
 const AGO_RE = /(?:^|\s)(\d+(?:\.\d+)?|an?)\s*(m|mins?|minutes?|h|hrs?|hours?)\s+ago$/i;
@@ -113,7 +123,11 @@ export function parseSymptomPhrase(query: string, now: Date = new Date()): Sympt
       text = text.slice(0, trailing.index);
     }
   }
-  return { words: text.trim(), severity, at, verb, sentence };
+  const words = text.trim();
+  const given = RATING_RE.exec(words);
+  const rating = given && Number(given[1]) >= 1 && Number(given[1]) <= 10 ? Number(given[1]) : null;
+  const wordsWithoutRating = rating === null || !given ? words : words.slice(0, given.index).trim();
+  return { words, rating, wordsWithoutRating, severity, at, verb, sentence };
 }
 
 /**

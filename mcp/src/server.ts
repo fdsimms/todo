@@ -1338,8 +1338,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   server.tool(
     'mood_insights',
     "The Insights screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, on days they finished a workout (when Workouts is on and workout history reaches this server; otherwise absent), by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
-    {},
-    async () => json(await withFresh(() => moodInsights(replica)))
+    { firstCheckInOnly: z.boolean().optional().describe('Read the before and after of each milestone from each day\'s earliest check-in that has a mood, so mornings are compared with mornings. Only the milestones change. Default false.') },
+    async input => json(await withFresh(() => moodInsights(replica, input)))
   );
 
   server.tool(

@@ -9,6 +9,7 @@ import {
   lookBacks,
   searchMoodLogs,
   symptomOnLog,
+  symptomRatingOnDay,
   symptomSeverityOnDay,
   symptomStatFor,
   symptomStats,
@@ -306,5 +307,26 @@ describe('paging between written days', () => {
   it('is null at either end', () => {
     expect(adjacentLogDays(logs, '2026-08-01').previous).toBeNull();
     expect(adjacentLogDays(logs, '2026-08-09').next).toBeNull();
+  });
+});
+
+describe('a symptom\'s rating on a day', () => {
+  it('is the highest rating that day, matched by symptom key', () => {
+    const logs = [
+      log({ id: 'a', symptoms: [{ name: 'Brain fog', severity: 1, rating: 2 }] }),
+      log({ id: 'b', symptoms: [{ name: 'brain fog', severity: 2, rating: 5 }] }),
+      log({ id: 'c', symptoms: [{ name: 'Headache', severity: 3, rating: 9 }] }),
+    ];
+    expect(symptomRatingOnDay(logs, 'BRAIN FOG', '2026-08-17')).toBe(5);
+  });
+
+  it('is null, not 0, for a day with only a level, a day it wasn\'t logged, or a rating that isn\'t usable', () => {
+    const logs = [
+      log({ symptoms: [{ name: 'Brain fog', severity: 2 }] }),
+      log({ dayKey: '2026-08-19', symptoms: [{ name: 'Brain fog', severity: 1, rating: 0 }] }),
+    ];
+    expect(symptomRatingOnDay(logs, 'brain fog', '2026-08-17')).toBeNull();
+    expect(symptomRatingOnDay(logs, 'brain fog', '2026-08-18')).toBeNull();
+    expect(symptomRatingOnDay(logs, 'brain fog', '2026-08-19')).toBeNull();
   });
 });

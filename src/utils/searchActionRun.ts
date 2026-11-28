@@ -175,13 +175,18 @@ function runSymptom(action: SymptomAction): SearchActionReceipt | null {
   if (action.severity === null) return null;
   // Through `addLog` like the sheet's Save, so the day key is stamped under
   // `dayResetTime`. No mood level: this entry says only that the symptom happened.
-  const log = useMoodStore.getState().addLog(null, [{ name: action.symptom, severity: action.severity }], null, action.at ?? undefined);
+  const log = useMoodStore.getState().addLog(
+    null,
+    [{ name: action.symptom, severity: action.severity, ...(action.rating ? { rating: action.rating } : {}) }],
+    null,
+    action.at ?? undefined,
+  );
   if (!log) return null;
   useMoodStore.getState().registerLogUndo(log);
   const entry = topOf(useMoodStore.getState().undoStack);
   return {
     title: `Logged ${action.symptom}`,
-    meta: `${severityLabel(action.severity)} · ${format(new Date(log.loggedAt), clockTimeToken(useSettingsStore.getState().use24HourTime))}`,
+    meta: `${action.rating ? `${action.rating} of 10` : severityLabel(action.severity)} · ${format(new Date(log.loggedAt), clockTimeToken(useSettingsStore.getState().use24HourTime))}`,
     undo: undoThrough(useMoodStore.getState, entry, () => useMoodStore.getState().removeLog(log.id)),
   };
 }

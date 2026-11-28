@@ -256,6 +256,36 @@ describe('searchActions: symptoms', () => {
     expect(searchActions('record TIRED moderate', mood).onSubmit).toMatchObject({ symptom: 'Tired', severity: 2 });
   });
 
+  describe('a 1 to 10 rating', () => {
+    const rated: SearchActionSources = { mood: { symptoms: ['Brain fog', 'Headache', 'Vitamin 3 rash'], pinned: ['brain fog', 'Vitamin 3 rash'] } };
+
+    it('is read from "log brain fog 6" for a symptom rated on the slider, with the severity it falls in', () => {
+      const { actions, onSubmit } = searchActions('log brain fog 6', rated);
+      expect(actions[0]).toMatchObject({ kind: 'symptom', symptom: 'Brain fog', rating: 6, severity: 2, explicit: true });
+      expect(onSubmit).toMatchObject({ symptom: 'Brain fog', rating: 6, severity: 2 });
+      expect(searchActions('log brain fog 9/10', rated).actions[0]).toMatchObject({ rating: 9, severity: 3 });
+    });
+
+    it('keeps a stated time, and puts the rating in the row title', () => {
+      const row = searchActions('log brain fog 4 20 min ago', rated).actions[0];
+      expect(row).toMatchObject({ symptom: 'Brain fog', rating: 4, severity: 2 });
+      expect((row as { at: Date | null }).at).not.toBeNull();
+    });
+
+    it('offers no row for a number on a symptom that has no slider, rather than writing a level it was not given', () => {
+      expect(searchActions('log headache 6', rated).actions).toEqual([]);
+    });
+
+    it('is ignored when the number is part of a name the log already has', () => {
+      expect(searchActions('vitamin 3', rated).actions[0]).toMatchObject({ symptom: 'Vitamin 3 rash', severity: null });
+    });
+
+    it('offers no row when it is out of range, or when a word and a number both say the level', () => {
+      expect(searchActions('log brain fog 11', rated).actions).toEqual([]);
+      expect(searchActions('log severe brain fog 6', rated).actions).toEqual([]);
+    });
+  });
+
   it('offers the write as you start typing a symptom, without a verb', () => {
     const sources: SearchActionSources = { mood: { symptoms: ['Lightheaded', 'Headache'] } };
     const row = searchActions('light', sources);

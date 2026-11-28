@@ -377,7 +377,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
 - `src/utils/moodEventTagOffers.ts` — MOOD_TAG_OFFER_DAYS, MoodEventTagOffer, clipAtWord, moodEventTagOffers, filterMoodEventTagOffers, describeMoodEventTagOffer, ruleFromOffer, moodTagOfferWindow
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
-- `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
+- `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +11 more
 - `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +48 more
 - `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, RATING_MAX, severityForRating, ratingOf, MOOD_CHANGES, moodChangeLabel, CHANGE_ANCHOR_WINDOW_MS, +28 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow

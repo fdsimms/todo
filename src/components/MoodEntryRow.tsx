@@ -7,7 +7,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { MoodFace } from './MoodFace';
-import { moodChangeLabel, moodLabel, severityLabel, symptomWithSeverity } from '../utils/moodLog';
+import { moodChangeLabel, moodLabel, ratingOf, severityLabel, symptomWithSeverity } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
@@ -52,6 +52,7 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
   const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const highlighted = highlightSymptomKey ? symptomOnLog(log, highlightSymptomKey) : null;
+  const highlightedRating = highlighted ? ratingOf(highlighted) : null;
   const when = format(
     new Date(log.loggedAt),
     showDate ? `EEE, MMM d, ${timeToken}` : timeToken,
@@ -61,7 +62,7 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
     format(new Date(log.loggedAt), timeToken),
     log.mood === null ? 'no mood recorded' : moodLabel(log.mood),
     log.change ? changeText(log.change) : null,
-    highlighted ? `${highlighted.name}, ${severityLabel(highlighted.severity)}` : null,
+    highlighted ? `${highlighted.name}, ${severityLabel(highlighted.severity)}${highlightedRating === null ? '' : `, ${highlightedRating} out of 10`}` : null,
     log.symptoms.length > 0 ? log.symptoms.map(s => s.name).join(', ') : null,
     log.contextTags.length > 0 ? log.contextTags.join(', ') : null,
     log.note || null,
@@ -97,7 +98,7 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
         {!!log.note && <Text style={styles.note} numberOfLines={NOTE_LINES}>{log.note}</Text>}
         {highlighted && (
           <Text style={styles.highlight} numberOfLines={1}>
-            {highlighted.name}: {severityLabel(highlighted.severity).toLowerCase()}
+            {highlighted.name}: {severityLabel(highlighted.severity).toLowerCase()}{highlightedRating === null ? '' : `, ${highlightedRating} of 10`}
           </Text>
         )}
         {log.symptoms.length > 0 && (

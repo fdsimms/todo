@@ -1279,6 +1279,14 @@ the extra grain, and it is optional per symptom, per entry.
   mean (`ratingAverageLine` beside `severityAverageLine`): they are different
   scales, and a mean of the two is a number nobody gave. `SymptomSide` carries
   `daysRated` and `averageRating` for it.
+- **The symptom page draws a rated symptom on its own 0 to 10 chart**
+  (`symptomRatingOnDay`), under the level chart and only when a day in the last
+  fortnight was rated. The two are never one chart: a day with only a level has
+  no bar on the rated one, and the level chart keeps its three steps.
+- **Search can log a rating** ("log brain fog 6") for a pinned symptom only, via
+  `parseSymptomPhrase`'s `rating`. A number that is part of a name the log
+  already has ("Vitamin 3 rash") stays part of the name, and a number on a
+  symptom with no slider offers no row at all rather than a level nobody chose.
 - **A slider can show a symptom that only has a level.** An older entry, or one
   set with the tap, opens on its level as a word with a hollow thumb, so the
   sheet never claims "None" for a symptom the entry holds.

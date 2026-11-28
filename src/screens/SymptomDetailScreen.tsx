@@ -14,7 +14,7 @@ import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { severityLabel } from '../utils/moodLog';
 import {
-  logsWithSymptom, symptomSeverityOnDay, symptomStatFor,
+  logsWithSymptom, symptomRatingOnDay, symptomSeverityOnDay, symptomStatFor,
 } from '../utils/moodHistory';
 import {
   MIN_PAIRED_DAYS, buildMoodDays, symptomFoodContrasts, symptomMoodContrasts,
@@ -51,6 +51,8 @@ const BAR_HEIGHT = 60;
  * `BAR_GUIDE_GAP` short of its line rather than ending on it.
  */
 const GUIDE_LEVELS = [3, 2, 1, 0] as const;
+/** The rated chart's guides: the ends and the middle of the 0 to 10 scale, labeled with the numbers. */
+const RATING_GUIDES = [10, 5, 0] as const;
 /** Width of the label column at the default text size; scaled with the text. */
 const GUIDE_LABEL_WIDTH = 54;
 
@@ -98,18 +100,20 @@ export function SymptomDetailScreen() {
   // drawing the days it appeared on would compress a month of headaches into a
   // solid fortnight of them.
   const strip = useMemo(() => {
-    const out: { key: string; label: string; a11y: string; severity: SymptomSeverity | null }[] = [];
+    const out: { key: string; label: string; a11y: string; severity: SymptomSeverity | null; rating: number | null }[] = [];
     const cursor = getCurrentDayStart();
     for (let i = CHART_DAYS - 1; i >= 0; i--) {
       const date = new Date(cursor);
       date.setDate(date.getDate() - i);
       const dayKey = dayKeyOf(date);
       const severity = symptomSeverityOnDay(logs, key, dayKey);
+      const rating = symptomRatingOnDay(logs, key, dayKey);
       out.push({
         key: dayKey,
         label: format(date, 'EEEEE'),
-        a11y: `${format(date, 'EEEE, MMMM d')}: ${severity === null ? 'not logged' : severityLabel(severity)}`,
+        a11y: `${format(date, 'EEEE, MMMM d')}: ${severity === null ? 'not logged' : severityLabel(severity)}${rating === null ? '' : `, rated ${rating} out of 10`}`,
         severity,
+        rating,
       });
     }
     return out;
@@ -253,6 +257,39 @@ export function SymptomDetailScreen() {
             </View>
           </View>
         </View>
+
+        {/* A symptom rated on the check-in's slider gets its own chart on the
+            0 to 10 scale. Never drawn into the level chart above: they are
+            different scales, and a day with only a level is a gap here. */}
+        {strip.some(day => day.rating !== null) && (
+          <>
+            <Text style={styles.sectionTitle}>RATED 0 TO 10</Text>
+            <View style={styles.card}>
+              <View>
+                <ChartGuides
+                  height={BAR_HEIGHT}
+                  gutter={guideGutter}
+                  guides={RATING_GUIDES.map(level => ({ fraction: level / 10, label: String(level) }))}
+                />
+                <View style={[styles.stripInner, { paddingLeft: guideGutter }]}>
+                  {strip.map(day => (
+                    <View key={day.key} style={styles.stripCol} accessible accessibilityLabel={day.a11y}>
+                      <View style={styles.barTrack}>
+                        {day.rating !== null && (
+                          <View style={[styles.bar, { height: (day.rating / 10) * BAR_HEIGHT - BAR_GUIDE_GAP, backgroundColor: colors.accent }]} />
+                        )}
+                      </View>
+                      <Text style={styles.barLabel}>{day.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+              <HelpText style={styles.caption}>
+                The highest rating each day. A day logged only as Mild, Moderate or Severe has no bar here.
+              </HelpText>
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionTitle}>HOW BAD IT GETS</Text>
         <View style={styles.card}>

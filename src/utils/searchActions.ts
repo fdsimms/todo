@@ -12,7 +12,8 @@ import {
 import { limitStatus, prefsFor, type MedicationSettingsMap } from './medicationSettings';
 import { readDoseWords } from './quickDose';
 import { clockTimeToken } from './clockTime';
-import { MOOD_LEVELS, symptomKey } from './moodLog';
+import { MOOD_LEVELS, severityForRating, symptomKey } from './moodLog';
+import { isPinnedSymptom } from './pinnedSymptoms';
 import { matchSymptoms, parseSymptomPhrase } from './symptomQuickLog';
 import { describeWater, WATER_STEP_FL_OZ, WATER_STEP_ML, waterToMl, type WaterUnit } from './waterLog';
 import { groceryNameKey, parseGroceryInput } from './groceryParse';
@@ -95,6 +96,11 @@ export interface SymptomAction {
   symptom: string;
   /** The severity the line stated, or null when it didn't: a pill has to be tapped. */
   severity: SymptomSeverity | null;
+  /**
+   * A 1 to 10 rating the line stated ("log headache 6"), only for a symptom
+   * rated on the check-in's slider. `severity` is then the level it falls in.
+   */
+  rating?: number | null;
   /** When it happened, if the line said; null is now. */
   at: Date | null;
 }
@@ -135,7 +141,7 @@ export type SearchAction = DoseAction | WaterAction | MoodAction | SymptomAction
 export interface SearchActionSources {
   medications?: { logs: readonly MedicationLog[]; archived: readonly string[]; registered?: readonly string[] } | null;
   water?: { unit: WaterUnit } | null;
-  mood?: { symptoms: readonly string[] } | null;
+  mood?: { symptoms: readonly string[]; /** Symptoms rated 0 to 10 on the check-in's slider; only these take "headache 6". */ pinned?: readonly string[] } | null;
   groceries?: {
     items: readonly GroceryItem[];
     listEntries: readonly GroceryListEntry[];
@@ -377,9 +383,26 @@ function knownSymptom(words: string, symptoms: readonly string[]): string | null
  * ("light") it takes `BARE_NAME_MIN_LENGTH` letters, like a dose; Return runs
  * only a "log"/"record" line that names the symptom in full.
  */
-function symptomActions(query: string, symptoms: readonly string[]): SymptomAction[] {
+function symptomActions(query: string, symptoms: readonly string[], pinned: readonly string[] = []): SymptomAction[] {
   const phrase = parseSymptomPhrase(query);
   const led = phrase.verb || phrase.sentence;
+  // "headache 6" is a rating only for a symptom that takes one, and never
+  // when the number is part of a name the log already has ("Vitamin 3 rash").
+  if (phrase.rating !== null && phrase.severity === null && matchSymptoms(phrase.words, symptoms).length === 0) {
+    const rated = matchSymptoms(phrase.wordsWithoutRating, symptoms).filter(m => isPinnedSymptom(pinned, m.name));
+    if (rated.length > 0 && (led || symptomKey(phrase.wordsWithoutRating).length >= BARE_NAME_MIN_LENGTH)) {
+      const rating = phrase.rating;
+      return rated.map(({ name, exact }): SymptomAction => ({
+        kind: 'symptom',
+        key: `symptom:${symptomKey(name)}`,
+        explicit: phrase.verb && exact,
+        symptom: name,
+        severity: severityForRating(rating),
+        rating,
+        at: phrase.at,
+      }));
+    }
+  }
   if (!led && symptomKey(phrase.words).length < BARE_NAME_MIN_LENGTH) return [];
   return matchSymptoms(phrase.words, symptoms).map(({ name, exact }): SymptomAction => ({
     kind: 'symptom',
@@ -511,7 +534,7 @@ export function searchActions(
   }
   if (sources.mood) {
     // The write comes before the screen that opens, so the one-tap row leads.
-    found.push(...symptomActions(text, sources.mood.symptoms));
+    found.push(...symptomActions(text, sources.mood.symptoms, sources.mood.pinned));
     const mood = moodAction(text, sources.mood.symptoms);
     if (mood) found.push(mood);
   }
@@ -614,8 +637,9 @@ function describeMood(action: MoodAction): ActionDescription {
 function describeSymptom(action: SymptomAction, ctx: DescribeContext): ActionDescription {
   // No line under the title: the severity is the pills under the row. A time
   // the line stated goes in the title, so it isn't dropped without a word.
+  const title = action.at ? `Log ${action.symptom} at ${clockOrDate(action.at, ctx.now, ctx.use24HourTime)}` : `Log ${action.symptom}`;
   return {
-    title: action.at ? `Log ${action.symptom} at ${clockOrDate(action.at, ctx.now, ctx.use24HourTime)}` : `Log ${action.symptom}`,
+    title: action.rating ? `${title}, ${action.rating} of 10` : title,
     meta: [],
     warn: false,
     icon: 'pulse-outline',
