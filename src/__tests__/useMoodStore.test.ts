@@ -54,6 +54,16 @@ describe('addLog', () => {
     expect(state().logs).toHaveLength(1);
   });
 
+  it('keeps a symptom’s rating, and drops one that isn’t a whole number 1 to 10', () => {
+    state().addLog(3, [
+      { name: 'Brain fog', severity: 2, rating: 5 },
+      { name: 'Fatigue', severity: 1, rating: 14 },
+    ]);
+    expect(dbInsertMoodLog).toHaveBeenCalledWith(expect.objectContaining({
+      symptoms: [{ name: 'Brain fog', severity: 2, rating: 5 }, { name: 'Fatigue', severity: 1 }],
+    }));
+  });
+
   it('stamps the logical day rather than the calendar one', () => {
     // The grace-window rule: an entry made at 1am with a 02:00 reset belongs to
     // yesterday, the day whose list it was still working through.

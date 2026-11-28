@@ -649,7 +649,7 @@ export interface FoodBreakdownInput {
 
 export interface MoodInput {
   mood?: number | null;
-  symptoms?: { name: string; severity?: number }[];
+  symptoms?: { name: string; severity?: number; rating?: number }[];
   contextTags?: string[];
   change?: 'worse' | 'same' | 'better' | null;
   note?: string | null;
@@ -3262,6 +3262,27 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     };
   }
 
+  /**
+   * A symptom as the sheet would have stored it. A `rating` (1 to 10, what the
+   * check-in's slider records) sets the severity too, by `severityForRating`,
+   * and wins if both are given; without one the old rule stands, where a
+   * missing severity is Moderate.
+   */
+  function loggedSymptom(
+    s: { name: string; severity?: number; rating?: number },
+    spell: (n: string) => string,
+  ): { name: string; severity: 1 | 2 | 3; rating?: number } {
+    const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const name = spell(s.name);
+    if (s.rating !== undefined) {
+      if (!Number.isInteger(s.rating) || s.rating < 1 || s.rating > moodLog.RATING_MAX) {
+        throw new Error(`rating is a whole number from 1 to ${moodLog.RATING_MAX}. For "none right now", leave the symptom out.`);
+      }
+      return { name, severity: moodLog.severityForRating(s.rating), rating: s.rating };
+    }
+    return { name, severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 };
+  }
+
   const templateQuestions = require('../../src/utils/templateQuestions') as typeof import('../../src/utils/templateQuestions');
   const templateApply = require('../../src/utils/templateApply') as typeof import('../../src/utils/templateApply');
 
@@ -5766,10 +5787,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         throw new Error('mood is a whole number from 1 (low) to 5 (great), or left out.');
       }
       const { symptom, tag } = moodSpelling();
-      const symptoms = (input.symptoms ?? []).map(s => ({
-        name: symptom(s.name),
-        severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3,
-      }));
+      const symptoms = (input.symptoms ?? []).map(s => loggedSymptom(s, symptom));
       const log = useMoodStore.getState().addLog(
         (input.mood ?? null) as MoodLog['mood'],
         symptoms,
@@ -6042,7 +6060,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const spelling = moodSpelling();
       const next: Partial<MoodLog> = {};
       if (patch.mood !== undefined) next.mood = patch.mood as MoodLog['mood'];
-      if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
+      if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => loggedSymptom(s, spelling.symptom));
       if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
       if (patch.change !== undefined) next.change = patch.change;
       if (patch.note !== undefined) next.note = patch.note;

@@ -7,7 +7,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { MoodFace } from './MoodFace';
-import { moodChangeLabel, moodLabel, severityLabel } from '../utils/moodLog';
+import { moodChangeLabel, moodLabel, severityLabel, symptomWithSeverity } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
@@ -102,7 +102,7 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
         )}
         {log.symptoms.length > 0 && (
           <Text style={styles.symptoms} numberOfLines={2}>
-            {log.symptoms.map(s => `${s.name} (${severityLabel(s.severity).toLowerCase()})`).join(', ')}
+            {log.symptoms.map(symptomWithSeverity).join(', ')}
           </Text>
         )}
         {log.contextTags.length > 0 && (

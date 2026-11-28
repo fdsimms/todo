@@ -628,7 +628,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_mood_logs',
-    'Mood check-ins over a range of days: the 1 to 5 rating, any symptoms and their severity, context tags and notes. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Mood check-ins over a range of days: the 1 to 5 rating, any symptoms and their severity (and a 1 to 10 rating where they gave one), context tags and notes. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMoodLogs(replica, input))))
   );
@@ -657,8 +657,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   server.tool(
     'list_experiments',
     'Changes the person is trying for a set stretch of days ("No caffeine after noon" for 4 weeks), each with its days, how far along it is, and their mood and symptoms during it against the same number of days just before it: the same read the phone\'s experiment page shows, under its minimum-days rules. Symptoms they picked in advance are under watched; the rest are apart because one can differ by chance. A difference never shows the experiment caused it. Empty unless the person has turned on Include health logs for the sync server on their phone.',
-    {},
-    async () => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listExperiments(replica))))
+    { firstCheckInOnly: z.boolean().optional().describe('Read each day from its earliest check-in that has a mood, so mornings are compared with mornings. Check-ins with no mood are left out. Default false: every check-in counts.') },
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listExperiments(replica, input))))
   );
 
   server.tool(
@@ -2312,11 +2312,11 @@ function registerWriteTools(
 
   server.tool(
     'log_mood',
-    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or change (worse, same or better than their previous check-in, only when they say so; it is not the rating and never worked out from two ratings), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or change (worse, same or better than their previous check-in, only when they say so; it is not the rating and never worked out from two ratings), and/or symptoms with a severity of 1 (mild) to 3 (severe) or, for a symptom they rate closely, a rating of 1 to 10, context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
     {
       mood: z.number().int().min(1).max(5).nullable().optional(),
       change: z.enum(['worse', 'same', 'better']).nullable().optional(),
-      symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
+      symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional(), rating: z.number().int().min(1).max(10).optional().describe('1 to 10, for a symptom they rate on the check-in slider. Sets the severity as well (1-3 mild, 4-6 moderate, 7-10 severe), so give a rating or a severity, not both. Leave the symptom out for "none right now".') })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
@@ -2478,7 +2478,7 @@ function registerWriteTools(
       id: entryId,
       mood: z.number().int().min(1).max(5).nullable().optional(),
       change: z.enum(['worse', 'same', 'better']).nullable().optional(),
-      symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
+      symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional(), rating: z.number().int().min(1).max(10).optional().describe('1 to 10, for a symptom they rate on the check-in slider. Sets the severity as well (1-3 mild, 4-6 moderate, 7-10 severe), so give a rating or a severity, not both. Leave the symptom out for "none right now".') })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
     },

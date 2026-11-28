@@ -14,7 +14,7 @@ import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { diaryEntries, openEntries } from '../utils/journal';
 import { MoodFace } from '../components/MoodFace';
-import { logsOnDay, moodLabel, severityLabel } from '../utils/moodLog';
+import { logsOnDay, moodLabel, severityLabel, symptomWithSeverity } from '../utils/moodLog';
 import { adjacentLogDays } from '../utils/moodHistory';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -132,7 +132,7 @@ export function MoodDayScreen() {
               {!!log.note && <Text style={styles.note}>{log.note}</Text>}
               {log.symptoms.length > 0 && (
                 <Text style={styles.foot}>
-                  {log.symptoms.map(s => `${s.name} (${severityLabel(s.severity).toLowerCase()})`).join(', ')}
+                  {log.symptoms.map(symptomWithSeverity).join(', ')}
                 </Text>
               )}
               {log.contextTags.length > 0 && (

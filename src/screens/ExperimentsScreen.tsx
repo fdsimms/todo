@@ -30,6 +30,8 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
 import { ContrastBars } from '../components/ContrastBars';
+import { SegmentedControl } from '../components/SegmentedControl';
+import { firstMoodEntries } from '../utils/moodLog';
 import { LazySheet } from '../components/LazySheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ExperimentSheet } from '../components/ExperimentSheet';
@@ -71,11 +73,13 @@ export function ExperimentsScreen() {
   const [milestoneSheetOpen, setMilestoneSheetOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
   const [experimentSheetOpen, setExperimentSheetOpen] = useState(false);
+  // Milestones read every entry, or only each day's first with a mood (firstMoodEntries).
+  const [firstOfDayOnly, setFirstOfDayOnly] = useState(false);
 
   // Mood only: a milestone's contrast reads the mood on each side of its date.
   const days = useMemo(
-    () => buildMoodDays(logs, tasks, dayResetTime, [], null, []),
-    [logs, tasks, dayResetTime],
+    () => buildMoodDays(firstOfDayOnly ? firstMoodEntries(logs) : logs, tasks, dayResetTime, [], null, []),
+    [logs, tasks, dayResetTime, firstOfDayOnly],
   );
   const milestoneRows = useMemo(
     () => milestones.map(milestone => ({
@@ -209,6 +213,17 @@ export function ExperimentsScreen() {
             </Text>
           ) : (
             <View style={styles.addSpacing}>
+              <View style={styles.addSpacing}>
+                <SegmentedControl
+                  options={[
+                    { value: false, label: 'All check-ins' },
+                    { value: true, label: 'First of each day' },
+                  ]}
+                  value={firstOfDayOnly}
+                  onChange={setFirstOfDayOnly}
+                  label="Read from"
+                />
+              </View>
               {milestoneRows.map(({ milestone, contrast }, i) => (
                 contrast ? (
                   <ContrastBars
@@ -253,6 +268,7 @@ export function ExperimentsScreen() {
           {milestoneRows.some(r => r.contrast) && (
             <Text style={styles.chartCaption}>
               Average mood before a milestone’s date, against on and after it.
+              {firstOfDayOnly ? ' Each day is read from its earliest entry with a mood.' : ''}
             </Text>
           )}
         </View>

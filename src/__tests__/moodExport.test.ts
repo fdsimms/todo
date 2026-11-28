@@ -92,6 +92,13 @@ describe('the file', () => {
     expect(csv).toContain('Headache (severe); Poor sleep (mild)');
   });
 
+  it('adds the rating after the level for a symptom rated on the slider', () => {
+    const csv = moodExportCsv([log({
+      symptoms: [{ name: 'Brain fog', severity: 2, rating: 5 }, { name: 'Headache', severity: 3 }],
+    })]);
+    expect(csv).toContain('Brain fog (moderate, 5 of 10); Headache (severe)');
+  });
+
   it('leaves the mood columns empty for a symptoms-only entry', () => {
     const csv = moodExportCsv([log({ mood: null, symptoms: [{ name: 'Nausea', severity: 1 }] })]);
     expect(rows(csv)[1]).toContain(',,,Nausea (mild)');

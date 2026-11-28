@@ -1008,6 +1008,18 @@ describe('listMoodLogs', () => {
     expect(result.logs[0].symptoms).toEqual([{ name: 'Headache', severity: '2' }]);
   });
 
+  it('adds the 1 to 10 rating to a symptom that has one, and leaves it off one that does not', () => {
+    const result = listMoodLogs(
+      stubReplica({
+        moodLogs: () => [log({ id: 'm1', symptoms: [{ name: 'Brain fog', severity: 2, rating: 5 }, { name: 'Headache', severity: 1 }] as MoodLog['symptoms'] })],
+      })
+    );
+    expect(result.logs[0].symptoms).toEqual([
+      { name: 'Brain fog', severity: '2', rating: 5 },
+      { name: 'Headache', severity: '1' },
+    ]);
+  });
+
   it('drops empty symptom and tag lists rather than sending them', () => {
     const result = listMoodLogs(stubReplica({ moodLogs: () => [log({ id: 'm1', mood: 4 })] }));
     expect(result.logs[0]).toEqual({

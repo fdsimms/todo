@@ -35,7 +35,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'themeMode', 'appFont', 'appFontRandomize', 'appFontPool', 'use24HourTime', 'hideHelpText',
     'sortOption', 'hideGroceryRecipeNames', 'projectSortOption', 'recipeSortOption', 'recipeLovedOnly',
     'collapsedRecipeSections', 'limitsTodayHidden', 'goalsTodayHidden', 'healthTodayHidden',
-    'keepOpenAfterFoodLog', 'biostatsCollapsed',
+    'keepOpenAfterFoodLog', 'biostatsCollapsed', 'pinnedSymptoms',
   ],
 
   // What the app remembers about prompts it has shown and answers it has had,

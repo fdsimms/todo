@@ -18,6 +18,7 @@ import {
   overlappingChanges,
   roundedSeverity,
   averageSeverityValue,
+  ratingAverageLine,
   severityAverageLine,
   sortExperimentsForList,
   symptomRate,
@@ -265,8 +266,8 @@ describe('experimentResult: symptoms', () => {
     expect(row.name).toBe('headache');
     expect(row.picked).toBe(true);
     expect(row.comparable).toBe(true);
-    expect(row.before).toEqual({ loggedDays: 10, daysWith: 6, averageSeverity: (3 + 2 * 5) / 6 });
-    expect(row.during).toEqual({ loggedDays: 10, daysWith: 2, averageSeverity: 1 });
+    expect(row.before).toEqual({ loggedDays: 10, daysWith: 6, averageSeverity: (3 + 2 * 5) / 6, daysRated: 0, averageRating: null });
+    expect(row.during).toEqual({ loggedDays: 10, daysWith: 2, averageSeverity: 1, daysRated: 0, averageRating: null });
     expect(symptomRate(row.before)).toBeCloseTo(0.6);
     expect(symptomRate(row.during)).toBeCloseTo(0.2);
   });
@@ -351,7 +352,7 @@ describe('roundedSeverity', () => {
 });
 
 describe('severityAverageLine', () => {
-  const side = (averageSeverity: number | null) => ({ loggedDays: 14, daysWith: averageSeverity === null ? 0 : 5, averageSeverity });
+  const side = (averageSeverity: number | null) => ({ loggedDays: 14, daysWith: averageSeverity === null ? 0 : 5, averageSeverity, daysRated: 0, averageRating: null });
 
   it('shows one decimal, so a rise inside one word is still visible', () => {
     // 1.6 and 2.4 both round to "moderate".
@@ -506,5 +507,50 @@ describe('planned and open-ended experiments', () => {
     expect(experimentRefusal({ label: 'x', startDate: null, endDate: null, days: 0 })).not.toBeNull();
     expect(experimentRefusal({ label: 'x', startDate: null, endDate: null, days: 366 })).not.toBeNull();
     expect(experimentRefusal({ label: 'x', startDate: null, endDate: null, days: 28 })).toBeNull();
+  });
+});
+
+describe('symptom ratings in an experiment', () => {
+  const fog = (rating: number): LoggedSymptom => ({ name: 'Brain fog', severity: rating >= 7 ? 3 : rating >= 4 ? 2 : 1, rating });
+  const e = experiment({ start: '2026-11-01', end: '2026-11-14', symptoms: ['Brain fog'] });
+
+  it('averages each day’s highest rating on each side, apart from the severity average', () => {
+    const logs = [
+      ...run('2026-10-18', 10, (_i, k) => log(k, 3, [fog(4)])),
+      // Two entries one day: the higher rating is the day's.
+      log('2026-10-18', 3, [fog(8)]),
+      ...run('2026-11-01', 10, (i, k) => log(k, 3, [fog(i < 5 ? 2 : 3)])),
+    ];
+    const row = experimentResult(e, logs, '2026-11-20').picked[0];
+    expect(row.before.daysRated).toBe(10);
+    expect(row.before.averageRating).toBeCloseTo((8 + 4 * 9) / 10);
+    expect(row.during.averageRating).toBeCloseTo(2.5);
+    // Severity still reads the three levels, untouched by the ratings.
+    expect(row.during.averageSeverity).toBe(1);
+  });
+
+  it('leaves a day with only a Mild/Moderate/Severe tap out of the rating average, not out of the days with it', () => {
+    const logs = [
+      ...run('2026-10-18', 10, (_i, k) => log(k, 3, [{ name: 'Brain fog', severity: 1 }])),
+      ...run('2026-11-01', 10, (i, k) => log(k, 3, [i === 0 ? fog(6) : { name: 'Brain fog', severity: 1 }])),
+    ];
+    const row = experimentResult(e, logs, '2026-11-20').picked[0];
+    expect(row.before.averageRating).toBeNull();
+    expect(row.during.daysWith).toBe(10);
+    expect(row.during.daysRated).toBe(1);
+    expect(row.during.averageRating).toBe(6);
+  });
+});
+
+describe('ratingAverageLine', () => {
+  const side = (averageRating: number | null, daysRated: number) => ({ loggedDays: 14, daysWith: daysRated, averageSeverity: null, daysRated, averageRating });
+
+  it('says the scale and how many days each side rests on', () => {
+    expect(ratingAverageLine(side(4.24, 6), side(3.6, 1))).toBe('Rated 4.2 before (6 days), 3.6 during (1 day), out of 10');
+  });
+
+  it('is null unless both sides have a rated day', () => {
+    expect(ratingAverageLine(side(null, 0), side(3, 2))).toBeNull();
+    expect(ratingAverageLine(side(3, 2), side(null, 0))).toBeNull();
   });
 });

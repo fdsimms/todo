@@ -1,3 +1,4 @@
+import { cleanPinnedSymptoms, parsePinnedSymptoms } from '../utils/pinnedSymptoms';
 import { NO_MOOD_CONTEXT_SOURCES, parseMoodContextSources, parseMoodEventTags, type MoodContextSources, type MoodEventTag } from '../utils/moodContextSources';
 import { parseTaskTypeFilters, type TaskTypeFilter } from '../utils/taskTypeFilter';
 import { create } from 'zustand';
@@ -1404,6 +1405,14 @@ interface SettingsStore {
   moodEventTags: MoodEventTag[];
 
   /**
+   * Symptoms rated on a 0 to 10 slider in the mood check-in instead of a
+   * Mild/Moderate/Severe tap (`pinnedSymptoms.ts`). Kept out of
+   * DEFAULT_SETTINGS for the reason eventRules is: String() can't round-trip
+   * an array.
+   */
+  pinnedSymptoms: string[];
+
+  /**
    * A weight to reach, the rate to reach it at, and the weight it was set
    * from — see src/utils/weightGoal.ts. Null until somebody sets one, which is
    * the shipping state.
@@ -2541,6 +2550,7 @@ interface SettingsStore {
   setExerciseImagesEnabled: (on: boolean) => void;
   setMoodContextSource: (key: keyof MoodContextSources, on: boolean) => void;
   setMoodEventTags: (rules: MoodEventTag[]) => void;
+  setPinnedSymptoms: (names: string[]) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
   /** Sets the sleep goal in minutes, or clears it with null. */
@@ -3528,6 +3538,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   eventTaskCategory: null,
   eventRules: [],
   moodEventTags: [],
+  pinnedSymptoms: [],
   generatorEstimates: {},
   eventTaskHandled: {},
   travelTasks: false,
@@ -3982,6 +3993,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const defaultRestSeconds = parseRestSeconds(dbGetSetting('defaultRestSeconds'));
     const moodContextSources = parseMoodContextSources(dbGetSetting('moodContextSources'));
     const moodEventTags = parseMoodEventTags(dbGetSetting('moodEventTags'));
+    const pinnedSymptoms = parsePinnedSymptoms(dbGetSetting('pinnedSymptoms'));
     // Both parsers salvage rather than throw: an unreadable goal reads back as
     // no goal, and an unreadable profile as an empty one, so a blob written by
     // a future build can never stop the settings loading.
@@ -4661,6 +4673,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       penaltyShieldEnabled,
       penaltyShieldReason,
       penaltyShieldUntil,
+      pinnedSymptoms,
       placeSuggestionsEnabled,
       plateInventory,
       postponeCheckEnabled,
@@ -6805,6 +6818,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMoodEventTags(rules: MoodEventTag[]) {
     dbSetSetting('moodEventTags', JSON.stringify(rules));
     set({ moodEventTags: rules });
+  },
+
+  // Written whole, cleaned the way the parser reads it back.
+  setPinnedSymptoms(names: string[]) {
+    const cleaned = cleanPinnedSymptoms(names);
+    dbSetSetting('pinnedSymptoms', JSON.stringify(cleaned));
+    set({ pinnedSymptoms: cleaned });
   },
 
   setMoodContextSource(key: keyof MoodContextSources, on: boolean) {

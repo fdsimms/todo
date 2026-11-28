@@ -43,6 +43,17 @@ export interface LoggedSymptom {
   /** Trimmed, stored in the user's own casing; matched case-insensitively. */
   name: string;
   severity: SymptomSeverity;
+  /**
+   * An optional finer reading, a whole number 1..10, for a symptom the person
+   * rates on a slider instead of a Mild/Moderate/Severe tap. `severity` is
+   * always still set (derived from it by `severityForRating`), so every read
+   * that only knows the three levels keeps working; this is the extra grain
+   * for a symptom that sits at "mild" all day. 0 is never stored: a rating of
+   * 0 means "not right now", which is the symptom being absent from the entry.
+   * See `docs/arch/mood-log.md`, "A finer rating for the symptoms you log
+   * every day".
+   */
+  rating?: number;
 }
 
 /**

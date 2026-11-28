@@ -127,7 +127,7 @@ import { currentProgram, programProgress } from '../utils/workoutProgram';
 import { programHistory, routineHistory } from '../utils/routineVersions';
 import { loadContextFor, proposeNext, schemeFor } from '../utils/workoutProgression';
 import { daysBetween } from '../utils/exerciseChart';
-import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
+import { contextTagVocabulary, severityForRating, symptomVocabulary } from '../utils/moodLog';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } from '../utils/waterShortfallTasks';
 import { isMissed, isRealCompletion, mostMissed } from '../utils/missed';
@@ -2327,6 +2327,15 @@ describe('demo seed — people', () => {
     expect(symptomVocabulary(logs).length).toBeGreaterThan(1);
     const severities = new Set(logs.flatMap(l => l.symptoms.map(s => s.severity)));
     expect(severities.size).toBeGreaterThan(1);
+  });
+
+  it('seeds a symptom rated on the slider, pinned, with a rating on more than one day', () => {
+    expect(useSettingsStore.getState().pinnedSymptoms).toEqual(['Brain fog']);
+    const rated = useMoodStore.getState().logs.flatMap(l => l.symptoms).filter(s => s.rating !== undefined);
+    expect(rated.length).toBeGreaterThan(1);
+    expect(new Set(rated.map(s => s.rating)).size).toBeGreaterThan(1);
+    // Every rated symptom carries the severity its rating falls in, so the three-level reads agree.
+    expect(rated.every(s => s.name === 'Brain fog' && s.severity === severityForRating(s.rating as number))).toBe(true);
   });
 
   it('seeds a low patch, so the symptom contrast has something to report', () => {

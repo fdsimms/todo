@@ -1108,7 +1108,8 @@ export interface SerializedMoodLog {
   mood?: number;
   /** How it felt against the previous check-in, when they said: worse, same or better. */
   change?: 'worse' | 'same' | 'better';
-  symptoms?: { name: string; severity: string }[];
+  /** `severity` is 1 mild, 2 moderate or 3 severe. `rating` (1 to 10) is there only for a symptom they rated on the slider, and `severity` already follows it. */
+  symptoms?: { name: string; severity: string; rating?: number }[];
   contextTags?: string[];
   note?: string;
 }
@@ -1128,7 +1129,7 @@ export function listMoodLogs(
       mood: log.mood ?? undefined,
       change: log.change ?? undefined,
       symptoms: log.symptoms.length
-        ? log.symptoms.map(s => ({ name: s.name, severity: String(s.severity) }))
+        ? log.symptoms.map(s => ({ name: s.name, severity: String(s.severity), ...(s.rating ? { rating: s.rating } : {}) }))
         : undefined,
       contextTags: log.contextTags.length ? log.contextTags : undefined,
       note: log.note ?? undefined,

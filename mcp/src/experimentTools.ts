@@ -26,23 +26,33 @@ import {
   averageSeverityValue,
   type ExperimentSymptomRead,
 } from '../../src/utils/experiments';
-import { severityLabel } from '../../src/utils/moodLog';
+import { firstMoodEntries, severityLabel } from '../../src/utils/moodLog';
 import type { Replica } from './replica';
 import { eventNoonIso } from './taskFields';
 import { createTask, completeTask } from './tools';
 import type { GetTaskResult } from './tools';
 import type { TaskFieldsInput } from './taskFields';
 
-const RULES = 'An experiment with status "planned" has no start date yet: it is defined (what, which symptoms) and compared with nothing until start_experiment gives it one, today or an earlier day the person really began. Its baseline is then the same number of days before that real start. One with no end (days left out of start_experiment) runs until stop_experiment, and while it runs its baseline is as long as it has run so far, so its comparison shifts each day; stopping fixes it. One started today records the moment it began, and entries logged earlier that day count as neither before nor during. Each experiment is compared with the same number of days just before it started, counting only days the person logged. Mood and each symptom need at least 3 logged days on each side and 10 in all before a comparison is given. The symptoms under "watched" were picked in advance as what it was meant to change; "otherSymptoms" were not, and with several compared one can differ by chance, so say so if you mention one. A difference between the two stretches does not show the experiment caused it, and "alsoChanged" names other changes in the same days. Experiments reach this server only with Include health logs turned on for the sync server on the phone, so an empty list is not evidence that none exist.';
+const RULES = 'An experiment with status "planned" has no start date yet: it is defined (what, which symptoms) and compared with nothing until start_experiment gives it one, today or an earlier day the person really began. Its baseline is then the same number of days before that real start. One with no end (days left out of start_experiment) runs until stop_experiment, and while it runs its baseline is as long as it has run so far, so its comparison shifts each day; stopping fixes it. One started today records the moment it began, and entries logged earlier that day count as neither before nor during. Each experiment is compared with the same number of days just before it started, counting only days the person logged. Mood and each symptom need at least 3 logged days on each side and 10 in all before a comparison is given. The symptoms under "watched" were picked in advance as what it was meant to change; "otherSymptoms" were not, and with several compared one can differ by chance, so say so if you mention one. A symptom the person rates on the check-in slider also has daysRated and averageRating (0 to 10): a finer scale than the mild-to-severe one, so report it beside averageSeverity and never blend the two. With firstCheckInOnly each day is read from its earliest check-in that has a mood (mornings against mornings) and symptom-only entries are left out. A difference between the two stretches does not show the experiment caused it, and "alsoChanged" names other changes in the same days. Experiments reach this server only with Include health logs turned on for the sync server on the phone, so an empty list is not evidence that none exist.';
 
 function round(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+interface SymptomSideRow {
+  daysWith: number;
+  daysLogged: number;
+  usually?: string;
+  averageSeverity?: number;
+  /** Days with a 0 to 10 rating, and their mean to one decimal. Only for a symptom they rate on the check-in slider; a different scale from `averageSeverity`, never combined with it. */
+  daysRated?: number;
+  averageRating?: number;
+}
+
 interface SymptomRow {
   name: string;
-  before?: { daysWith: number; daysLogged: number; usually?: string; averageSeverity?: number };
-  during?: { daysWith: number; daysLogged: number; usually?: string; averageSeverity?: number };
+  before?: SymptomSideRow;
+  during?: SymptomSideRow;
   note?: string;
 }
 
@@ -63,6 +73,7 @@ function symptomRow(r: ExperimentSymptomRead): SymptomRow {
         averageSeverity: averageSeverityValue(s.averageSeverity),
       }
       : {}),
+    ...(s.averageRating !== null ? { daysRated: s.daysRated, averageRating: averageSeverityValue(s.averageRating) } : {}),
   });
   return { name: r.name, before: side(r.before), during: side(r.during) };
 }
@@ -100,9 +111,10 @@ function localMoment(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-function row(replica: Replica, e: Experiment, all: readonly Experiment[]): ExperimentRow {
+function row(replica: Replica, e: Experiment, all: readonly Experiment[], firstCheckInOnly = false): ExperimentRow {
   const todayKey = replica.todayKey();
-  const result = experimentResult(e, replica.allMoodLogs(), todayKey);
+  const logs = replica.allMoodLogs();
+  const result = experimentResult(e, firstCheckInOnly ? firstMoodEntries(logs) : logs, todayKey);
   const { span, status } = result;
   const progress = experimentProgress(e, todayKey);
   const startTasks = replica.tasks()
@@ -138,9 +150,9 @@ function row(replica: Replica, e: Experiment, all: readonly Experiment[]): Exper
  * anything, so they sit beside the running and finished ones rather than among
  * them with their numbers missing.
  */
-export function listExperiments(replica: Replica): { experiments: ExperimentRow[]; planned: ExperimentRow[]; rules: string } {
+export function listExperiments(replica: Replica, input: { firstCheckInOnly?: boolean } = {}): { experiments: ExperimentRow[]; planned: ExperimentRow[]; rules: string } {
   const all = replica.experiments();
-  const rows = all.map(e => row(replica, e, all));
+  const rows = all.map(e => row(replica, e, all, input.firstCheckInOnly === true));
   return {
     experiments: rows.filter(r => r.status !== 'planned'),
     planned: rows.filter(r => r.status === 'planned'),

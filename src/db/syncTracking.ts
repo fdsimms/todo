@@ -738,6 +738,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'moodContextSources',
   // Calendar keyword -> mood tag rules, the same kind of preference.
   'moodEventTags',
+  // Which symptoms the check-in rates on a 0-10 slider, a preference about how the log is kept.
+  'pinnedSymptoms',
   // The limit tasks deleted for good, and the slips the app logged on them.
   'limitWarningDeclined',
   'limitWarningAutoSlips',

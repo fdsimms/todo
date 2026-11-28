@@ -43,6 +43,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useMealSkipStore } from '../store/useMealSkipStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { severityForRating } from './moodLog';
 import { useTransitStore } from '../store/useTransitStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
@@ -3466,6 +3467,8 @@ function seedMoodLog(today: Date): void {
     back: number;
     mood: MoodLevel;
     symptoms?: [string, SymptomSeverity][];
+    // Symptoms rated 0 to 10 on the check-in's slider (the pinned one below).
+    rated?: [string, number][];
     contextTags?: string[];
     // The answer to "since your last entry", where the person said one.
     change?: MoodChange;
@@ -3477,18 +3480,22 @@ function seedMoodLog(today: Date): void {
     { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
     { back: 13, mood: 4, change: 'better' },
     { back: 12, mood: 3 },
-    { back: 11, mood: 2, change: 'worse', symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
-    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
-    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
-    { back: 8, mood: 2, change: 'better', symptoms: [['Headache', 1]] },
-    { back: 7, mood: 3 },
-    { back: 6, mood: 3, change: 'same', symptoms: [['Poor sleep', 1]] },
-    { back: 5, mood: 4, note: 'Back to it' },
+    { back: 11, mood: 2, change: 'worse', symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'], rated: [['Brain fog', 6]] },
+    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'], rated: [['Brain fog', 7]] },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'], rated: [['Brain fog', 8]] },
+    { back: 8, mood: 2, change: 'better', symptoms: [['Headache', 1]], rated: [['Brain fog', 5]] },
+    { back: 7, mood: 3, rated: [['Brain fog', 4]] },
+    { back: 6, mood: 3, change: 'same', symptoms: [['Poor sleep', 1]], rated: [['Brain fog', 3]] },
+    { back: 5, mood: 4, note: 'Back to it', rated: [['Brain fog', 2]] },
     { back: 4, mood: 4 },
     { back: 3, mood: 5 },
     { back: 2, mood: 4, symptoms: [['Poor sleep', 1]] },
     { back: 1, mood: 4 },
   ];
+
+  // Brain fog is the one symptom rated on the slider, so the check-in opens
+  // with a "Rated 0 to 10" card and the rating shows on the entries below.
+  useSettingsStore.getState().setPinnedSymptoms(['Brain fog']);
 
   for (const day of history) {
     const at = subDays(today, day.back);
@@ -3497,7 +3504,10 @@ function seedMoodLog(today: Date): void {
     at.setHours(20, 30, 0, 0);
     addLog(
       day.mood,
-      (day.symptoms ?? []).map(([name, severity]) => ({ name, severity })),
+      [
+        ...(day.symptoms ?? []).map(([name, severity]) => ({ name, severity })),
+        ...(day.rated ?? []).map(([name, rating]) => ({ name, severity: severityForRating(rating), rating })),
+      ],
       day.note ?? null,
       at,
       day.contextTags ?? [],

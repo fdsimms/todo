@@ -63,6 +63,28 @@ export const SYMPTOM_SEVERITIES: readonly { value: SymptomSeverity; label: strin
   { value: 3, label: 'Severe' },
 ];
 
+/** The top of the optional per-symptom rating. 0 is "none right now" and is never stored. */
+export const RATING_MAX = 10;
+
+/**
+ * The Mild/Moderate/Severe level a 1..10 rating falls in: 1-3 Mild, 4-6
+ * Moderate, 7-10 Severe. A rated symptom is always stored with this severity
+ * as well, so every read built on the three levels keeps working unchanged.
+ */
+export function severityForRating(rating: number): SymptomSeverity {
+  if (rating >= 7) return 3;
+  if (rating >= 4) return 2;
+  return 1;
+}
+
+/** A stored rating as a whole number 1..10, or null when the entry has none (or holds something unusable). */
+export function ratingOf(symptom: Pick<LoggedSymptom, 'rating'>): number | null {
+  const r = symptom.rating;
+  if (typeof r !== 'number' || !Number.isFinite(r)) return null;
+  const whole = Math.round(r);
+  return whole >= 1 && whole <= RATING_MAX ? whole : null;
+}
+
 /** The three answers to "since your last entry", worst to best. Storage values: reword the labels, never rename. */
 export const MOOD_CHANGES: readonly { value: MoodChange; label: string }[] = [
   { value: 'worse', label: 'Worse' },
@@ -143,6 +165,17 @@ export function severityLabel(severity: SymptomSeverity): string {
 }
 
 /**
+ * "Headache (severe)", or "Brain fog (moderate, 5 of 10)" for a symptom that
+ * was rated on the slider. The one place the pair is written out, so a list
+ * row, a day page and the CSV can't word it three ways.
+ */
+export function symptomWithSeverity(symptom: LoggedSymptom): string {
+  const rating = ratingOf(symptom);
+  const level = severityLabel(symptom.severity).toLowerCase();
+  return `${symptom.name} (${rating === null ? level : `${level}, ${rating} of ${RATING_MAX}`})`;
+}
+
+/**
  * The key two spellings of one symptom agree on.
  *
  * Case and surrounding space only. Deliberately not stemming, de-pluralising
@@ -175,9 +208,35 @@ export function withSymptom(
   const key = symptomKey(trimmed);
   const existing = symptoms.find(s => symptomKey(s.name) === key);
   if (existing) {
-    return symptoms.map(s => (symptomKey(s.name) === key ? { ...s, severity } : s));
+    // A tap on the three levels replaces any finer rating: the two would
+    // otherwise disagree about how bad it was.
+    return symptoms.map(s => (symptomKey(s.name) === key ? { name: s.name, severity } : s));
   }
   return [...symptoms, { name: trimmed, severity }];
+}
+
+/**
+ * Set a symptom's 1..10 rating, adding it if it isn't there, or take it off
+ * the entry at 0. The severity follows the rating (`severityForRating`).
+ * Keeps an existing row's name, for the reason `withSymptom` does.
+ */
+export function withRating(
+  symptoms: readonly LoggedSymptom[],
+  name: string,
+  rating: number,
+): LoggedSymptom[] {
+  const whole = Math.round(rating);
+  if (!Number.isFinite(whole) || whole <= 0) return withoutSymptom(symptoms, name);
+  const clamped = Math.min(RATING_MAX, whole);
+  const trimmed = name.trim();
+  if (!trimmed) return [...symptoms];
+  const key = symptomKey(trimmed);
+  const next: LoggedSymptom = { name: trimmed, severity: severityForRating(clamped), rating: clamped };
+  const existing = symptoms.find(s => symptomKey(s.name) === key);
+  if (existing) {
+    return symptoms.map(s => (symptomKey(s.name) === key ? { ...next, name: s.name } : s));
+  }
+  return [...symptoms, next];
 }
 
 /**
@@ -323,6 +382,7 @@ export function dayMoodAverage(logs: readonly MoodLog[], dayKey: string): number
 /** Every symptom logged on one day, de-duplicated by name at its worst severity. */
 export function daySymptoms(logs: readonly MoodLog[], dayKey: string): LoggedSymptom[] {
   const worst = new Map<string, LoggedSymptom>();
+  const topRating = new Map<string, number>();
   for (const log of logs) {
     if (log.dayKey !== dayKey) continue;
     for (const symptom of log.symptoms) {
@@ -333,9 +393,39 @@ export function daySymptoms(logs: readonly MoodLog[], dayKey: string): LoggedSym
       // started mild and ended severe was a severe-headache day, and averaging
       // the two would report a day nobody had.
       if (!seen || symptom.severity > seen.severity) worst.set(key, symptom);
+      // The highest rating that day rides along on the row that won, whichever
+      // entry it came from, since a symptom is only ever summarized once a day.
+      const rating = ratingOf(symptom);
+      if (rating !== null && rating > (topRating.get(key) ?? 0)) topRating.set(key, rating);
     }
   }
+  for (const [key, symptom] of worst) {
+    const rating = topRating.get(key);
+    if (rating !== undefined) worst.set(key, { ...symptom, rating });
+    else if (symptom.rating !== undefined) worst.set(key, { name: symptom.name, severity: symptom.severity });
+  }
   return [...worst.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Each day's earliest entry that has a mood, and nothing else from that day.
+ * For reading a stretch of days from the same moment of the day, so a morning
+ * that runs worse than the evening isn't averaged against a stretch whose
+ * check-ins happened to fall later. A symptom-only entry (a quick "lightheaded
+ * on standing") is skipped rather than counted as the day's first, and a day
+ * with no entry that has a mood is absent from the result, never a zero.
+ * Ordered by `loggedAt`, so an entry backdated to a day (stamped at noon) can
+ * be that day's first when nothing earlier was logged. See
+ * `docs/arch/mood-log.md`, "Reading from each day's first check-in".
+ */
+export function firstMoodEntries(logs: readonly MoodLog[]): MoodLog[] {
+  const first = new Map<string, MoodLog>();
+  for (const log of logs) {
+    if (log.mood === null) continue;
+    const seen = first.get(log.dayKey);
+    if (!seen || log.loggedAt < seen.loggedAt) first.set(log.dayKey, log);
+  }
+  return [...first.values()];
 }
 
 /** Every context tag logged on one day, de-duplicated, alphabetical. */

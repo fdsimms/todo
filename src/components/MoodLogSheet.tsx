@@ -28,10 +28,14 @@ import {
   symptomKey,
   symptomVocabulary,
   withContextTag,
+  ratingOf,
+  withRating,
   withSymptom,
   withoutContextTag,
   withoutSymptom,
 } from '../utils/moodLog';
+import { isPinnedSymptom, togglePinnedSymptom } from '../utils/pinnedSymptoms';
+import { restingRatingForSeverity } from '../utils/ratingSlider';
 import { useMoodStore } from '../store/useMoodStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
@@ -51,6 +55,8 @@ import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { NameSheet, type NameRequest } from './NameSheet';
+import { RatingSlider } from './RatingSlider';
+import { ActionMenu, type ActionMenuAction } from './ActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
 
 const NOTE_MAX_LENGTH = 500;
@@ -143,6 +149,12 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const [symptoms, setSymptoms] = useState<LoggedSymptom[]>([]);
   const [contextTags, setContextTags] = useState<string[]>([]);
   const [renaming, setRenaming] = useState<NameRequest | null>(null);
+  // The symptom whose long-press menu is open, and whether a slider is being
+  // dragged (the sheet's scroll view is off for that).
+  const [symptomMenu, setSymptomMenu] = useState<string | null>(null);
+  const [scrubbing, setScrubbing] = useState(false);
+  const pinnedSymptoms = useSettingsStore(s => s.pinnedSymptoms);
+  const setPinnedSymptoms = useSettingsStore(s => s.setPinnedSymptoms);
   const [note, setNote] = useState('');
   // Whether the note field is showing. Folded away behind "Add a note" on a new
   // entry so the sheet leads with the mood; open from the start when the entry
@@ -360,6 +372,29 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     setSymptoms(current => withoutSymptom(current, name));
   };
 
+  const rateSymptom = (name: string, rating: number) => {
+    setSymptoms(current => withRating(current, name, rating));
+  };
+
+  // Opened by holding a symptom, a chip or a slider row. The menu and its
+  // actions are built from the same `pinnedSymptoms` the sheet reads, so what
+  // it offers is always the opposite of what the symptom is now.
+  const menuActions = (name: string): ActionMenuAction[] => {
+    const pinned = isPinnedSymptom(pinnedSymptoms, name);
+    const picked = symptoms.some(s => symptomKey(s.name) === symptomKey(name));
+    const actions: ActionMenuAction[] = [{
+      key: 'pin',
+      label: pinned ? 'Rate as Mild, Moderate or Severe' : 'Rate from 0 to 10',
+      icon: pinned ? 'options-outline' : 'speedometer-outline',
+      onPress: () => {
+        animateLayout();
+        setPinnedSymptoms(togglePinnedSymptom(pinnedSymptoms, name));
+      },
+    }];
+    if (picked) actions.push({ key: 'remove', label: 'Remove from this entry', icon: 'close-circle-outline', destructive: true, onPress: () => removeSymptom(name) });
+    return actions;
+  };
+
   const createSymptom = (name: string): string | null | void => {
     const trimmed = name.trim();
     if (!trimmed) return 'Give it a name.';
@@ -460,6 +495,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
+      scrollEnabled={!scrubbing}
       header={
         <SheetHeader
           bare
@@ -515,17 +551,43 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
         )}
       </View>
 
+      {pinnedSymptoms.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.groupLabel}>RATED 0 TO 10</Text>
+          <HelpText style={styles.hint}>
+            0 means you don’t have it right now, and leaves it off this entry. Hold a name to rate it as Mild, Moderate or Severe instead.
+          </HelpText>
+          {pinnedSymptoms.map(name => {
+            const logged = symptoms.find(sy => symptomKey(sy.name) === symptomKey(name));
+            const rating = logged ? ratingOf(logged) : null;
+            const levelOnly = logged && rating === null ? severityLabel(logged.severity) : null;
+            return (
+              <RatingSlider
+                key={symptomKey(name)}
+                label={name}
+                value={rating ?? (logged ? restingRatingForSeverity(logged.severity) : 0)}
+                levelOnly={levelOnly}
+                onChange={value => rateSymptom(name, value)}
+                onScrubChange={setScrubbing}
+                onLabelLongPress={() => { haptics.tap(); setSymptomMenu(name); }}
+                accessibilityHint="Swipe up or down to change the rating."
+              />
+            );
+          })}
+        </View>
+      )}
+
       <View style={styles.card}>
-        <Text style={styles.groupLabel}>SYMPTOMS</Text>
+        <Text style={styles.groupLabel}>{pinnedSymptoms.length > 0 ? 'OTHER SYMPTOMS' : 'SYMPTOMS'}</Text>
         <HelpText style={styles.hint}>
-          Pick any you have today. Tap again to change how bad it was, or hold to remove it. To track something that isn’t listed, type its name to add it.
+          Pick any you have today. Tap again to change how bad it was. Hold a symptom to rate it from 0 to 10 instead, or to remove it. To track something that isn’t listed, type its name to add it.
         </HelpText>
         <PillGroup
           noun="symptom"
           surface="card"
           onCreate={createSymptom}
           filterPlaceholder="Find or add a symptom…"
-          options={pillNames.map(name => {
+          options={pillNames.filter(name => !isPinnedSymptom(pinnedSymptoms, name)).map(name => {
             const picked = symptoms.find(s => symptomKey(s.name) === symptomKey(name));
             return {
               key: symptomKey(name),
@@ -534,11 +596,14 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
               level: picked ? { value: picked.severity, of: SYMPTOM_SEVERITIES.length, fill: severityFill(picked.severity, colors) } : undefined,
               accessibilityLabel: name,
               accessibilityValue: picked ? severityLabel(picked.severity) : undefined,
-              accessibilityHint: 'Tap again to change how bad it was. Hold to remove.',
-              accessibilityActions: picked ? [{ name: 'remove', label: 'Remove' }] : undefined,
-              onAccessibilityAction: () => removeSymptom(name),
+              accessibilityHint: 'Tap again to change how bad it was. Hold for more options.',
+              accessibilityActions: [
+                { name: 'options', label: 'Rate from 0 to 10' },
+                ...(picked ? [{ name: 'remove', label: 'Remove' }] : []),
+              ],
+              onAccessibilityAction: (action: string) => (action === 'remove' ? removeSymptom(name) : setSymptomMenu(name)),
               onPress: () => cycleSymptomPill(name),
-              onLongPress: picked ? () => removeSymptom(name) : undefined,
+              onLongPress: () => { haptics.tap(); setSymptomMenu(name); },
             };
           })}
         />
@@ -624,6 +689,14 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
         onCancel={() => setPickerOpen(false)}
       />
       <NameSheet request={renaming} onClose={() => setRenaming(null)} />
+      {/* Inside the sheet, not beside it: a second sheet presented from the
+          screen while this one is up is refused (ui-sheets-and-lists.md). */}
+      <ActionMenu
+        visible={symptomMenu !== null}
+        title={symptomMenu ?? ''}
+        actions={symptomMenu !== null ? menuActions(symptomMenu) : []}
+        onClose={() => setSymptomMenu(null)}
+      />
     </EditorSheet>
   );
 }
