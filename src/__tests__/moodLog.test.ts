@@ -13,14 +13,20 @@ import {
   dayContextTags,
   dayMoodAverage,
   daySymptoms,
+  firstMoodEntries,
   hasLogOnDay,
   hasLoggedSince,
   logsOnDay,
   moodLabel,
   moodLogSummary,
+  ratingOf,
+  RATING_MAX,
   renamedContextTags,
   seededContextTags,
+  severityForRating,
   severityLabel,
+  symptomWithSeverity,
+  withRating,
   cycleSymptom,
   symptomKey,
   symptomVocabulary,
@@ -380,5 +386,105 @@ describe('since your last entry', () => {
       log({ id: 'e', dayKey: '2026-08-01', change: 'same' }),
     ];
     expect(changeTally(logs, '2026-08-10')).toEqual({ worse: 1, same: 0, better: 2 });
+  });
+});
+
+describe('severityForRating', () => {
+  it('puts 1-3 in Mild, 4-6 in Moderate and 7-10 in Severe', () => {
+    expect([1, 3, 4, 6, 7, 10].map(severityForRating)).toEqual([1, 1, 2, 2, 3, 3]);
+  });
+});
+
+describe('ratingOf', () => {
+  it('reads a whole number 1..10 and nothing else', () => {
+    expect(ratingOf({ rating: 5 })).toBe(5);
+    expect(ratingOf({ rating: 4.6 })).toBe(5);
+    expect(ratingOf({})).toBeNull();
+    expect(ratingOf({ rating: 0 })).toBeNull();
+    expect(ratingOf({ rating: 11 })).toBeNull();
+    expect(ratingOf({ rating: NaN })).toBeNull();
+    expect(ratingOf({ rating: '7' as unknown as number })).toBeNull();
+  });
+});
+
+describe('withRating', () => {
+  it('adds the symptom with a rating and the severity that rating falls in', () => {
+    expect(withRating([], ' Brain fog ', 5)).toEqual([{ name: 'Brain fog', severity: 2, rating: 5 }]);
+  });
+
+  it('replaces an existing rating and keeps the name as first written', () => {
+    const start = [{ name: 'Brain fog', severity: 1 as const, rating: 2 }];
+    expect(withRating(start, 'brain fog', 9)).toEqual([{ name: 'Brain fog', severity: 3, rating: 9 }]);
+  });
+
+  it('rates a symptom that only had a level', () => {
+    expect(withRating([{ name: 'Fatigue', severity: 1 }], 'Fatigue', 6)).toEqual([{ name: 'Fatigue', severity: 2, rating: 6 }]);
+  });
+
+  it('takes the symptom off the entry at 0, since 0 is none right now', () => {
+    const start = [{ name: 'Brain fog', severity: 2 as const, rating: 5 }, { name: 'Fatigue', severity: 1 as const }];
+    expect(withRating(start, 'Brain fog', 0)).toEqual([{ name: 'Fatigue', severity: 1 }]);
+  });
+
+  it('caps at the top of the scale and ignores a blank name', () => {
+    expect(withRating([], 'Fatigue', 99)[0].rating).toBe(RATING_MAX);
+    expect(withRating([], '  ', 5)).toEqual([]);
+  });
+});
+
+describe('a tap on the three levels after a rating', () => {
+  it('drops the rating, so the two never disagree', () => {
+    const rated = [{ name: 'Fatigue', severity: 2 as const, rating: 5 }];
+    expect(withSymptom(rated, 'Fatigue', 3)).toEqual([{ name: 'Fatigue', severity: 3 }]);
+    expect(cycleSymptom(rated, 'Fatigue')).toEqual([{ name: 'Fatigue', severity: 3 }]);
+  });
+});
+
+describe('daySymptoms and ratings', () => {
+  it('carries the day’s highest rating on the worst-severity row', () => {
+    const logs = [
+      log({ id: 'a', symptoms: [{ name: 'Brain fog', severity: 1, rating: 2 }] }),
+      log({ id: 'b', symptoms: [{ name: 'Brain fog', severity: 2, rating: 5 }] }),
+      log({ id: 'c', symptoms: [{ name: 'brain fog', severity: 1, rating: 3 }] }),
+    ];
+    expect(daySymptoms(logs, '2026-08-17')).toEqual([{ name: 'Brain fog', severity: 2, rating: 5 }]);
+  });
+
+  it('keeps a rating from a milder entry when the worst one was a plain tap', () => {
+    const logs = [
+      log({ id: 'a', symptoms: [{ name: 'Fatigue', severity: 1, rating: 3 }] }),
+      log({ id: 'b', symptoms: [{ name: 'Fatigue', severity: 3 }] }),
+    ];
+    expect(daySymptoms(logs, '2026-08-17')).toEqual([{ name: 'Fatigue', severity: 3, rating: 3 }]);
+  });
+});
+
+describe('symptomWithSeverity', () => {
+  it('writes the level, and the rating when there is one', () => {
+    expect(symptomWithSeverity({ name: 'Headache', severity: 3 })).toBe('Headache (severe)');
+    expect(symptomWithSeverity({ name: 'Brain fog', severity: 2, rating: 5 })).toBe('Brain fog (moderate, 5 of 10)');
+  });
+});
+
+describe('firstMoodEntries', () => {
+  it('keeps each day’s earliest entry that has a mood', () => {
+    const logs = [
+      log({ id: 'late', dayKey: '2026-08-17', loggedAt: '2026-08-17T20:00:00', mood: 4 }),
+      log({ id: 'early', dayKey: '2026-08-17', loggedAt: '2026-08-17T08:00:00', mood: 2 }),
+      log({ id: 'other', dayKey: '2026-08-18', loggedAt: '2026-08-18T09:00:00', mood: 3 }),
+    ];
+    expect(firstMoodEntries(logs).map(l => l.id).sort()).toEqual(['early', 'other']);
+  });
+
+  it('skips a symptom-only entry rather than letting it be the day’s first', () => {
+    const logs = [
+      log({ id: 'quick', loggedAt: '2026-08-17T07:00:00', mood: null, symptoms: [{ name: 'Lightheaded on standing', severity: 1 }] }),
+      log({ id: 'checkin', loggedAt: '2026-08-17T09:00:00', mood: 3 }),
+    ];
+    expect(firstMoodEntries(logs).map(l => l.id)).toEqual(['checkin']);
+  });
+
+  it('leaves out a day with no entry that has a mood', () => {
+    expect(firstMoodEntries([log({ mood: null, symptoms: [{ name: 'Nausea', severity: 1 }] })])).toEqual([]);
   });
 });

@@ -21,7 +21,7 @@
 import { addMonths } from 'date-fns/addMonths';
 import { format } from 'date-fns/format';
 import type { JournalEntry, LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
-import { contextTagKey, symptomKey } from './moodLog';
+import { contextTagKey, ratingOf, symptomKey } from './moodLog';
 
 /**
  * What the history list is narrowed to.
@@ -272,6 +272,30 @@ export function symptomSeverityOnDay(
     }
   }
   return worst;
+}
+
+/**
+ * The highest 0-to-10 rating one symptom got on one day, or null for a day it
+ * wasn't rated (not logged, or logged only as Mild, Moderate or Severe). Null
+ * rather than 0 for the reason `symptomSeverityOnDay` is: 0 is never stored,
+ * and a day without a rating is a gap, not a day it was "none".
+ */
+export function symptomRatingOnDay(
+  logs: readonly MoodLog[],
+  key: string,
+  dayKey: string,
+): number | null {
+  const match = symptomKey(key);
+  let top: number | null = null;
+  for (const log of logs) {
+    if (log.dayKey !== dayKey) continue;
+    for (const symptom of log.symptoms) {
+      if (symptomKey(symptom.name) !== match) continue;
+      const rating = ratingOf(symptom);
+      if (rating !== null && (top === null || rating > top)) top = rating;
+    }
+  }
+  return top;
 }
 
 /** Every entry carrying one symptom, newest first. */

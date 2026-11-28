@@ -11,7 +11,7 @@
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import type { Experiment, Milestone, MoodLog, SymptomSeverity } from '../types';
-import { dayMoodAverage, symptomKey } from './moodLog';
+import { dayMoodAverage, ratingOf, symptomKey } from './moodLog';
 import { MIN_CONTRAST_DAYS, MIN_PAIRED_DAYS } from './moodInsights';
 
 /** Lengths the sheet offers, in days. A picked end date covers anything else. */
@@ -219,6 +219,10 @@ export interface SymptomSide {
   daysWith: number;
   /** Mean of each day's worst severity, over the days it was logged, or null with none. */
   averageSeverity: number | null;
+  /** Of the days it was logged, those with a 0 to 10 rating (a symptom rated on the slider). */
+  daysRated: number;
+  /** Mean of each day's highest rating, over the days it was rated, or null with none. Never mixed into `averageSeverity`: they are different scales. */
+  averageRating: number | null;
 }
 
 export interface ExperimentSymptomRead {
@@ -260,6 +264,7 @@ function mean(xs: readonly number[]): number {
 function indexLogs(logs: readonly MoodLog[]) {
   const loggedDays = new Set<string>();
   const worst = new Map<string, Map<string, SymptomSeverity>>();
+  const rated = new Map<string, Map<string, number>>();
   const firstLogged = new Map<string, string>();
   const lastName = new Map<string, { at: string; name: string }>();
   for (const log of logs) {
@@ -271,13 +276,20 @@ function indexLogs(logs: readonly MoodLog[]) {
       if (!byDay) { byDay = new Map(); worst.set(key, byDay); }
       const seen = byDay.get(log.dayKey);
       if (seen === undefined || symptom.severity > seen) byDay.set(log.dayKey, symptom.severity);
+      const rating = ratingOf(symptom);
+      if (rating !== null) {
+        let ratedByDay = rated.get(key);
+        if (!ratedByDay) { ratedByDay = new Map(); rated.set(key, ratedByDay); }
+        const top = ratedByDay.get(log.dayKey);
+        if (top === undefined || rating > top) ratedByDay.set(log.dayKey, rating);
+      }
       const first = firstLogged.get(key);
       if (first === undefined || log.dayKey < first) firstLogged.set(key, log.dayKey);
       const last = lastName.get(key);
       if (!last || log.loggedAt > last.at) lastName.set(key, { at: log.loggedAt, name: symptom.name.trim() });
     }
   }
-  return { loggedDays, worst, firstLogged, lastName };
+  return { loggedDays, worst, rated, firstLogged, lastName };
 }
 
 function inRange(key: string, from: string, to: string): boolean {
@@ -287,16 +299,20 @@ function inRange(key: string, from: string, to: string): boolean {
 function side(
   days: readonly string[],
   byDay: ReadonlyMap<string, SymptomSeverity> | undefined,
+  ratedByDay: ReadonlyMap<string, number> | undefined,
   firstLoggedKey: string | null,
 ): SymptomSide {
   // Before the symptom was ever logged, a day without it says nothing: the
   // person wasn't recording it yet. Same rule `contrastsFor` applies.
   const eligible = firstLoggedKey === null ? [] : days.filter(d => d >= firstLoggedKey);
   const severities = eligible.map(d => byDay?.get(d)).filter((s): s is SymptomSeverity => s !== undefined);
+  const ratings = eligible.map(d => ratedByDay?.get(d)).filter((r): r is number => r !== undefined);
   return {
     loggedDays: eligible.length,
     daysWith: severities.length,
     averageSeverity: severities.length ? mean(severities) : null,
+    daysRated: ratings.length,
+    averageRating: ratings.length ? mean(ratings) : null,
   };
 }
 
@@ -338,7 +354,7 @@ export function experimentResult(
     ? logs
     : logs.filter(l => l.dayKey !== span.startKey || new Date(l.loggedAt).getTime() >= startedMs);
   const { firstLogged, lastName } = indexLogs(logs);
-  const { loggedDays, worst } = indexLogs(counted);
+  const { loggedDays, worst, rated } = indexLogs(counted);
 
   const allDays = [...loggedDays].sort();
   // The baseline ends before today too, for an experiment whose start is
@@ -362,8 +378,8 @@ export function experimentResult(
 
   const read = (key: string, name: string, picked: boolean): ExperimentSymptomRead => {
     const firstLoggedKey = firstLogged.get(key) ?? null;
-    const before = side(beforeDays, worst.get(key), firstLoggedKey);
-    const during = side(duringDays, worst.get(key), firstLoggedKey);
+    const before = side(beforeDays, worst.get(key), rated.get(key), firstLoggedKey);
+    const during = side(duringDays, worst.get(key), rated.get(key), firstLoggedKey);
     return { key, name, picked, before, during, comparable: isComparable(before, during), firstLoggedKey };
   };
 
@@ -458,6 +474,19 @@ export function severityAverageLine(before: SymptomSide, during: SymptomSide): s
   if (before.averageSeverity === null || during.averageSeverity === null) return null;
   return `Average ${averageSeverityValue(before.averageSeverity).toFixed(1)} before, `
     + `${averageSeverityValue(during.averageSeverity).toFixed(1)} during (1 mild, 3 severe)`;
+}
+
+/**
+ * "Rated 4.2 before (6 days), 3.6 during (5 days), out of 10", or null when
+ * either side has no rated day. Its own line beside `severityAverageLine`,
+ * never merged into it: a rating on the slider and a Mild/Moderate/Severe tap
+ * are different scales, and a mean of the two would be a number nobody gave.
+ */
+export function ratingAverageLine(before: SymptomSide, during: SymptomSide): string | null {
+  if (before.averageRating === null || during.averageRating === null) return null;
+  const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
+  return `Rated ${averageSeverityValue(before.averageRating).toFixed(1)} before (${days(before.daysRated)}), `
+    + `${averageSeverityValue(during.averageRating).toFixed(1)} during (${days(during.daysRated)}), out of 10`;
 }
 
 /** Experiments in the order the Mood screen lists them: running, then upcoming, then planned, then finished most recent first. */

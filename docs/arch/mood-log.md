@@ -49,7 +49,9 @@ design rather than a compromise:
 - **The vocabulary is yours.** A symptom is whatever you call it. No fixed list
   was ever going to guess "brain fog", and the freeform half costs a `trim()`
   and a case-insensitive match (`symptomKey`) rather than a tracker-builder.
-  Severity is fixed 1..3 for the same reason mood is.
+  Severity is fixed 1..3 for the same reason mood is. A finer 1..10 rating is an
+  optional extra beside it, not a replacement (see "A finer rating for the
+  symptoms you log every day").
 
 The corollary: **don't add fuzzy matching to `symptomKey`.** `groceryPlural.ts`
 does that for a catalog the app is trying to *merge*, where being wrong costs a
@@ -1248,6 +1250,67 @@ isn't possible yet — because a milestone the user typed in has to be findable
 regardless of whether the data behind it has caught up, the same reasoning
 `symptomStats`' directory exists beside the gated `symptomMoodContrasts`
 rows.
+
+## A finer rating for the symptoms you log every day
+
+A symptom that sits at "mild" in every check-in has no room on a three-step
+scale to show a small change. `LoggedSymptom.rating` (a whole number 1..10) is
+the extra grain, and it is optional per symptom, per entry.
+
+- **The severity is always still stored, derived from the rating**
+  (`severityForRating`: 1-3 mild, 4-6 moderate, 7-10 severe). Every read built
+  on the three levels (`daySymptoms`, the symptom page, the CSV, the MCP) keeps
+  working with no knowledge of ratings. A tap on the three levels after a rating
+  drops the rating (`withSymptom`), since the two would otherwise disagree.
+- **0 is never stored.** "None right now" is the symptom being absent from the
+  entry, the same as every other symptom not picked. So an untouched slider and
+  a slider at 0 record the same thing, and a rating average is over the days it
+  was rated, like the severity average is over the days it was logged.
+- **It lives in the symptom's JSON**, so there is no migration, and sync and
+  backup carry it as part of the row. `cleanSymptoms` and `daySymptoms` are the
+  places that rebuild a symptom and must copy `rating` through; read it with
+  `ratingOf`, which refuses anything that isn't a whole number 1..10.
+- **Which symptoms get a slider is `pinnedSymptoms`**, a synced setting holding
+  names (`pinnedSymptoms.ts`), matched by `symptomKey`. It is a list because the
+  vocabulary is derived from entries and has no row to hold a flag. You pin one
+  by holding a symptom in the check-in, which opens a menu: holding a picked
+  chip used to remove it, and that is now the menu's second row.
+- **A rated symptom's mean is its own line**, never merged with the severity
+  mean (`ratingAverageLine` beside `severityAverageLine`): they are different
+  scales, and a mean of the two is a number nobody gave. `SymptomSide` carries
+  `daysRated` and `averageRating` for it.
+- **The symptom page draws a rated symptom on its own 0 to 10 chart**
+  (`symptomRatingOnDay`), under the level chart and only when a day in the last
+  fortnight was rated. The two are never one chart: a day with only a level has
+  no bar on the rated one, and the level chart keeps its three steps.
+- **Search can log a rating** ("log brain fog 6") for a pinned symptom only, via
+  `parseSymptomPhrase`'s `rating`. A number that is part of a name the log
+  already has ("Vitamin 3 rash") stays part of the name, and a number on a
+  symptom with no slider offers no row at all rather than a level nobody chose.
+- **A slider can show a symptom that only has a level.** An older entry, or one
+  set with the tap, opens on its level as a word with a hollow thumb, so the
+  sheet never claims "None" for a symptom the entry holds.
+
+## Reading from each day's first check-in
+
+Mood moves through a day, and a morning symptom (the hangover-like headache
+that is worst at 8 AM) is averaged away by the evening entries beside it.
+`firstMoodEntries` keeps each day's earliest entry that has a mood, and an
+experiment's read or a milestone's contrast runs on that instead of on every
+entry. It is the one switch, "First of each day" on the experiment page and the
+milestone list, and `firstCheckInOnly` on `list_experiments`.
+
+- **Symptom-only entries are skipped, not the day's first.** A quick "lightheaded
+  on standing" at 7 AM would otherwise become the morning check-in and hide the
+  real one. The cost is that a day with only such entries is absent from this
+  read, never a zero.
+- **It orders by `loggedAt`, and a backdated entry is stamped at noon**, so it
+  can be a day's first when nothing earlier was logged that day. There is no way
+  to tell one from a real noon entry.
+- **It filters entries, then runs the same read.** `experimentResult` and
+  `buildMoodDays` are untouched, so every minimum-days rule above holds as it
+  did, and a stretch that thins out under it reports "not enough days" rather
+  than a number.
 
 ## Experiments — a bounded stretch against the one before it
 

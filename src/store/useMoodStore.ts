@@ -8,7 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
-import { contextTagKey, renamedContextTags, symptomKey } from '../utils/moodLog';
+import { contextTagKey, renamedContextTags, ratingOf, symptomKey } from '../utils/moodLog';
 import { keepUnchanged } from '../utils/structuralSharing';
 import {
   type UndoableAction,
@@ -227,8 +227,13 @@ function cleanSymptoms(symptoms: readonly LoggedSymptom[]): LoggedSymptom[] {
     if (!name) continue;
     const key = symptomKey(name);
     const seen = byKey.get(key);
-    if (!seen || symptom.severity > seen.severity) {
-      byKey.set(key, { name, severity: symptom.severity });
+    const rating = ratingOf(symptom);
+    const next: LoggedSymptom = rating === null
+      ? { name, severity: symptom.severity }
+      : { name, severity: symptom.severity, rating };
+    if (!seen || symptom.severity > seen.severity
+      || (symptom.severity === seen.severity && (rating ?? 0) > (seen.rating ?? 0))) {
+      byKey.set(key, next);
     }
   }
   return [...byKey.values()];

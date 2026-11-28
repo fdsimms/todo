@@ -166,7 +166,7 @@ export function SearchActionRow({ action, description, describe, receipt, layout
           key: String(value),
           label: pill,
           selected: value === action.severity,
-          run: () => onRun({ ...action, severity: value }),
+          run: () => onRun({ ...action, severity: value, rating: null }),
           accessibilityLabel: `Log ${action.symptom} as ${pill.toLowerCase()}`,
         }))
       : PANTRY_ANSWERS.map(({ value, label: pill }) => ({

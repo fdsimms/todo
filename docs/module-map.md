@@ -211,7 +211,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseUsage.ts` — MOST_USED_DAYS, MOST_USED_MIN_SESSIONS, MOST_USED_LIMIT, mostUsedExerciseIds
 - `src/utils/experimentLink.ts` — ExperimentLinkState, experimentLinkState, startExperimentLabel, VIEW_EXPERIMENT_LABEL, MISSING_EXPERIMENT_LABEL, experimentStartedMessage, linkedExperimentTaskCounts, linkedExperimentTasksNote
 - `src/utils/experimentStart.ts` — startPlannedExperiment
-- `src/utils/experiments.ts` — EXPERIMENT_LENGTH_PRESETS, describeLength, DEFAULT_EXPERIMENT_DAYS, EXPERIMENT_LABEL_MAX_LENGTH, ExperimentStatus, experimentDayKey, startedAtFor, startedAtRefusal, ExperimentSpan, experimentSpan, +25 more
+- `src/utils/experiments.ts` — EXPERIMENT_LENGTH_PRESETS, describeLength, DEFAULT_EXPERIMENT_DAYS, EXPERIMENT_LABEL_MAX_LENGTH, ExperimentStatus, experimentDayKey, startedAtFor, startedAtRefusal, ExperimentSpan, experimentSpan, +26 more
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabAnchor.ts` — FabMenuAnchor, fabMenuAnchorFor
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, rowsInColumnAt, DEFAULT_DROP_SLOT, +14 more
@@ -377,9 +377,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
 - `src/utils/moodEventTagOffers.ts` — MOOD_TAG_OFFER_DAYS, MoodEventTagOffer, clipAtWord, moodEventTagOffers, filterMoodEventTagOffers, describeMoodEventTagOffer, ruleFromOffer, moodTagOfferWindow
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
-- `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
+- `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +11 more
 - `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +48 more
-- `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, MOOD_CHANGES, moodChangeLabel, CHANGE_ANCHOR_WINDOW_MS, changeAnchorFor, asksChange, changeTally, +22 more
+- `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, RATING_MAX, severityForRating, ratingOf, MOOD_CHANGES, moodChangeLabel, CHANGE_ANCHOR_WINDOW_MS, +28 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt
 - `src/utils/moodTasks.ts` — MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MIN, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, +5 more
@@ -451,6 +451,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit
 - `src/utils/pillReveal.ts` — pillRevealOffset
 - `src/utils/pinSuggest.ts` — MAX_SUGGESTED_PINS, PinContext, buildCoOccurrenceIndex, currentTimeSegment, buildPinContext, overdueDays, scoreTask, nextPinSuggestion, suggestPins, pinReason, +1 more
+- `src/utils/pinnedSymptoms.ts` — parsePinnedSymptoms, cleanPinnedSymptoms, isPinnedSymptom, togglePinnedSymptom
 - `src/utils/placeGate.ts` — PLACE_FIX_TTL_MS, PLACE_FIX_KEY, StoredPlaceFix, pinnedPlaces, placeIdAt, isPlaceLimited, placeGateAllows, placeTrustedUntil, readPlaceFix, writePlaceFix, +1 more
 - `src/utils/placeReminders.ts` — PLACE_REMINDER_PREFIX, PLACE_REMINDER_RADIUS_M, MAX_PLACE_REMINDERS, placeReminderId, remindablePlaces, describePlaceReminder, WantedPlaceReminder, wantedPlaceReminders, placeRemindersToCancel
 - `src/utils/places.ts` — PlaceResult, parsePlaceResults, placeLocationText, placeSubtitle, placeRowTitle, PLACE_SUGGESTION_LIMIT, PLACE_QUERY_MIN_LENGTH
@@ -499,6 +500,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
 - `src/utils/rainUnits.ts` — RainUnit, rainUnitFor, formatRain
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring, MatchExcerpt, matchExcerpt
+- `src/utils/ratingSlider.ts` — ratingFromPosition, positionFraction, stepRating, restingRatingForSeverity
 - `src/utils/reachOutIntent.ts` — ReachOutKind, PendingReachOut, REACH_OUT_PROMPT_WINDOW_MS, serializePendingReachOut, parsePendingReachOut, isReachOutPromptLive, isStampFromEarlierLaunch, reachOutHistoryTitle, reachOutPromptMessage
 - `src/utils/reachOutTasks.ts` — REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, offerDeclinedRecently, reachOutPersonId, reachOutNamedPeopleIds, CATCH_UP_PROMPT, reachOutTitle, reachOutsHandledRecently, ReachOutWant, +12 more
 - `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, AliasResolver, ReceiptScope, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, +5 more

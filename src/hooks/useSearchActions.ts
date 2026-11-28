@@ -89,7 +89,7 @@ export function useSearchActions(query: string, active: boolean, limit?: number)
     const sources: SearchActionSources = {
       medications: routes.has('Medications') ? { logs: medication.logs, archived: medication.archived, registered: medication.registered } : null,
       water: routes.has('FoodLog') ? { unit: settings.waterUnit } : null,
-      mood: routes.has('Mood') ? { symptoms: cachedSymptomVocabulary(useMoodStore.getState().logs) } : null,
+      mood: routes.has('Mood') ? { symptoms: cachedSymptomVocabulary(useMoodStore.getState().logs), pinned: settings.pinnedSymptoms } : null,
       // The list the grocery screen last had open: the one a person reaching
       // for "add milk" is shopping into, named explicitly so the add and its
       // undo both act on it.

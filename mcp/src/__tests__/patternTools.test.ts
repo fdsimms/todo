@@ -59,6 +59,7 @@ beforeAll(() => {
 beforeEach(() => {
   mockRaw.runSync('DELETE FROM tasks');
   mockRaw.runSync('DELETE FROM mood_logs');
+  mockRaw.runSync('DELETE FROM milestones');
   mockRaw.runSync('DELETE FROM workout_sessions');
   mockRaw.runSync('DELETE FROM screen_time_days');
   mockRaw.runSync("DELETE FROM settings WHERE key = 'workoutsEnabled'");
@@ -127,6 +128,38 @@ describe('moodInsights', () => {
     replica.refresh();
     const [milestone] = moodInsights(replica).milestones;
     expect(milestone).toMatchObject({ label: 'New job', date: dayKey(3) });
+  });
+});
+
+describe('moodInsights, milestones from each day\'s first check-in', () => {
+  // Fourteen days, a morning and an evening entry each. The mornings are low
+  // before the milestone (day 7) and high after it, the evenings always high.
+  function twoEntryDays(): void {
+    for (let i = 0; i < 14; i++) {
+      mockRaw.runSync(
+        'INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags) VALUES (?,?,?,?,?,?)',
+        [`am${i}`, at(i, 8), dayKey(i), i >= 8 ? 2 : 4, '[]', '[]']
+      );
+      mockRaw.runSync(
+        'INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags) VALUES (?,?,?,?,?,?)',
+        [`pm${i}`, at(i, 20), dayKey(i), 4, '[]', '[]']
+      );
+    }
+    mockRaw.runSync('INSERT INTO milestones (id, label, date, created_at) VALUES (?,?,?,?)', ['ms', 'Started', at(7, 12), at(7, 12)]);
+    replica.refresh();
+  }
+
+  it('averages every entry by default, and only each day\'s first with firstCheckInOnly', () => {
+    twoEntryDays();
+    const all = moodInsights(replica).milestones[0];
+    const first = moodInsights(replica, { firstCheckInOnly: true }).milestones[0];
+    expect(all).toMatchObject({ moodBefore: 3, moodAfter: 4 });
+    expect(first).toMatchObject({ moodBefore: 2, moodAfter: 4 });
+  });
+
+  it('leaves every other finding reading the whole day', () => {
+    twoEntryDays();
+    expect(moodInsights(replica, { firstCheckInOnly: true }).summary).toEqual(moodInsights(replica).summary);
   });
 });
 

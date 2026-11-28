@@ -256,6 +256,22 @@ describe('logMood', () => {
     expect(second.contextTags).toEqual(['Poor sleep']);
   });
 
+  it('stores a 1 to 10 rating with the severity it falls in, and lets a correction change it', () => {
+    const made = logMood(replica, { mood: 3, symptoms: [{ name: 'Brain fog', rating: 5 }, { name: 'Fatigue', rating: 9, severity: 1 }] });
+    // The rating wins over a severity given beside it.
+    expect(made.symptoms).toEqual([
+      { name: 'Brain fog', severity: 2, rating: 5 },
+      { name: 'Fatigue', severity: 3, rating: 9 },
+    ]);
+    const fixed = updateMoodLog(replica, made.id, { symptoms: [{ name: 'brain fog', rating: 2 }] });
+    expect(fixed.symptoms).toEqual([{ name: 'Brain fog', severity: 1, rating: 2 }]);
+  });
+
+  it('refuses a rating outside 1 to 10, naming how to say none', () => {
+    expect(() => logMood(replica, { symptoms: [{ name: 'Brain fog', rating: 0 }] })).toThrow(/leave the symptom out/);
+    expect(() => logMood(replica, { symptoms: [{ name: 'Brain fog', rating: 11 }] })).toThrow(/1 to 10/);
+  });
+
   it('records the change since the last check-in beside the rating, and lets it be corrected', () => {
     const made = logMood(replica, { mood: 3, change: 'better' });
     expect(made.mood).toBe(3);

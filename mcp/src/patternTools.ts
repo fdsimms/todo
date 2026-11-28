@@ -241,7 +241,7 @@ export interface MoodInsights {
 const round = (n: number) => Math.round(n * 100) / 100;
 const CONTRAST_CAP = 6;
 
-export function moodInsights(replica: Replica): MoodInsights {
+export function moodInsights(replica: Replica, input: { firstCheckInOnly?: boolean } = {}): MoodInsights {
   const lib = replica.lib();
   const mi = lib.moodInsights;
   const settings = replica.settings();
@@ -256,6 +256,13 @@ export function moodInsights(replica: Replica): MoodInsights {
   const days = mi.buildMoodDays(
     logs, tasks, settings.dayResetTime, [], knownFrom, lib.nutritionStats.foodDayInputs(food), replica.screenTimeDays(),
   );
+
+  // Milestones can be read from each day's earliest check-in that has a mood
+  // (mornings against mornings), the way the phone's milestone list can. Only
+  // they take it: every other finding here reads the whole day.
+  const milestoneDays = input.firstCheckInOnly === true
+    ? mi.buildMoodDays(lib.moodLog.firstMoodEntries(logs), tasks, settings.dayResetTime, [], knownFrom, [], [])
+    : days;
 
   const names = (vocabulary: string[], keyOf: (s: string) => string) => {
     const out = new Map<string, string>();
@@ -343,7 +350,7 @@ export function moodInsights(replica: Replica): MoodInsights {
     })),
     milestones: replica.milestones().map(m => {
       const date = replica.logicalDayKeyOf(m.date);
-      const c = mi.milestoneMoodContrast(days, date);
+      const c = mi.milestoneMoodContrast(milestoneDays, date);
       return c
         ? { label: m.label, date, daysBefore: c.beforeDays, daysAfter: c.afterDays, moodBefore: round(c.moodBefore), moodAfter: round(c.moodAfter) }
         : { label: m.label, date, note: 'Not enough logged days on both sides yet.' };

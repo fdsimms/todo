@@ -227,7 +227,7 @@ export function logWater(replica: Replica, input: LogWaterInput): LogWaterResult
 
 export function logMood(
   replica: Replica,
-  input: { mood?: number | null; change?: 'worse' | 'same' | 'better' | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null; at?: string },
+  input: { mood?: number | null; change?: 'worse' | 'same' | 'better' | null; symptoms?: { name: string; severity?: number; rating?: number }[]; contextTags?: string[]; note?: string | null; at?: string },
 ) {
   const log = replica.logMood({ ...input, at: atFrom(input.at) });
   return {
@@ -353,7 +353,7 @@ export function setNutritionTargets(replica: Replica, targets: Record<string, nu
 export function updateMoodLog(
   replica: Replica,
   id: string,
-  patch: { mood?: number | null; change?: 'worse' | 'same' | 'better' | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null },
+  patch: { mood?: number | null; change?: 'worse' | 'same' | 'better' | null; symptoms?: { name: string; severity?: number; rating?: number }[]; contextTags?: string[]; note?: string | null },
 ) {
   const log = replica.updateMoodLog(id, patch);
   return {

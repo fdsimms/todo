@@ -19,6 +19,7 @@ import {
   experimentProgress,
   experimentResult,
   overlappingChanges,
+  ratingAverageLine,
   severityAverageLine,
   symptomRate,
   type ExperimentSymptomRead,
@@ -32,6 +33,8 @@ import { EmptyState } from '../components/EmptyState';
 import { ContrastBars } from '../components/ContrastBars';
 import { ExperimentSheet } from '../components/ExperimentSheet';
 import { LazySheet } from '../components/LazySheet';
+import { SegmentedControl } from '../components/SegmentedControl';
+import { firstMoodEntries } from '../utils/moodLog';
 import { HelpText } from '../components/HelpText';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -79,6 +82,8 @@ export function ExperimentDetailScreen() {
   const experiment = experiments.find(e => e.id === id) ?? null;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [pickingStart, setPickingStart] = useState(false);
+  // Read every entry, or only each day's first with a mood (firstMoodEntries).
+  const [firstOfDayOnly, setFirstOfDayOnly] = useState(false);
   const allTasks = useTaskStore(s => s.tasks);
   const startTasks = useMemo(
     () => allTasks.filter(t => t.experimentId === id && !t.completed && !t.archived),
@@ -88,8 +93,8 @@ export function ExperimentDetailScreen() {
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const result = useMemo(
-    () => (experiment ? experimentResult(experiment, logs, todayKey) : null),
-    [experiment, logs, todayKey],
+    () => (experiment ? experimentResult(experiment, firstOfDayOnly ? firstMoodEntries(logs) : logs, todayKey) : null),
+    [experiment, logs, todayKey, firstOfDayOnly],
   );
   const changes = useMemo(
     () => (experiment ? overlappingChanges(experiment, milestones, experiments, todayKey) : []),
@@ -161,7 +166,9 @@ export function ExperimentDetailScreen() {
         </View>
       );
     }
-    const severityLine = severityAverageLine(row.before, row.during) ?? undefined;
+    // The slider's 0 to 10 average is its own line: a different scale from the three levels, never merged with them.
+    const severityLine = [severityAverageLine(row.before, row.during), ratingAverageLine(row.before, row.during)]
+      .filter((line): line is string => line !== null).join('\n') || undefined;
     const beforeText = `${row.before.daysWith} of ${days(row.before.loggedDays)}`;
     const duringText = `${row.during.daysWith} of ${days(row.during.loggedDays)}`;
     return (
@@ -281,6 +288,23 @@ export function ExperimentDetailScreen() {
           </View>
         ) : (
           <>
+            <View style={styles.readFrom}>
+              <SegmentedControl
+                options={[
+                  { value: false, label: 'All check-ins' },
+                  { value: true, label: 'First of each day' },
+                ]}
+                value={firstOfDayOnly}
+                onChange={setFirstOfDayOnly}
+                label="Read from"
+              />
+              <HelpText style={styles.caption}>
+                {firstOfDayOnly
+                  ? 'Each day is read from its earliest entry with a mood, so mornings are compared with mornings. Entries without a mood are left out.'
+                  : 'Every entry counts, and a day’s symptoms are read at the worst they got.'}
+              </HelpText>
+            </View>
+
             <Text style={styles.sectionTitle}>MOOD</Text>
             <View style={styles.card}>
               {result.mood ? (
@@ -428,6 +452,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pending: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
   caption: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.sm },
   rowGap: { marginTop: spacing.md },
+  readFrom: { marginBottom: spacing.md },
   rowLabel: { fontSize: font.sm, color: colors.text },
   rowDetail: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
 });
